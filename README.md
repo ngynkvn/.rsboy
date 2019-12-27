@@ -34,7 +34,7 @@ them in clock cycles. Here is the translation:
 Machine Cycles 1.05MHz 1 cycle
 Clock Cycles 4.19MHz 4 cycles
 
-##References
+## References
 - Writing a Game Boy emulator, Cinoop: https://cturt.github.io/cinoop.html
 - GameBoy Opcode Summary: http://www.devrs.com/gb/files/opcodes.html
 - GameBoy CPU Manual: https://realboyemulator.files.wordpress.com/2013/01/gbcpuman.pdf
