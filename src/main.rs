@@ -1,9 +1,34 @@
+//SDL
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use std::time::Duration;
 
-pub fn main() -> Result<(), String> {
+//File IO
+use std::env;
+use std::fs::File;
+use std::io::prelude::*;
+
+fn read_instruction(buffer: &Vec<u8>, ptr: usize) {
+    match buffer[ptr] {
+        0xC3 => println!("Hey this is the first byte in my tetris rom!"),
+        _ => panic!("Unknown Instruction: {:02X}", buffer[ptr])
+    }
+}
+
+fn main() -> std::io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    println!("{:?}", args);
+    println!("Attempting to load {:?}", args[1]);
+    let mut file = File::open(args[1].to_string())?;
+    let mut buffer = Vec::new();
+    let ptr = 0;
+    file.read_to_end(&mut buffer)?;
+    read_instruction(&buffer, ptr);
+    Ok(())
+}
+
+fn run() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
 
