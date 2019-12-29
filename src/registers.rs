@@ -12,6 +12,10 @@ pub struct RegisterState {
     pub pc: u16,
 }
 
+pub fn flags(Z: bool, N: bool, H: bool, C: bool) -> u8 {
+    (Z as u8) << 7 + (N as u8) << 6 + (H as u8) << 5 + (C as u8) << 4
+}
+
 /**
  * u16_reg(n, a, b) will create a u16 "register" named `n` defined as a | b
  */
@@ -40,7 +44,6 @@ macro_rules! u8_reg {
 impl RegisterState {
     pub fn new() -> Self {
         Self {
-            pc: 0x100,
             sp: 0xFFFE,
             ..Default::default()
         }
@@ -70,7 +73,13 @@ mod tests {
     #[test]
     fn it_initalizes() {
         let reg = RegisterState::new();
-        assert_eq!(reg.pc, 0x100);
         assert_eq!(reg.sp, 0xFFFE);
+    }
+
+    fn flag_function() {
+        let z_only = flags(true, false, false, false);
+        assert_eq!(z_only, 0b1000_0000);
+        let zn = flags(true, false, false, false);
+        assert_eq!(zn, 0b1010_0000);
     }
 }

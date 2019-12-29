@@ -25,8 +25,9 @@ fn main() -> std::io::Result<()> {
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
     let mut cpu = CPU::new(rom);
-    cpu.read_instruction();
-    cpu.read_instruction();
+    loop {
+        cpu.read_instruction();
+    }
     Ok(())
 }
 

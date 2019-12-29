@@ -1,5 +1,6 @@
 use crate::memory::Mem;
 use crate::registers::RegisterState;
+use crate::registers::flags;
 
 pub struct CPU {
     registers: RegisterState,
@@ -44,6 +45,19 @@ macro_rules! LD {
     }};
 }
 
+macro_rules! XOR {
+    ($self:ident, $r1:ident, $r2:ident) => {{
+        let xor = $self.registers.$r1() ^ $self.registers.$r2();
+
+        $self.registers = RegisterState {
+            a: xor,
+            f: flags(xor == 0, false, false, false),
+            pc: $self.registers.pc + 1,
+            ..$self.registers
+        }
+    }};
+}
+
 impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
         Self {
@@ -56,6 +70,9 @@ impl CPU {
     }
     fn next_u8(&self) -> u8 {
         self.memory[(self.registers.pc + 1)]
+    }
+    fn next_u16(&self) -> u16 {
+        (self.memory[self.registers.pc + 1] as u16) << 8 | self.memory[self.registers.pc + 2] as u16
     }
     fn read_byte(&self, address: u16) -> u8 {
         self.memory[address]
@@ -167,12 +184,12 @@ impl CPU {
                     a: self.read_byte(0xFF00 + self.registers.c() as u16),
                     ..self.registers
                 }
-            },
+            }
             // 6
             0xE2 => {
                 self.set_byte(0xFF00 + self.registers.c() as u16, self.registers.a());
                 self.registers = self.inc_pc(1);
-            },
+            }
 
             // 9.
             0x3A => {
@@ -197,6 +214,21 @@ impl CPU {
                 LD!(self, LOAD_MEM, hl, a);
                 self.registers = self.inc_hl();
             }
+
+            0x31 => {
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 3,
+                    sp: self.next_u16(),
+                    ..self.registers
+                }
+            }
+            0xAF => XOR!(self, a, a),
+            0xA8 => XOR!(self, a, b),
+            0xA9 => XOR!(self, a, c ),
+            0xAA => XOR!(self, a, d ),
+            0xAB => XOR!(self, a, e ),
+            0xAC => XOR!(self, a, h ),
+            0xAD => XOR!(self, a, l ),
 
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
         }
