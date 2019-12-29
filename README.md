@@ -7,6 +7,7 @@ Cause that hasnt been done before.
 - Add time-rewinding.
 - Cycle-accurate emulation.
 - Eventually try to copy Google Stadia and play with "negative" latency methods
+- Work smarter not harder, use the tools and knowledge I have to speed up development by avoiding gruntwork tasks like linking every single opcode to its corresponding function. Some examples include using vim's line based capabilities and scraping data to make it more managable for me to work with.
 
 ## TODO
 - CREATE CONTEXT - DONE
