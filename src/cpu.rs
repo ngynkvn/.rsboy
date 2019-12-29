@@ -1,9 +1,9 @@
-mod registers;
-use registers::RegisterState;
+use crate::registers::RegisterState;
+use crate::memory::Mem;
 
 pub struct CPU {
     registers: RegisterState,
-    rom: Vec<u8>,
+    memory: Mem,
 }
 
 macro_rules! LD {
@@ -25,11 +25,20 @@ macro_rules! LD {
         }
     }};
 
-    // LD r1, r2, from MEM
+    // LD r1, (r2), from MEM
     ($self:ident, READ_MEM, $r1:ident) => {{
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: $self.read_byte($self.registers.hl()),
+            ..$self.registers
+        }
+    }};
+
+    // LD (r1), r2, to MEM
+    ($self:ident, LOAD_MEM, $r1:ident) => {{
+        $self.set_byte($self.registers.hl(), $self.registers.$r1());
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
             ..$self.registers
         }
     }};
@@ -39,20 +48,25 @@ impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
         Self {
             registers: RegisterState::new(),
-            rom: rom,
+            memory: Mem::new(rom),
         }
     }
     fn curr_u8(&self) -> u8 {
-        self.rom[self.registers.pc as usize]
+        self.memory[self.registers.pc as usize]
     }
     fn next_u8(&self) -> u8 {
-        self.rom[(self.registers.pc + 1) as usize]
+        self.memory[(self.registers.pc + 1) as usize]
     }
     fn read_byte(&self, address: u16) -> u8 {
         println!("Oh god oh fuck");
         unimplemented!()
     }
+    fn set_byte(&self, address: u16, value: u8) {
+        println!("Oh god oh fuck");
+        unimplemented!()
+    }
     pub fn read_instruction(&mut self) {
+        println!("opcode:{:02X}\nregisters:{:?}",self.curr_u8(),self.registers);
         match self.curr_u8() {
             0x00 => {
                 self.registers = RegisterState {
@@ -120,13 +134,19 @@ impl CPU {
             0x6C => LD!(self, REGISTER, l, h),
             0x6D => LD!(self, REGISTER, l, l),
             0x6E => LD!(self, READ_MEM, l),
-            // 0x70 => LD!(self, REGISTER, hl, b),
-            // 0x71 => LD!(self, REGISTER, hl, c),
-            // 0x72 => LD!(self, REGISTER, hl, d),
-            // 0x73 => LD!(self, REGISTER, hl, e),
-            // 0x74 => LD!(self, REGISTER, hl, h),
-            // 0x75 => LD!(self, REGISTER, hl, l),
-            // 0x36 => LD!(self, REGISTER, hl, n),
+            0x70 => LD!(self, LOAD_MEM, b),
+            0x71 => LD!(self, LOAD_MEM, c),
+            0x72 => LD!(self, LOAD_MEM, d),
+            0x73 => LD!(self, LOAD_MEM, e),
+            0x74 => LD!(self, LOAD_MEM, h),
+            0x75 => LD!(self, LOAD_MEM, l),
+            0x36 => {
+                self.set_byte(self.registers.hl(), self.next_u8());
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 2,
+                    ..self.registers
+                }
+            }
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
         }
     }

@@ -1,4 +1,4 @@
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct RegisterState {
     pub a: u8,
     pub b: u8,

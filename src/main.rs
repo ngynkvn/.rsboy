@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 //SDL
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -10,7 +13,9 @@ use std::fs::File;
 use std::io::prelude::*;
 
 mod cpu;
-use cpu::CPU;
+mod memory;
+mod registers;
+use crate::cpu::CPU;
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -18,10 +23,10 @@ fn main() -> std::io::Result<()> {
     println!("Attempting to load {:?}", args[1]);
     let mut file = File::open(args[1].to_string())?;
     let mut rom = Vec::new();
-    let ptr = 0;
     file.read_to_end(&mut rom)?;
-    let mut CPU = CPU::new(rom);
-    CPU.read_instruction();
+    let mut cpu = CPU::new(rom);
+    cpu.read_instruction();
+    cpu.read_instruction();
     Ok(())
 }
 
