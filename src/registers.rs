@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Default, Debug)]
 pub struct RegisterState {
     pub a: u8,
@@ -65,6 +67,18 @@ impl RegisterState {
     u16_reg!(bc, b, c);
     u16_reg!(de, d, e);
     u16_reg!(hl, h, l);
+}
+
+impl fmt::Display for RegisterState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, concat!("AF: {:04X}\n", 
+                          "BC: {:04X}\n", 
+                          "DE: {:04X}\n", 
+                          "HL: {:04X}\n", 
+                          "SP: {:04X}\n",
+                          "PC: {:04X}\n"), 
+        self.af(), self.bc(), self.de(), self.hl(), self.sp(), self.pc())
+    }
 }
 
 #[cfg(test)]
