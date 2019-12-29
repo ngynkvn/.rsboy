@@ -1,4 +1,5 @@
 use std::ops::Index;
+use std::ops::IndexMut;
 
 pub struct Mem {
     pub mem: [u8; 0xFFFF],
@@ -15,10 +16,15 @@ impl Mem {
         Self { mem: mem }
     }
 }
-
-impl Index<usize> for Mem {
+impl Index<u16> for Mem {
     type Output = u8;
-    fn index(&self, i: usize) -> &Self::Output {
-        &self.mem[i]
+    fn index(&self, i: u16) -> &Self::Output {
+        &self.mem[i as usize]
+    }
+}
+
+impl IndexMut<u16> for Mem {
+    fn index_mut(&mut self, i: u16) -> &mut Self::Output {
+        &mut self.mem[i as usize]
     }
 }

@@ -52,18 +52,16 @@ impl CPU {
         }
     }
     fn curr_u8(&self) -> u8 {
-        self.memory[self.registers.pc as usize]
+        self.memory[self.registers.pc]
     }
     fn next_u8(&self) -> u8 {
-        self.memory[(self.registers.pc + 1) as usize]
+        self.memory[(self.registers.pc + 1)]
     }
     fn read_byte(&self, address: u16) -> u8 {
-        println!("Oh god oh fuck");
-        unimplemented!()
+        self.memory[address]
     }
-    fn set_byte(&self, address: u16, value: u8) {
-        println!("Oh god oh fuck");
-        unimplemented!()
+    fn set_byte(&mut self, address: u16, value: u8) {
+        self.memory[address] = value;
     }
     pub fn read_instruction(&mut self) {
         println!("opcode:{:02X}\nregisters:{:?}",self.curr_u8(),self.registers);
