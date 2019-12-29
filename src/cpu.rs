@@ -1,6 +1,6 @@
 use crate::memory::Mem;
-use crate::registers::RegisterState;
 use crate::registers::flags;
+use crate::registers::RegisterState;
 
 pub struct CPU {
     registers: RegisterState,
@@ -45,6 +45,25 @@ macro_rules! LD {
     }};
 }
 
+macro_rules! LD16 {
+    ($self:ident, IMMEDIATE, $r1:ident) => {{
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 3,
+            $r1: $self.next_u16(),
+            ..$self.registers
+        }
+    }};
+    ($self:ident, IMMEDIATE, $r1:ident, $r2:ident) => {{
+        let value = $self.next_u16();
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 3,
+            $r1: (value >> 8) as u8,
+            $r2: (value & 0x00FF) as u8,
+            ..$self.registers
+        }
+    }};
+}
+
 macro_rules! XOR {
     ($self:ident, $r1:ident, $r2:ident) => {{
         let xor = $self.registers.$r1() ^ $self.registers.$r2();
@@ -56,6 +75,15 @@ macro_rules! XOR {
             ..$self.registers
         }
     }};
+}
+
+macro_rules! JP {
+    ($self:ident, IMMEDIATE) => {
+        $self.registers = RegisterState {
+            pc: $self.next_u16(),
+            ..$self.registers
+        }
+    };
 }
 
 impl CPU {
@@ -72,7 +100,8 @@ impl CPU {
         self.memory[(self.registers.pc + 1)]
     }
     fn next_u16(&self) -> u16 {
-        (self.memory[self.registers.pc + 1] as u16) << 8 | self.memory[self.registers.pc + 2] as u16
+        // Little endianess means LSB comes first.
+        (self.memory[self.registers.pc + 2] as u16) << 8 | self.memory[self.registers.pc + 1] as u16
     }
     fn read_byte(&self, address: u16) -> u8 {
         self.memory[address]
@@ -82,7 +111,7 @@ impl CPU {
     }
     pub fn read_instruction(&mut self) {
         println!(
-            "opcode:{:02X}\nregisters:{:?}",
+            "opcode:{:02X}\nregisters:\n{}",
             self.curr_u8(),
             self.registers
         );
@@ -215,20 +244,21 @@ impl CPU {
                 self.registers = self.inc_hl();
             }
 
-            0x31 => {
-                self.registers = RegisterState {
-                    pc: self.registers.pc + 3,
-                    sp: self.next_u16(),
-                    ..self.registers
-                }
-            }
             0xAF => XOR!(self, a, a),
             0xA8 => XOR!(self, a, b),
-            0xA9 => XOR!(self, a, c ),
-            0xAA => XOR!(self, a, d ),
-            0xAB => XOR!(self, a, e ),
-            0xAC => XOR!(self, a, h ),
-            0xAD => XOR!(self, a, l ),
+            0xA9 => XOR!(self, a, c),
+            0xAA => XOR!(self, a, d),
+            0xAB => XOR!(self, a, e),
+            0xAC => XOR!(self, a, h),
+            0xAD => XOR!(self, a, l),
+
+            0x01 => LD16!(self, IMMEDIATE, b, c),
+            0x11 => LD16!(self, IMMEDIATE, d, e),
+            0x21 => LD16!(self, IMMEDIATE, h, l),
+            0x31 => LD16!(self, IMMEDIATE, sp),
+
+            0xC3 => JP!(self, IMMEDIATE),
+
 
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
         }
