@@ -1,5 +1,5 @@
 #[derive(Default)]
-pub struct Registers {
+pub struct RegisterState {
     pub a: u8,
     pub b: u8,
     pub c: u8,
@@ -21,16 +21,43 @@ macro_rules! u16_reg {
             ((self.$r1 as u16) << 8) | (self.$r2 as u16)
         }
     };
+
+    ($fn_name:ident) => {
+        pub fn $fn_name(&self) -> u16 {
+            self.$fn_name
+        }
+    };
 }
 
-impl Registers {
-    pub fn new () -> Self {
+macro_rules! u8_reg {
+    ($fn_name: ident) => {
+        pub fn $fn_name(&self) -> u8 {
+            self.$fn_name
+        }
+    };
+}
+
+impl RegisterState {
+    pub fn new() -> Self {
         Self {
             pc: 0x100,
+            sp: 0xFFFE,
             ..Default::default()
         }
     }
 
+    u8_reg!(a);
+    u8_reg!(b);
+    u8_reg!(c);
+    u8_reg!(d);
+    u8_reg!(e);
+    u8_reg!(f);
+    u8_reg!(h);
+    u8_reg!(l);
+    u16_reg!(sp);
+    u16_reg!(pc);
+
+    //Special registers
     u16_reg!(af, a, f);
     u16_reg!(bc, b, c);
     u16_reg!(de, d, e);
@@ -42,7 +69,8 @@ mod tests {
     use super::*;
     #[test]
     fn it_initalizes() {
-        let reg = Registers::new();
+        let reg = RegisterState::new();
         assert_eq!(reg.pc, 0x100);
-    } 
+        assert_eq!(reg.sp, 0xFFFE);
+    }
 }

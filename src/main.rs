@@ -12,7 +12,6 @@ use std::io::prelude::*;
 mod cpu;
 use cpu::CPU;
 
-
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
     println!("{:?}", args);
@@ -21,7 +20,7 @@ fn main() -> std::io::Result<()> {
     let mut rom = Vec::new();
     let ptr = 0;
     file.read_to_end(&mut rom)?;
-    let CPU = CPU::new(rom);
+    let mut CPU = CPU::new(rom);
     CPU.read_instruction();
     Ok(())
 }
