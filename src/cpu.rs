@@ -88,13 +88,13 @@ macro_rules! XOR {
 }
 
 macro_rules! JP {
-    ($self: ident, IMMEDIATE) => {
+    ($self: ident, IMMEDIATE) => {{
         $self.registers = RegisterState {
             pc: $self.next_u16(),
             ..$self.registers
         }
-    };
-    ($self: ident, IF, $flag: ident) => {
+    }};
+    ($self: ident, IF, $flag: ident) => {{
         if $self.registers.$flag() {
             // Thank you https://github.com/mvdnes/rboy/tree/master/src#L811
             // Need to interpret the next byte as signed, but since rust doesn't allow overflow
@@ -111,7 +111,7 @@ macro_rules! JP {
             }
         }
     };
-}
+}}
 
 macro_rules! INC {
     ($self: ident, hl) => {{
@@ -163,9 +163,11 @@ macro_rules! DEC {
 
 macro_rules! PUSH {
     ($self: ident, $r1: ident) => {{
+        println!("PUSH {}", $self.registers.$r1());
         $self.push_stack($self.registers.$r1());
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
+            sp: $self.registers.sp - 2,
             ..$self.registers
         }
     }};
@@ -184,6 +186,31 @@ macro_rules! SWAP {
             $r1: swap_nibbles($self.registers.$r1),
             ..$self.registers
         }
+    }};
+}
+
+macro_rules! ROT_THRU_CARRY {
+    ($self: ident, LEFT, $r1: ident) => {{
+        let leftmost = ($self.registers.$r1 & 0b1000_0000 != 0);
+        let carry = $self.registers.flg_c() as u8;
+        let n = ($self.registers.$r1 << 1) + carry;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: n,
+            f: flags(n == 0, false, false, leftmost),
+            ..$self.registers
+        } 
+    }};
+    ($self: ident, RIGHT, $r1: ident) => {{
+        let rightmost = ($self.registers.$r1 & 0b0000_0001 != 0);
+        let carry = $self.registers.flg_c() as u8;
+        let n = ($self.registers.$r1 >> 1) + carry;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: n,
+            f: flags(n == 0, false, false, leftmost),
+            ..$self.registers
+        } 
     }};
 }
 
@@ -221,12 +248,13 @@ impl CPU {
             self.curr_u8(),
             self.registers
         );
+        // println!("{:?}", &self.memory.mem[0xFFF0..0xFFFE]);
+        // println!("sp:{}", self.registers.sp);
         if self.registers.pc > 256 {
             panic!("We finished the bootrom sequence!!");
         }
         match self.curr_u8() {
             0x00 => {
-                panic!();
                 self.registers = self.inc_pc(1);
             }
             // 3.3.1. 8-bit Loads
@@ -381,6 +409,14 @@ impl CPU {
             0x21 => LD16!(self, IMMEDIATE, h, l),
             0x31 => LD16!(self, IMMEDIATE, sp),
 
+            0xC9 => {
+                let addr = self.pop_u16();
+                self.registers = RegisterState {
+                    pc: addr,
+                    sp: self.registers.sp + 2,
+                    ..self.registers
+                }
+            },
             0xC3 => JP!(self, IMMEDIATE),
 
             0x20 => JP!(self, IF, not_flg_z),
@@ -430,6 +466,14 @@ impl CPU {
                 0x34 => SWAP!(self, h),
                 0x35 => SWAP!(self, l),
                 0x36 => SWAP!(self, hl),
+                0x17 => ROT_THRU_CARRY!(self, LEFT, a),
+                0x10 => ROT_THRU_CARRY!(self, LEFT, b),
+                0x11 => ROT_THRU_CARRY!(self, LEFT, c),
+                0x12 => ROT_THRU_CARRY!(self, LEFT, d),
+                0x13 => ROT_THRU_CARRY!(self, LEFT, e),
+                0x14 => ROT_THRU_CARRY!(self, LEFT, h),
+                0x15 => ROT_THRU_CARRY!(self, LEFT, l),
+                //(HL) CB 16 16"
                 _ => panic!("Unknown CB Instruction: {:02X}", self.next_u8()),
             },
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
@@ -440,6 +484,11 @@ impl CPU {
         self.set_byte(self.registers.sp, (value >> 8) as u8);
         self.set_byte(self.registers.sp - 1, (value & 0x00FF) as u8);
     }
+
+    fn pop_u16(&mut self) -> u16 {
+        ((self.read_byte(self.registers.sp + 1) as u16) << 8) | self.read_byte(self.registers.sp) as u16
+    }
+
     fn inc_hl(&self) -> RegisterState {
         let next_hl = self.registers.hl() + 1;
         RegisterState {

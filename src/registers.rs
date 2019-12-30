@@ -46,7 +46,6 @@ macro_rules! u8_reg {
 impl RegisterState {
     pub fn new() -> Self {
         Self {
-            sp: 0xFFFE,
             ..Default::default()
         }
     }
@@ -112,7 +111,6 @@ mod tests {
     #[test]
     fn it_initalizes() {
         let reg = RegisterState::new();
-        assert_eq!(reg.sp, 0xFFFE);
     }
 
     fn flag_function() {
