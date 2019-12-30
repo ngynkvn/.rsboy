@@ -43,6 +43,14 @@ macro_rules! LD {
             ..$self.registers
         }
     }};
+
+    ($self:ident, LOAD_MEM_OFFSET, $r1:ident) => {{
+        $self.set_byte(0xFF00 + $self.curr_u8() as u16, $self.registers.$r1());
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            ..$self.registers
+        }
+    }};
 }
 
 macro_rules! LD16 {
@@ -86,8 +94,8 @@ macro_rules! JP {
     ($self:ident, IF, $flag:ident) => {
         if $self.registers.$flag() {
             // Thank you https://github.com/mvdnes/rboy/tree/master/src#L811
-            // Need to interpret the next byte as signed, but since rust doesn't allow overflow 
-            // We do some hackiness here too 
+            // Need to interpret the next byte as signed, but since rust doesn't allow overflow
+            // We do some hackiness here too
             let n = $self.next_u8() as i8;
             $self.registers = RegisterState {
                 pc: (($self.registers.pc as u32 as i32) + (n as i32)) as u16,
@@ -99,7 +107,48 @@ macro_rules! JP {
                 ..$self.registers
             }
         }
-    }
+    };
+}
+
+macro_rules! INC {
+    ($self: ident, hl) => {{
+        let n = $self.memory[$self.registers.hl()];
+        let n = if n == std::u8::MAX { std::u8::MIN } else { n + 1 };
+        $self.set_byte($self.registers.hl(), n);
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            ..$self.registers
+        }
+    }};
+    ($self: ident, $r1: ident) => {{
+        let n = $self.registers.$r1;
+        let n = if n == std::u8::MAX { std::u8::MIN } else { n + 1 };
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: n,
+            ..$self.registers
+        }
+    }};
+}
+macro_rules! DEC {
+    ($self: ident, hl) => {{
+        let n = $self.memory[$self.registers.hl()];
+        let n = if n == 0 { std::u8::MAX } else { n - 1 };
+        $self.set_byte($self.registers.hl(), n);
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            ..$self.registers
+        }
+    }};
+    ($self: ident, $r1: ident) => {{
+        let n = $self.registers.$r1;
+        let n = if n == 0 { std::u8::MAX } else { n - 1 };
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: n,
+            ..$self.registers
+        }
+    }};
 }
 
 impl CPU {
@@ -131,6 +180,9 @@ impl CPU {
             self.curr_u8(),
             self.registers
         );
+        if self.registers.pc > 256 {
+            panic!("We finished the bootrom sequence!!");
+        }
         match self.curr_u8() {
             0x00 => {
                 panic!();
@@ -209,7 +261,14 @@ impl CPU {
             //3. LD A,n
             0x0A => LD!(self, READ_MEM, a, bc),
             0x1A => LD!(self, READ_MEM, a, de),
-            // 0xFA =>  LD A, (nn) <-- THIS IS A SHORT
+            0xFA => {
+                //Very strange, the opcode tables say to load in a 16bit value but A is a 8 bit register..
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 3,
+                    a: self.next_u8() as u8,
+                    ..self.registers
+                }
+            }
             0x3E => LD!(self, IMMEDIATE, a),
 
             0x47 => LD!(self, REGISTER, b, a),
@@ -221,7 +280,14 @@ impl CPU {
             0x02 => LD!(self, LOAD_MEM, bc, a),
             0x12 => LD!(self, LOAD_MEM, de, a),
             0x77 => LD!(self, LOAD_MEM, hl, a),
-            // 0xEA => LD!(self, LOAD_MEM_IMMEDIATE, --, a),
+            0xEA => {
+                self.set_byte(self.next_u16(), self.registers.a);
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 3,
+                    ..self.registers
+                }
+            }
+            0xE0 => LD!(self, LOAD_MEM_OFFSET, a),
 
             // 5
             0xF2 => {
@@ -281,11 +347,27 @@ impl CPU {
             0x30 => JP!(self, IF, not_flg_c),
             0x38 => JP!(self, IF, flg_c),
 
+            0x3C => INC!(self, a),
+            0x04 => INC!(self, b),
+            0x0C => INC!(self, c),
+            0x14 => INC!(self, d),
+            0x1C => INC!(self, e),
+            0x24 => INC!(self, h),
+            0x2C => INC!(self, l),
+            0x34 => INC!(self, hl),
+
+            0x3D => DEC!(self, a),
+            0x05 => DEC!(self, b),
+            0x0D => DEC!(self, c),
+            0x15 => DEC!(self, d),
+            0x1D => DEC!(self, e),
+            0x25 => DEC!(self, h),
+            0x2D => DEC!(self, l),
+            0x35 => DEC!(self, hl),
 
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
         }
     }
-
     fn inc_hl(&self) -> RegisterState {
         let next_hl = self.registers.hl() + 1;
         RegisterState {
