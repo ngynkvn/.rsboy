@@ -1,3 +1,4 @@
+use crate::instructions::InstructionTable;
 use crate::memory::Mem;
 use crate::registers::flags;
 use crate::registers::RegisterState;
@@ -110,8 +111,8 @@ macro_rules! JP {
                 ..$self.registers
             }
         }
-    };
-}}
+    };};
+}
 
 macro_rules! INC {
     ($self: ident, hl) => {{
@@ -163,11 +164,9 @@ macro_rules! DEC {
 
 macro_rules! PUSH {
     ($self: ident, $r1: ident) => {{
-        println!("PUSH {}", $self.registers.$r1());
         $self.push_stack($self.registers.$r1());
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
-            sp: $self.registers.sp - 2,
             ..$self.registers
         }
     }};
@@ -175,6 +174,7 @@ macro_rules! PUSH {
 
 macro_rules! SWAP {
     ($self: ident, hl) => {{
+        panic!();
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             ..$self.registers
@@ -199,7 +199,7 @@ macro_rules! ROT_THRU_CARRY {
             $r1: n,
             f: flags(n == 0, false, false, leftmost),
             ..$self.registers
-        } 
+        }
     }};
     ($self: ident, RIGHT, $r1: ident) => {{
         let rightmost = ($self.registers.$r1 & 0b0000_0001 != 0);
@@ -210,11 +210,22 @@ macro_rules! ROT_THRU_CARRY {
             $r1: n,
             f: flags(n == 0, false, false, leftmost),
             ..$self.registers
-        } 
+        }
     }};
 }
 
-fn swap_nibbles(value: u8) -> u8{
+macro_rules! TEST_BIT {
+    ($self: ident, $r1: ident, $bit: expr) => {{
+        let r = $self.registers.$r1 & (1 << ($bit)) == 0;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            f: flags(r, false, true, $self.registers.flg_c()),
+            ..$self.registers
+        }
+    }};
+}
+
+fn swap_nibbles(value: u8) -> u8 {
     ((value & 0x0F as u8) << 4) | (value >> 4) as u8
 }
 
@@ -228,6 +239,10 @@ impl CPU {
     // TODO I'll clean these functions up later
     fn curr_u8(&self) -> u8 {
         self.memory[self.registers.pc]
+    }
+    fn curr_u16(&self) -> u16 {
+        // Little endianess means LSB comes first.
+        (self.memory[self.registers.pc + 1] as u16) << 8 | self.memory[self.registers.pc] as u16
     }
     fn next_u8(&self) -> u8 {
         self.memory[(self.registers.pc + 1)]
@@ -243,11 +258,23 @@ impl CPU {
         self.memory[address] = value;
     }
     pub fn read_instruction(&mut self) {
-        println!(
-            "opcode:{:02X}\nregisters:\n{}",
-            self.curr_u8(),
-            self.registers
-        );
+        if self.curr_u8() == 0xCB {
+            println!(
+                "opcode:{:04X}\n{:?}\nregisters:\n{}",
+                self.curr_u16(),
+                InstructionTable[self.curr_u8() as usize],
+                // 0
+                self.registers
+            );
+        } else {
+            println!(
+                "opcode:{:02X}\n{:?}\nregisters:\n{}",
+                self.curr_u8(),
+                InstructionTable[self.curr_u8() as usize],
+                // 0
+                self.registers
+            );
+        }
         // println!("{:?}", &self.memory.mem[0xFFF0..0xFFFE]);
         // println!("sp:{}", self.registers.sp);
         if self.registers.pc > 256 {
@@ -413,12 +440,10 @@ impl CPU {
                 let addr = self.pop_u16();
                 self.registers = RegisterState {
                     pc: addr,
-                    sp: self.registers.sp + 2,
                     ..self.registers
                 }
-            },
+            }
             0xC3 => JP!(self, IMMEDIATE),
-
             0x20 => JP!(self, IF, not_flg_z),
             0x28 => JP!(self, IF, flg_z),
             0x30 => JP!(self, IF, not_flg_c),
@@ -447,7 +472,6 @@ impl CPU {
                 self.push_stack(self.registers.pc + 3);
                 self.registers = RegisterState {
                     pc: self.next_u16(),
-                    sp: self.registers.sp - 2,
                     ..self.registers
                 }
             }
@@ -456,6 +480,15 @@ impl CPU {
             0xC5 => PUSH!(self, bc),
             0xD5 => PUSH!(self, de),
             0xE5 => PUSH!(self, hl),
+
+            //RST
+            0xC7..=0xFF => {
+                self.push_stack(self.registers.pc);
+                self.registers = RegisterState {
+                    pc: (self.curr_u8() - 0xC7) as u16,
+                    ..self.registers
+                }
+            }
 
             0xCB => match self.next_u8() {
                 0x37 => SWAP!(self, a),
@@ -473,7 +506,70 @@ impl CPU {
                 0x13 => ROT_THRU_CARRY!(self, LEFT, e),
                 0x14 => ROT_THRU_CARRY!(self, LEFT, h),
                 0x15 => ROT_THRU_CARRY!(self, LEFT, l),
-                //(HL) CB 16 16"
+                0x40 => TEST_BIT!(self, b, 0),
+                0x41 => TEST_BIT!(self, c, 0),
+                0x42 => TEST_BIT!(self, d, 0),
+                0x43 => TEST_BIT!(self, e, 0),
+                0x44 => TEST_BIT!(self, h, 0),
+                0x45 => TEST_BIT!(self, l, 0),
+                // 0x46 => TEST_BIT!(self, hl, 0),
+                // 0x47 => TEST_BIT!(self, a, 0),
+                0x48 => TEST_BIT!(self, b, 1),
+                0x49 => TEST_BIT!(self, c, 1),
+                0x4A => TEST_BIT!(self, d, 1),
+                0x4B => TEST_BIT!(self, e, 1),
+                0x4C => TEST_BIT!(self, h, 1),
+                0x4D => TEST_BIT!(self, l, 1),
+                // 0x4E => TEST_BIT!(self),
+                // 0x4F => TEST_BIT!(self),
+                0x50 => TEST_BIT!(self, b, 2),
+                0x51 => TEST_BIT!(self, c, 2),
+                0x52 => TEST_BIT!(self, d, 2),
+                0x53 => TEST_BIT!(self, e, 2),
+                0x54 => TEST_BIT!(self, h, 2),
+                0x55 => TEST_BIT!(self, l, 2),
+                // 0x56 => TEST_BIT!(self),
+                // 0x57 => TEST_BIT!(self),
+                0x58 => TEST_BIT!(self, b, 3),
+                0x59 => TEST_BIT!(self, c, 3),
+                0x5A => TEST_BIT!(self, d, 3),
+                0x5B => TEST_BIT!(self, e, 3),
+                0x5C => TEST_BIT!(self, h, 3),
+                0x5D => TEST_BIT!(self, l, 3),
+                // 0x5E => TEST_BIT!(self),
+                // 0x5F => TEST_BIT!(self),
+                0x60 => TEST_BIT!(self, b, 4),
+                0x61 => TEST_BIT!(self, c, 4),
+                0x62 => TEST_BIT!(self, d, 4),
+                0x63 => TEST_BIT!(self, e, 4),
+                0x64 => TEST_BIT!(self, h, 4),
+                0x65 => TEST_BIT!(self, l, 4),
+                // 0x66 => TEST_BIT!(self),
+                // 0x67 => TEST_BIT!(self),
+                0x68 => TEST_BIT!(self, b, 5),
+                0x69 => TEST_BIT!(self, c, 5),
+                0x6A => TEST_BIT!(self, d, 5),
+                0x6B => TEST_BIT!(self, e, 5),
+                0x6C => TEST_BIT!(self, h, 5),
+                0x6D => TEST_BIT!(self, l, 5),
+                // 0x6E => TEST_BIT!(self),
+                // 0x6F => TEST_BIT!(self),
+                0x70 => TEST_BIT!(self, b, 6),
+                0x71 => TEST_BIT!(self, c, 6),
+                0x72 => TEST_BIT!(self, d, 6),
+                0x73 => TEST_BIT!(self, e, 6),
+                0x74 => TEST_BIT!(self, h, 6),
+                0x75 => TEST_BIT!(self, l, 6),
+                // 0x76 => TEST_BIT!(self),
+                // 0x77 => TEST_BIT!(self),
+                0x78 => TEST_BIT!(self, b, 7),
+                0x79 => TEST_BIT!(self, c, 7),
+                0x7A => TEST_BIT!(self, d, 7),
+                0x7B => TEST_BIT!(self, e, 7),
+                0x7C => TEST_BIT!(self, h, 7),
+                0x7D => TEST_BIT!(self, l, 7),
+                // 0x7E => TEST_BIT!(self),
+                // 0x7F => TEST_BIT!(self),
                 _ => panic!("Unknown CB Instruction: {:02X}", self.next_u8()),
             },
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
@@ -483,16 +579,25 @@ impl CPU {
     fn push_stack(&mut self, value: u16) {
         self.set_byte(self.registers.sp, (value >> 8) as u8);
         self.set_byte(self.registers.sp - 1, (value & 0x00FF) as u8);
+        self.registers = RegisterState {
+            sp: self.registers.sp - 2,
+            ..self.registers
+        }
     }
 
     fn pop_u16(&mut self) -> u16 {
-        ((self.read_byte(self.registers.sp + 1) as u16) << 8) | self.read_byte(self.registers.sp) as u16
+        let n = ((self.read_byte(self.registers.sp + 1) as u16) << 8)
+            | self.read_byte(self.registers.sp) as u16;
+        self.registers = RegisterState {
+            sp: self.registers.sp + 2,
+            ..self.registers
+        };
+        n
     }
 
     fn inc_hl(&self) -> RegisterState {
         let next_hl = self.registers.hl() + 1;
         RegisterState {
-            pc: self.registers.pc + 1,
             h: (next_hl >> 8) as u8,
             l: (next_hl & 0x00FF) as u8,
             ..self.registers
@@ -501,7 +606,6 @@ impl CPU {
     fn dec_hl(&self) -> RegisterState {
         let next_hl = self.registers.hl() - 1;
         RegisterState {
-            pc: self.registers.pc + 1,
             h: (next_hl >> 8) as u8,
             l: (next_hl & 0x00FF) as u8,
             ..self.registers

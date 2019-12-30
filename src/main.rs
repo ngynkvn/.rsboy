@@ -10,11 +10,13 @@ use std::time::Duration;
 //File IO
 use std::env;
 use std::fs::File;
+use std::io::{self, Read};
 use std::io::prelude::*;
 
 mod cpu;
 mod memory;
 mod registers;
+mod instructions;
 use crate::cpu::CPU;
 
 fn main() -> std::io::Result<()> {
@@ -26,6 +28,7 @@ fn main() -> std::io::Result<()> {
     file.read_to_end(&mut rom)?;
     let mut cpu = CPU::new(rom);
     loop {
+    // for i in 0..1000 {
         cpu.read_instruction();
     }
     Ok(())
