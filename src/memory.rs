@@ -9,11 +9,8 @@ impl Mem {
     pub fn new(rom: Vec<u8>) -> Self {
         let mut mem = [0; 0xFFFF];
 
-        for i in 0..rom.len() {
-            mem[i] = rom[i];
-        }
-
-        Self { mem: mem }
+        mem[..rom.len()].clone_from_slice(&rom[..]);
+        Self { mem }
     }
 }
 impl Index<u16> for Mem {
