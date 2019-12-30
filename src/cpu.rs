@@ -116,19 +116,23 @@ macro_rules! JP {
 macro_rules! INC {
     ($self: ident, hl) => {{
         let n = $self.memory[$self.registers.hl()];
+        let half_carry = (n & 0x0f) == 0x0f;
         let n = if n == MAX { MIN } else { n + 1 };
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
+            f: flags(n == 0, false, half_carry, $self.registers.flg_c()),
             ..$self.registers
         }
     }};
     ($self: ident, $r1: ident) => {{
         let n = $self.registers.$r1;
+        let half_carry = (n & 0x0f) == 0x0f;
         let n = if n == MAX { MIN } else { n + 1 };
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
+            f: flags(n == 0, false, half_carry, $self.registers.flg_c()),
             ..$self.registers
         }
     }};
@@ -136,6 +140,7 @@ macro_rules! INC {
 macro_rules! DEC {
     ($self: ident, hl) => {{
         let n = $self.memory[$self.registers.hl()];
+        let half_carry = (n & 0x0f) == 0x0f;
         let n = if n == MIN { MAX } else { n - 1 };
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
@@ -145,10 +150,12 @@ macro_rules! DEC {
     }};
     ($self: ident, $r1: ident) => {{
         let n = $self.registers.$r1;
+        let half_carry = (n & 0x0f) == 0x0f;
         let n = if n == 0 { std::u8::MAX } else { n - 1 };
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
+            f: flags(n == 0, false, half_carry, $self.registers.flg_c()),
             ..$self.registers
         }
     }};
@@ -423,6 +430,7 @@ impl CPU {
                 0x34 => SWAP!(self, h),
                 0x35 => SWAP!(self, l),
                 0x36 => SWAP!(self, hl),
+                _ => panic!("Unknown CB Instruction: {:02X}", self.next_u8()),
             },
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
         }
