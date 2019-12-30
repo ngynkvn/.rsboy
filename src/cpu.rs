@@ -67,7 +67,6 @@ macro_rules! LD16 {
 macro_rules! XOR {
     ($self:ident, $r1:ident, $r2:ident) => {{
         let xor = $self.registers.$r1() ^ $self.registers.$r2();
-
         $self.registers = RegisterState {
             a: xor,
             f: flags(xor == 0, false, false, false),
@@ -84,6 +83,23 @@ macro_rules! JP {
             ..$self.registers
         }
     };
+    ($self:ident, IF, $flag:ident) => {
+        if $self.registers.$flag() {
+            // Thank you https://github.com/mvdnes/rboy/tree/master/src#L811
+            // Need to interpret the next byte as signed, but since rust doesn't allow overflow 
+            // We do some hackiness here too 
+            let n = $self.next_u8() as i8;
+            $self.registers = RegisterState {
+                pc: (($self.registers.pc as u32 as i32) + (n as i32)) as u16,
+                ..$self.registers
+            }
+        } else {
+            $self.registers = RegisterState {
+                pc: $self.registers.pc + 2,
+                ..$self.registers
+            }
+        }
+    }
 }
 
 impl CPU {
@@ -117,6 +133,7 @@ impl CPU {
         );
         match self.curr_u8() {
             0x00 => {
+                panic!();
                 self.registers = self.inc_pc(1);
             }
             // 3.3.1. 8-bit Loads
@@ -258,6 +275,11 @@ impl CPU {
             0x31 => LD16!(self, IMMEDIATE, sp),
 
             0xC3 => JP!(self, IMMEDIATE),
+
+            0x20 => JP!(self, IF, not_flg_z),
+            0x28 => JP!(self, IF, flg_z),
+            0x30 => JP!(self, IF, not_flg_c),
+            0x38 => JP!(self, IF, flg_c),
 
 
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
