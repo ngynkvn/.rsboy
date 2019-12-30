@@ -15,7 +15,7 @@ pub struct RegisterState {
 }
 
 pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
-    ((z as u8) << 7) + ((n as u8) << 6) + ((h as u8) << 5) + ((c as u8) << 4)
+    ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
 }
 
 /**

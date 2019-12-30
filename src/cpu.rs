@@ -7,9 +7,12 @@ pub struct CPU {
     memory: Mem,
 }
 
+const MAX: u8 = std::u8::MAX;
+const MIN: u8 = std::u8::MIN;
+
 macro_rules! LD {
     // LD n, u8
-    ($self:ident, IMMEDIATE, $r:ident) => {{
+    ($self: ident, IMMEDIATE, $r: ident) => {{
         $self.registers = RegisterState {
             pc: $self.registers.pc + 2,
             $r: $self.next_u8(),
@@ -18,7 +21,7 @@ macro_rules! LD {
     }};
 
     // LD r1, r2
-    ($self:ident, REGISTER, $r1:ident, $r2:ident) => {{
+    ($self: ident, REGISTER, $r1: ident, $r2: ident) => {{
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: $self.registers.$r2(),
@@ -27,7 +30,7 @@ macro_rules! LD {
     }};
 
     // LD r1, (r2), from MEM
-    ($self:ident, READ_MEM, $r1:ident, $r2:ident) => {{
+    ($self: ident, READ_MEM, $r1: ident, $r2: ident) => {{
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: $self.read_byte($self.registers.$r2()),
@@ -36,7 +39,7 @@ macro_rules! LD {
     }};
 
     // LD (r1), r2, to MEM
-    ($self:ident, LOAD_MEM, $r1:ident, $r2:ident) => {{
+    ($self: ident, LOAD_MEM, $r1: ident, $r2: ident) => {{
         $self.set_byte($self.registers.$r1(), $self.registers.$r2());
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
@@ -44,7 +47,7 @@ macro_rules! LD {
         }
     }};
 
-    ($self:ident, LOAD_MEM_OFFSET, $r1:ident) => {{
+    ($self: ident, LOAD_MEM_OFFSET, $r1: ident) => {{
         $self.set_byte(0xFF00 + $self.curr_u8() as u16, $self.registers.$r1());
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
@@ -54,14 +57,14 @@ macro_rules! LD {
 }
 
 macro_rules! LD16 {
-    ($self:ident, IMMEDIATE, $r1:ident) => {{
+    ($self: ident, IMMEDIATE, $r1: ident) => {{
         $self.registers = RegisterState {
             pc: $self.registers.pc + 3,
             $r1: $self.next_u16(),
             ..$self.registers
         }
     }};
-    ($self:ident, IMMEDIATE, $r1:ident, $r2:ident) => {{
+    ($self: ident, IMMEDIATE, $r1: ident, $r2: ident) => {{
         let value = $self.next_u16();
         $self.registers = RegisterState {
             pc: $self.registers.pc + 3,
@@ -73,7 +76,7 @@ macro_rules! LD16 {
 }
 
 macro_rules! XOR {
-    ($self:ident, $r1:ident, $r2:ident) => {{
+    ($self: ident, $r1: ident, $r2: ident) => {{
         let xor = $self.registers.$r1() ^ $self.registers.$r2();
         $self.registers = RegisterState {
             a: xor,
@@ -85,13 +88,13 @@ macro_rules! XOR {
 }
 
 macro_rules! JP {
-    ($self:ident, IMMEDIATE) => {
+    ($self: ident, IMMEDIATE) => {
         $self.registers = RegisterState {
             pc: $self.next_u16(),
             ..$self.registers
         }
     };
-    ($self:ident, IF, $flag:ident) => {
+    ($self: ident, IF, $flag: ident) => {
         if $self.registers.$flag() {
             // Thank you https://github.com/mvdnes/rboy/tree/master/src#L811
             // Need to interpret the next byte as signed, but since rust doesn't allow overflow
@@ -113,7 +116,7 @@ macro_rules! JP {
 macro_rules! INC {
     ($self: ident, hl) => {{
         let n = $self.memory[$self.registers.hl()];
-        let n = if n == std::u8::MAX { std::u8::MIN } else { n + 1 };
+        let n = if n == MAX { MIN } else { n + 1 };
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
@@ -122,7 +125,7 @@ macro_rules! INC {
     }};
     ($self: ident, $r1: ident) => {{
         let n = $self.registers.$r1;
-        let n = if n == std::u8::MAX { std::u8::MIN } else { n + 1 };
+        let n = if n == MAX { MIN } else { n + 1 };
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
@@ -133,7 +136,7 @@ macro_rules! INC {
 macro_rules! DEC {
     ($self: ident, hl) => {{
         let n = $self.memory[$self.registers.hl()];
-        let n = if n == 0 { std::u8::MAX } else { n - 1 };
+        let n = if n == MIN { MAX } else { n - 1 };
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
@@ -151,6 +154,36 @@ macro_rules! DEC {
     }};
 }
 
+macro_rules! PUSH {
+    ($self: ident, $r1: ident) => {{
+        $self.push_stack($self.registers.$r1());
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            ..$self.registers
+        }
+    }};
+}
+
+macro_rules! SWAP {
+    ($self: ident, hl) => {{
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            ..$self.registers
+        }
+    }};
+    ($self: ident, $r1: ident) => {{
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: swap_nibbles($self.registers.$r1),
+            ..$self.registers
+        }
+    }};
+}
+
+fn swap_nibbles(value: u8) -> u8{
+    ((value & 0x0F as u8) << 4) | (value >> 4) as u8
+}
+
 impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
         Self {
@@ -158,6 +191,7 @@ impl CPU {
             memory: Mem::new(rom),
         }
     }
+    // TODO I'll clean these functions up later
     fn curr_u8(&self) -> u8 {
         self.memory[self.registers.pc]
     }
@@ -365,8 +399,38 @@ impl CPU {
             0x2D => DEC!(self, l),
             0x35 => DEC!(self, hl),
 
+            //CALL
+            0xCD => {
+                self.push_stack(self.registers.pc + 3);
+                self.registers = RegisterState {
+                    pc: self.next_u16(),
+                    sp: self.registers.sp - 2,
+                    ..self.registers
+                }
+            }
+
+            0xF5 => PUSH!(self, af),
+            0xC5 => PUSH!(self, bc),
+            0xD5 => PUSH!(self, de),
+            0xE5 => PUSH!(self, hl),
+
+            0xCB => match self.next_u8() {
+                0x37 => SWAP!(self, a),
+                0x30 => SWAP!(self, b),
+                0x31 => SWAP!(self, c),
+                0x32 => SWAP!(self, d),
+                0x33 => SWAP!(self, e),
+                0x34 => SWAP!(self, h),
+                0x35 => SWAP!(self, l),
+                0x36 => SWAP!(self, hl),
+            },
             _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
         }
+    }
+    // Just guessing for now but I guess just take the value, write the 2 bytes and subtract 2 from SP?
+    fn push_stack(&mut self, value: u16) {
+        self.set_byte(self.registers.sp, (value >> 8) as u8);
+        self.set_byte(self.registers.sp - 1, (value & 0x00FF) as u8);
     }
     fn inc_hl(&self) -> RegisterState {
         let next_hl = self.registers.hl() + 1;
