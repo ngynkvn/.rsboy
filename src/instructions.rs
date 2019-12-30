@@ -3,7 +3,7 @@ pub struct Instruction(usize, & 'static str);
 // Lifted from CINOOP's cpu.c
 // https://github.com/CTurt/Cinoop/blob/master/source/cpu.c
 
-pub const InstructionTable: [Instruction; 256] = [
+pub const INSTRUCTION_TABLE: [Instruction; 256] = [
     Instruction(0, "NOP"),                // 0x00
     Instruction(2, "LD BC, 0x{:04X}"),    // 0x01
     Instruction(0, "LD ), A"),            // 0x02
@@ -54,7 +54,7 @@ pub const InstructionTable: [Instruction; 256] = [
     Instruction(0, "CPL"),                // 0x2f
     Instruction(1, "JR NC, 0x{:02X}"),    // 0x30
     Instruction(2, "LD SP, 0x{:04X}"),    // 0x31
-    Instruction(0, "LDD ), A"),           // 0x32
+    Instruction(0, "LDD (HL), A"),           // 0x32
     Instruction(0, "INC SP"),             // 0x33
     Instruction(0, "INC )"),              // 0x34
     Instruction(0, "DEC )"),              // 0x35

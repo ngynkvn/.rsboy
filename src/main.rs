@@ -28,7 +28,7 @@ fn main() -> std::io::Result<()> {
     file.read_to_end(&mut rom)?;
     let mut cpu = CPU::new(rom);
     loop {
-    // for i in 0..1000 {
+    // for i in 0..30 {
         cpu.read_instruction();
     }
     Ok(())

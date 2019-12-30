@@ -1,7 +1,8 @@
-use crate::instructions::InstructionTable;
+use crate::instructions::INSTRUCTION_TABLE;
 use crate::memory::Mem;
 use crate::registers::flags;
 use crate::registers::RegisterState;
+
 
 pub struct CPU {
     registers: RegisterState,
@@ -97,12 +98,9 @@ macro_rules! JP {
     }};
     ($self: ident, IF, $flag: ident) => {{
         if $self.registers.$flag() {
-            // Thank you https://github.com/mvdnes/rboy/tree/master/src#L811
-            // Need to interpret the next byte as signed, but since rust doesn't allow overflow
-            // We do some hackiness here too
             let n = $self.next_u8() as i8;
             $self.registers = RegisterState {
-                pc: (($self.registers.pc as u32 as i32) + (n as i32)) as u16,
+                pc: (($self.registers.pc as u32 as i32) + (n as i32) + (2 as i32)) as u16,
                 ..$self.registers
             }
         } else {
@@ -115,6 +113,22 @@ macro_rules! JP {
 }
 
 macro_rules! INC {
+    ($self: ident, NN, $r1: ident, $r2: ident) => {{
+        let n = (($self.registers.$r1 as u16) << 8) | ($self.registers.$r2 as u16) + 1;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: (n >> 8) as u8,
+            $r2: (n & 0x00FF) as u8,
+            ..$self.registers
+        }
+    }};
+    ($self: ident, NN, $r1: ident) => {{
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: $self.registers.$r1() + 1,
+            ..$self.registers
+        }
+    }};
     ($self: ident, hl) => {{
         let n = $self.memory[$self.registers.hl()];
         let half_carry = (n & 0x0f) == 0x0f;
@@ -218,7 +232,7 @@ macro_rules! TEST_BIT {
     ($self: ident, $r1: ident, $bit: expr) => {{
         let r = $self.registers.$r1 & (1 << ($bit)) == 0;
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
+            pc: $self.registers.pc + 2,
             f: flags(r, false, true, $self.registers.flg_c()),
             ..$self.registers
         }
@@ -258,25 +272,25 @@ impl CPU {
         self.memory[address] = value;
     }
     pub fn read_instruction(&mut self) {
-        if self.curr_u8() == 0xCB {
-            println!(
-                "opcode:{:04X}\n{:?}\nregisters:\n{}",
-                self.curr_u16(),
-                InstructionTable[self.curr_u8() as usize],
-                // 0
-                self.registers
-            );
-        } else {
-            println!(
-                "opcode:{:02X}\n{:?}\nregisters:\n{}",
-                self.curr_u8(),
-                InstructionTable[self.curr_u8() as usize],
-                // 0
-                self.registers
-            );
-        }
+        // if self.curr_u8() == 0xCB {
+        //     println!(
+        //         "opcode:{:04X}\n{:?}\nregisters:\n{}",
+        //         self.curr_u16(),
+        //         INSTRUCTION_TABLE[self.curr_u8() as usize],
+        //         // 0
+        //         self.registers
+        //     );
+        // } else {
+        //     println!(
+        //         "opcode:{:02X}\n{:?}\nregisters:\n{}",
+        //         self.curr_u8(),
+        //         INSTRUCTION_TABLE[self.curr_u8() as usize],
+        //         // 0
+        //         self.registers
+        //     );
+        // }
+        println!("OP: {:?}\nPC: {:02X}", INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers.pc);
         // println!("{:?}", &self.memory.mem[0xFFF0..0xFFFE]);
-        // println!("sp:{}", self.registers.sp);
         if self.registers.pc > 256 {
             panic!("We finished the bootrom sequence!!");
         }
@@ -287,6 +301,7 @@ impl CPU {
             // 3.3.1. 8-bit Loads
             // 1 LD nn, n
             0x06 => LD!(self, IMMEDIATE, b),
+            0x08 => LD16!(self, IMMEDIATE, sp),
             0x0E => LD!(self, IMMEDIATE, c),
             0x16 => LD!(self, IMMEDIATE, d),
             0x1E => LD!(self, IMMEDIATE, e),
@@ -423,6 +438,11 @@ impl CPU {
                 self.registers = self.inc_hl();
             }
 
+            0x03 => INC!(self, NN, b, c),
+            0x13 => INC!(self, NN, d, e),
+            0x23 => INC!(self, NN, h, l),
+            0x33 => INC!(self, NN, sp),
+
             0xAF => XOR!(self, a, a),
             0xA8 => XOR!(self, a, b),
             0xA9 => XOR!(self, a, c),
@@ -482,7 +502,7 @@ impl CPU {
             0xE5 => PUSH!(self, hl),
 
             //RST
-            0xC7..=0xFF => {
+            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
                 self.push_stack(self.registers.pc);
                 self.registers = RegisterState {
                     pc: (self.curr_u8() - 0xC7) as u16,
