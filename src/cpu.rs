@@ -3,7 +3,6 @@ use crate::memory::Mem;
 use crate::registers::flags;
 use crate::registers::RegisterState;
 
-
 pub struct CPU {
     registers: RegisterState,
     memory: Mem,
@@ -160,6 +159,7 @@ macro_rules! DEC {
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
+            f: flags(n == 0, false, half_carry, $self.registers.flg_c()),
             ..$self.registers
         }
     }};
@@ -186,6 +186,19 @@ macro_rules! PUSH {
     }};
 }
 
+macro_rules! POP {
+    ($self: ident, $r1: ident, $r2: ident) => {{
+        let n = $self.pop_u16();
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r1: (n >> 8) as u8,
+            $r2: (n & 0x00FF) as u8,
+            ..$self.registers
+        }
+    }};
+}
+
+// CB +2 PC
 macro_rules! SWAP {
     ($self: ident, hl) => {{
         let addr = $self.registers.hl();
@@ -233,7 +246,7 @@ macro_rules! TEST_BIT {
     ($self: ident, $r1: ident, $bit: expr) => {{
         let r = $self.registers.$r1 & (1 << ($bit)) == 0;
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 2,
+            pc: $self.registers.pc + 1,
             f: flags(r, false, true, $self.registers.flg_c()),
             ..$self.registers
         }
@@ -272,7 +285,24 @@ impl CPU {
     fn set_byte(&mut self, address: u16, value: u8) {
         self.memory[address] = value;
     }
+
+    fn debug_print_stack(&self) {
+        print!("[");
+        for i in ((self.registers.sp + 1) as usize)..0xFFFF {
+            print!("{:08b},", self.memory.mem[i]);
+        }
+        print!("]\n");
+    }
     pub fn read_instruction(&mut self) {
+        if self.registers.pc > 0x90 {
+            println!(
+                "opcode:{:02X}\n{:?}\nregisters:\n{}",
+                self.curr_u8(),
+                INSTRUCTION_TABLE[self.curr_u8() as usize],
+                // 0
+                self.registers
+            );
+        }
         //**DEBUGG */
         // if self.curr_u8() == 0xCB {
         //     println!(
@@ -291,10 +321,9 @@ impl CPU {
         //         self.registers
         //     );
         // }
-        // println!("OP: {:?}\nPC: {:02X}", INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers.pc);
-        // println!("{}", self.registers.hl());
-        // println!("{:?}", &self.memory.mem[0xFFF0..0xFFFE]);
+        // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers.pc, self.registers.hl());
         if self.registers.pc > 256 {
+            println!("{}", self.registers);
             panic!("We finished the bootrom sequence!!");
         }
         match self.curr_u8() {
@@ -307,9 +336,11 @@ impl CPU {
             0x08 => LD16!(self, IMMEDIATE, sp),
             0x0E => LD!(self, IMMEDIATE, c),
             0x16 => LD!(self, IMMEDIATE, d),
+            0x17 => ROT_THRU_CARRY!(self, LEFT, a),
             0x1E => LD!(self, IMMEDIATE, e),
             0x26 => LD!(self, IMMEDIATE, h),
             0x2E => LD!(self, IMMEDIATE, l),
+            0xC1 => POP!(self, b, c),
 
             //2 LD r1, r2
             0x7F => LD!(self, REGISTER, a, a),
@@ -513,89 +544,92 @@ impl CPU {
                 }
             }
 
-            0xCB => match self.next_u8() {
-                0x37 => SWAP!(self, a),
-                0x30 => SWAP!(self, b),
-                0x31 => SWAP!(self, c),
-                0x32 => SWAP!(self, d),
-                0x33 => SWAP!(self, e),
-                0x34 => SWAP!(self, h),
-                0x35 => SWAP!(self, l),
-                0x36 => SWAP!(self, hl),
-                0x17 => ROT_THRU_CARRY!(self, LEFT, a),
-                0x10 => ROT_THRU_CARRY!(self, LEFT, b),
-                0x11 => ROT_THRU_CARRY!(self, LEFT, c),
-                0x12 => ROT_THRU_CARRY!(self, LEFT, d),
-                0x13 => ROT_THRU_CARRY!(self, LEFT, e),
-                0x14 => ROT_THRU_CARRY!(self, LEFT, h),
-                0x15 => ROT_THRU_CARRY!(self, LEFT, l),
-                0x40 => TEST_BIT!(self, b, 0),
-                0x41 => TEST_BIT!(self, c, 0),
-                0x42 => TEST_BIT!(self, d, 0),
-                0x43 => TEST_BIT!(self, e, 0),
-                0x44 => TEST_BIT!(self, h, 0),
-                0x45 => TEST_BIT!(self, l, 0),
-                // 0x46 => TEST_BIT!(self, hl, 0),
-                // 0x47 => TEST_BIT!(self, a, 0),
-                0x48 => TEST_BIT!(self, b, 1),
-                0x49 => TEST_BIT!(self, c, 1),
-                0x4A => TEST_BIT!(self, d, 1),
-                0x4B => TEST_BIT!(self, e, 1),
-                0x4C => TEST_BIT!(self, h, 1),
-                0x4D => TEST_BIT!(self, l, 1),
-                // 0x4E => TEST_BIT!(self),
-                // 0x4F => TEST_BIT!(self),
-                0x50 => TEST_BIT!(self, b, 2),
-                0x51 => TEST_BIT!(self, c, 2),
-                0x52 => TEST_BIT!(self, d, 2),
-                0x53 => TEST_BIT!(self, e, 2),
-                0x54 => TEST_BIT!(self, h, 2),
-                0x55 => TEST_BIT!(self, l, 2),
-                // 0x56 => TEST_BIT!(self),
-                // 0x57 => TEST_BIT!(self),
-                0x58 => TEST_BIT!(self, b, 3),
-                0x59 => TEST_BIT!(self, c, 3),
-                0x5A => TEST_BIT!(self, d, 3),
-                0x5B => TEST_BIT!(self, e, 3),
-                0x5C => TEST_BIT!(self, h, 3),
-                0x5D => TEST_BIT!(self, l, 3),
-                // 0x5E => TEST_BIT!(self),
-                // 0x5F => TEST_BIT!(self),
-                0x60 => TEST_BIT!(self, b, 4),
-                0x61 => TEST_BIT!(self, c, 4),
-                0x62 => TEST_BIT!(self, d, 4),
-                0x63 => TEST_BIT!(self, e, 4),
-                0x64 => TEST_BIT!(self, h, 4),
-                0x65 => TEST_BIT!(self, l, 4),
-                // 0x66 => TEST_BIT!(self),
-                // 0x67 => TEST_BIT!(self),
-                0x68 => TEST_BIT!(self, b, 5),
-                0x69 => TEST_BIT!(self, c, 5),
-                0x6A => TEST_BIT!(self, d, 5),
-                0x6B => TEST_BIT!(self, e, 5),
-                0x6C => TEST_BIT!(self, h, 5),
-                0x6D => TEST_BIT!(self, l, 5),
-                // 0x6E => TEST_BIT!(self),
-                // 0x6F => TEST_BIT!(self),
-                0x70 => TEST_BIT!(self, b, 6),
-                0x71 => TEST_BIT!(self, c, 6),
-                0x72 => TEST_BIT!(self, d, 6),
-                0x73 => TEST_BIT!(self, e, 6),
-                0x74 => TEST_BIT!(self, h, 6),
-                0x75 => TEST_BIT!(self, l, 6),
-                // 0x76 => TEST_BIT!(self),
-                // 0x77 => TEST_BIT!(self),
-                0x78 => TEST_BIT!(self, b, 7),
-                0x79 => TEST_BIT!(self, c, 7),
-                0x7A => TEST_BIT!(self, d, 7),
-                0x7B => TEST_BIT!(self, e, 7),
-                0x7C => TEST_BIT!(self, h, 7),
-                0x7D => TEST_BIT!(self, l, 7),
-                // 0x7E => TEST_BIT!(self),
-                // 0x7F => TEST_BIT!(self),
-                _ => panic!("Unknown CB Instruction: {:02X}", self.next_u8()),
-            },
-            _ => panic!("Unknown Instruction: {:02X}", self.curr_u8()),
+            0xCB => {
+                match self.next_u8() {
+                    0x37 => SWAP!(self, a),
+                    0x30 => SWAP!(self, b),
+                    0x31 => SWAP!(self, c),
+                    0x32 => SWAP!(self, d),
+                    0x33 => SWAP!(self, e),
+                    0x34 => SWAP!(self, h),
+                    0x35 => SWAP!(self, l),
+                    0x36 => SWAP!(self, hl),
+                    0x17 => ROT_THRU_CARRY!(self, LEFT, a),
+                    0x10 => ROT_THRU_CARRY!(self, LEFT, b),
+                    0x11 => ROT_THRU_CARRY!(self, LEFT, c),
+                    0x12 => ROT_THRU_CARRY!(self, LEFT, d),
+                    0x13 => ROT_THRU_CARRY!(self, LEFT, e),
+                    0x14 => ROT_THRU_CARRY!(self, LEFT, h),
+                    0x15 => ROT_THRU_CARRY!(self, LEFT, l),
+                    0x40 => TEST_BIT!(self, b, 0),
+                    0x41 => TEST_BIT!(self, c, 0),
+                    0x42 => TEST_BIT!(self, d, 0),
+                    0x43 => TEST_BIT!(self, e, 0),
+                    0x44 => TEST_BIT!(self, h, 0),
+                    0x45 => TEST_BIT!(self, l, 0),
+                    // 0x46 => TEST_BIT!(self, hl, 0),
+                    // 0x47 => TEST_BIT!(self, a, 0),
+                    0x48 => TEST_BIT!(self, b, 1),
+                    0x49 => TEST_BIT!(self, c, 1),
+                    0x4A => TEST_BIT!(self, d, 1),
+                    0x4B => TEST_BIT!(self, e, 1),
+                    0x4C => TEST_BIT!(self, h, 1),
+                    0x4D => TEST_BIT!(self, l, 1),
+                    // 0x4E => TEST_BIT!(self),
+                    // 0x4F => TEST_BIT!(self),
+                    0x50 => TEST_BIT!(self, b, 2),
+                    0x51 => TEST_BIT!(self, c, 2),
+                    0x52 => TEST_BIT!(self, d, 2),
+                    0x53 => TEST_BIT!(self, e, 2),
+                    0x54 => TEST_BIT!(self, h, 2),
+                    0x55 => TEST_BIT!(self, l, 2),
+                    // 0x56 => TEST_BIT!(self),
+                    // 0x57 => TEST_BIT!(self),
+                    0x58 => TEST_BIT!(self, b, 3),
+                    0x59 => TEST_BIT!(self, c, 3),
+                    0x5A => TEST_BIT!(self, d, 3),
+                    0x5B => TEST_BIT!(self, e, 3),
+                    0x5C => TEST_BIT!(self, h, 3),
+                    0x5D => TEST_BIT!(self, l, 3),
+                    // 0x5E => TEST_BIT!(self),
+                    // 0x5F => TEST_BIT!(self),
+                    0x60 => TEST_BIT!(self, b, 4),
+                    0x61 => TEST_BIT!(self, c, 4),
+                    0x62 => TEST_BIT!(self, d, 4),
+                    0x63 => TEST_BIT!(self, e, 4),
+                    0x64 => TEST_BIT!(self, h, 4),
+                    0x65 => TEST_BIT!(self, l, 4),
+                    // 0x66 => TEST_BIT!(self),
+                    // 0x67 => TEST_BIT!(self),
+                    0x68 => TEST_BIT!(self, b, 5),
+                    0x69 => TEST_BIT!(self, c, 5),
+                    0x6A => TEST_BIT!(self, d, 5),
+                    0x6B => TEST_BIT!(self, e, 5),
+                    0x6C => TEST_BIT!(self, h, 5),
+                    0x6D => TEST_BIT!(self, l, 5),
+                    // 0x6E => TEST_BIT!(self),
+                    // 0x6F => TEST_BIT!(self),
+                    0x70 => TEST_BIT!(self, b, 6),
+                    0x71 => TEST_BIT!(self, c, 6),
+                    0x72 => TEST_BIT!(self, d, 6),
+                    0x73 => TEST_BIT!(self, e, 6),
+                    0x74 => TEST_BIT!(self, h, 6),
+                    0x75 => TEST_BIT!(self, l, 6),
+                    // 0x76 => TEST_BIT!(self),
+                    // 0x77 => TEST_BIT!(self),
+                    0x78 => TEST_BIT!(self, b, 7),
+                    0x79 => TEST_BIT!(self, c, 7),
+                    0x7A => TEST_BIT!(self, d, 7),
+                    0x7B => TEST_BIT!(self, e, 7),
+                    0x7C => TEST_BIT!(self, h, 7),
+                    0x7D => TEST_BIT!(self, l, 7),
+                    // 0x7E => TEST_BIT!(self),
+                    // 0x7F => TEST_BIT!(self),
+                    _ => panic!("Unknown CB Instruction: {:02X}", self.next_u8()),
+                };
+                self.registers = self.inc_pc(1)
+            }
+            _ => panic!("Unknown Instruction: {:02X}\n{:?}\n{}", self.curr_u8(), INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers),
         }
     }
     // Just guessing for now but I guess just take the value, write the 2 bytes and subtract 2 from SP?
@@ -605,12 +639,14 @@ impl CPU {
         self.registers = RegisterState {
             sp: self.registers.sp - 2,
             ..self.registers
-        }
+        };
+        println!("{}", value);
+        println!("{}", self.registers);
     }
 
     fn pop_u16(&mut self) -> u16 {
-        let n = ((self.read_byte(self.registers.sp + 1) as u16) << 8)
-            | self.read_byte(self.registers.sp) as u16;
+        let n = ((self.read_byte(self.registers.sp + 2) as u16) << 8)
+            | self.read_byte(self.registers.sp + 1) as u16;
         self.registers = RegisterState {
             sp: self.registers.sp + 2,
             ..self.registers
