@@ -81,9 +81,9 @@ macro_rules! XOR {
     ($self: ident, $r1: ident, $r2: ident) => {{
         let xor = $self.registers.$r1() ^ $self.registers.$r2();
         $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
             a: xor,
             f: flags(xor == 0, false, false, false),
-            pc: $self.registers.pc + 1,
             ..$self.registers
         }
     }};
@@ -188,7 +188,8 @@ macro_rules! PUSH {
 
 macro_rules! SWAP {
     ($self: ident, hl) => {{
-        panic!();
+        let addr = $self.registers.hl();
+        $self.set_byte(addr, swap_nibbles($self.read_byte(addr)));
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             ..$self.registers
@@ -272,6 +273,7 @@ impl CPU {
         self.memory[address] = value;
     }
     pub fn read_instruction(&mut self) {
+        //**DEBUGG */
         // if self.curr_u8() == 0xCB {
         //     println!(
         //         "opcode:{:04X}\n{:?}\nregisters:\n{}",
@@ -289,7 +291,8 @@ impl CPU {
         //         self.registers
         //     );
         // }
-        println!("OP: {:?}\nPC: {:02X}", INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers.pc);
+        // println!("OP: {:?}\nPC: {:02X}", INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers.pc);
+        // println!("{}", self.registers.hl());
         // println!("{:?}", &self.memory.mem[0xFFF0..0xFFFE]);
         if self.registers.pc > 256 {
             panic!("We finished the bootrom sequence!!");
