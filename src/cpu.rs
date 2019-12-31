@@ -242,6 +242,46 @@ macro_rules! ROT_THRU_CARRY {
     }};
 }
 
+//Stole H logic from Cinoop again :)
+macro_rules! CP {
+    ($self: ident, hl) => {{
+        let value = $self.read_byte($self.registers.hl());
+        let z = $self.registers.a == value;
+        let n = true;
+        let h = (value & 0x0f) > ($self.registers.a & 0x0f);
+        let c = $self.registers.a < value;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
+    ($self: ident, IMMEDIATE) => {{
+        let value = $self.next_u8();
+        let z = $self.registers.a == value;
+        let n = true;
+        let h = (value & 0x0f) > ($self.registers.a & 0x0f);
+        let c = $self.registers.a < value;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 2,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
+    ($self: ident, $r1: ident) => {{
+        let value = $self.registers.$r1();
+        let z = $self.registers.a == value;
+        let n = true;
+        let h = (value & 0x0f) > ($self.registers.a & 0x0f);
+        let c = $self.registers.a < value;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
+}
+
 macro_rules! TEST_BIT {
     ($self: ident, $r1: ident, $bit: expr) => {{
         let r = $self.registers.$r1 & (1 << ($bit)) == 0;
@@ -341,6 +381,16 @@ impl CPU {
             0x26 => LD!(self, IMMEDIATE, h),
             0x2E => LD!(self, IMMEDIATE, l),
             0xC1 => POP!(self, b, c),
+
+            0xBF => CP!(self, a),
+            0xB8 => CP!(self, b),
+            0xB9 => CP!(self, c),
+            0xBA => CP!(self, d),
+            0xBB => CP!(self, e),
+            0xBC => CP!(self, h),
+            0xBD => CP!(self, l),
+            0xBE => CP!(self, hl),
+            0xFE => CP!(self, IMMEDIATE),
 
             //2 LD r1, r2
             0x7F => LD!(self, REGISTER, a, a),
@@ -495,7 +545,8 @@ impl CPU {
                 self.registers = RegisterState {
                     pc: addr,
                     ..self.registers
-                }
+                };
+                // println!("I RETURNED HERE {}",self.registers);
             }
             0xC3 => JP!(self, IMMEDIATE),
             0x20 => JP!(self, IF, not_flg_z),
@@ -629,7 +680,12 @@ impl CPU {
                 };
                 self.registers = self.inc_pc(1)
             }
-            _ => panic!("Unknown Instruction: {:02X}\n{:?}\n{}", self.curr_u8(), INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers),
+            _ => panic!(
+                "Unknown Instruction: {:02X}\n{:?}\n{}",
+                self.curr_u8(),
+                INSTRUCTION_TABLE[self.curr_u8() as usize],
+                self.registers
+            ),
         }
     }
     // Just guessing for now but I guess just take the value, write the 2 bytes and subtract 2 from SP?
@@ -640,8 +696,7 @@ impl CPU {
             sp: self.registers.sp - 2,
             ..self.registers
         };
-        println!("{}", value);
-        println!("{}", self.registers);
+        println!("pushed {}", value);
     }
 
     fn pop_u16(&mut self) -> u16 {
@@ -651,6 +706,7 @@ impl CPU {
             sp: self.registers.sp + 2,
             ..self.registers
         };
+        println!("popped {}", n);
         n
     }
 
