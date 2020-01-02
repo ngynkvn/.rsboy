@@ -13,6 +13,7 @@ use std::fs::File;
 use std::io::{Read};
 
 mod cpu;
+mod gpu;
 mod memory;
 mod registers;
 mod instructions;

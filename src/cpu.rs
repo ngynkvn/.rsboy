@@ -332,7 +332,7 @@ impl CPU {
     fn debug_print_stack(&self) {
         print!("[");
         for i in ((self.registers.sp + 1) as usize)..0xFFFF {
-            print!("{:08b},", self.memory.mem[i]);
+            print!("{:08b},", self.memory[i as u16]);
         }
         print!("]\n");
     }
