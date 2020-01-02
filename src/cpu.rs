@@ -1,11 +1,11 @@
 use crate::instructions::INSTRUCTION_TABLE;
-use crate::memory::Mem;
+use crate::memory::Memory;
 use crate::registers::flags;
 use crate::registers::RegisterState;
 
 pub struct CPU {
     registers: RegisterState,
-    memory: Mem,
+    memory: Memory,
 }
 
 const MAX: u8 = std::u8::MAX;
@@ -301,7 +301,7 @@ impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
         Self {
             registers: RegisterState::new(),
-            memory: Mem::new(rom),
+            memory: Memory::new(rom),
         }
     }
     // TODO I'll clean these functions up later
@@ -322,6 +322,9 @@ impl CPU {
     fn read_byte(&self, address: u16) -> u8 {
         self.memory[address]
     }
+    fn read_io(&self, offset: u8) -> u8 {
+        self.memory[0xFF00 + offset as u16]
+    }
     fn set_byte(&mut self, address: u16, value: u8) {
         self.memory[address] = value;
     }
@@ -333,6 +336,7 @@ impl CPU {
         }
         print!("]\n");
     }
+
     pub fn read_instruction(&mut self) {
         if self.registers.pc > 0x90 {
             println!(
@@ -377,6 +381,14 @@ impl CPU {
             0x0E => LD!(self, IMMEDIATE, c),
             0x16 => LD!(self, IMMEDIATE, d),
             0x17 => ROT_THRU_CARRY!(self, LEFT, a),
+            //JR n
+            0x18 => {
+                let n = self.next_u8() as i8;
+                self.registers = RegisterState {
+                    pc: ((self.registers.pc as u32 as i32) + (n as i32) + (2 as i32)) as u16,
+                    ..self.registers
+                }
+            },
             0x1E => LD!(self, IMMEDIATE, e),
             0x26 => LD!(self, IMMEDIATE, h),
             0x2E => LD!(self, IMMEDIATE, l),
@@ -391,6 +403,14 @@ impl CPU {
             0xBD => CP!(self, l),
             0xBE => CP!(self, hl),
             0xFE => CP!(self, IMMEDIATE),
+
+            0xF0 => {
+                self.registers = RegisterState {
+                    a: self.read_io(self.next_u8()),
+                    pc: self.registers.pc + 1,
+                    ..self.registers
+                }
+            }
 
             //2 LD r1, r2
             0x7F => LD!(self, REGISTER, a, a),

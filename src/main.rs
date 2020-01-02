@@ -10,8 +10,7 @@ use std::time::Duration;
 //File IO
 use std::env;
 use std::fs::File;
-use std::io::{self, Read};
-use std::io::prelude::*;
+use std::io::{Read};
 
 mod cpu;
 mod memory;
