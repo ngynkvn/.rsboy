@@ -5,7 +5,9 @@ use crate::registers::RegisterState;
 
 pub struct CPU {
     registers: RegisterState,
-    memory: Memory,
+    clock: usize,
+    pub memory: Memory,
+    start_debug: bool,
 }
 
 const MAX: u8 = std::u8::MAX;
@@ -49,9 +51,10 @@ macro_rules! LD {
     }};
 
     ($self: ident, LOAD_MEM_OFFSET, $r1: ident) => {{
-        $self.set_byte(0xFF00 + $self.curr_u8() as u16, $self.registers.$r1());
+        let offset = $self.curr_u8();
+        $self.set_byte(0xFF00 + offset as u16, $self.registers.$r1());
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
+            pc: $self.registers.pc + 2,
             ..$self.registers
         }
     }};
@@ -96,19 +99,20 @@ macro_rules! JP {
         }
     }};
     ($self: ident, IF, $flag: ident) => {{
+        let n = $self.next_u8() as i8;
         if $self.registers.$flag() {
-            let n = $self.next_u8() as i8;
+            $self.clock += 1;
             $self.registers = RegisterState {
                 pc: (($self.registers.pc as u32 as i32) + (n as i32) + (2 as i32)) as u16,
                 ..$self.registers
-            }
+            };
         } else {
             $self.registers = RegisterState {
                 pc: $self.registers.pc + 2,
                 ..$self.registers
-            }
+            };
         }
-    };};
+    }};
 }
 
 macro_rules! INC {
@@ -131,7 +135,7 @@ macro_rules! INC {
     ($self: ident, hl) => {{
         let n = $self.memory[$self.registers.hl()];
         let half_carry = (n & 0x0f) == 0x0f;
-        let n = if n == MAX { MIN } else { n + 1 };
+        let n = n.wrapping_add(1);
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
@@ -142,7 +146,7 @@ macro_rules! INC {
     ($self: ident, $r1: ident) => {{
         let n = $self.registers.$r1;
         let half_carry = (n & 0x0f) == 0x0f;
-        let n = if n == MAX { MIN } else { n + 1 };
+        let n = n.wrapping_add(1);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
@@ -151,11 +155,28 @@ macro_rules! INC {
         }
     }};
 }
+
+macro_rules! SUB {
+    ($self: ident, $r1: ident) => {{
+        let value = $self.registers.$r1;
+        let z = value == $self.registers.a;
+        let n = true;
+        let h = ($self.registers.a & 0x0f) > 0x0f;
+        let c = value > $self.registers.a;
+        let value = $self.registers.a.wrapping_sub(value);
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            a: value,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
+}
 macro_rules! DEC {
     ($self: ident, hl) => {{
         let n = $self.memory[$self.registers.hl()];
         let half_carry = (n & 0x0f) == 0x0f;
-        let n = if n == MIN { MAX } else { n - 1 };
+        let n = n.wrapping_sub(1);
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
@@ -166,7 +187,7 @@ macro_rules! DEC {
     ($self: ident, $r1: ident) => {{
         let n = $self.registers.$r1;
         let half_carry = (n & 0x0f) == 0x0f;
-        let n = if n == 0 { std::u8::MAX } else { n - 1 };
+        let n = n.wrapping_sub(1);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
@@ -202,7 +223,8 @@ macro_rules! POP {
 macro_rules! SWAP {
     ($self: ident, hl) => {{
         let addr = $self.registers.hl();
-        $self.set_byte(addr, swap_nibbles($self.read_byte(addr)));
+        let byte = $self.read_byte(addr);
+        $self.set_byte(addr, swap_nibbles(byte));
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             ..$self.registers
@@ -301,31 +323,35 @@ impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
         Self {
             registers: RegisterState::new(),
+            clock: 0,
             memory: Memory::new(rom),
+            start_debug: false,
         }
     }
     // TODO I'll clean these functions up later
-    fn curr_u8(&self) -> u8 {
+    fn curr_u8(&mut self) -> u8 {
+        self.clock += 1;
         self.memory[self.registers.pc]
     }
-    fn curr_u16(&self) -> u16 {
-        // Little endianess means LSB comes first.
-        (self.memory[self.registers.pc + 1] as u16) << 8 | self.memory[self.registers.pc] as u16
-    }
-    fn next_u8(&self) -> u8 {
+    fn next_u8(&mut self) -> u8 {
+        self.clock += 1;
         self.memory[(self.registers.pc + 1)]
     }
-    fn next_u16(&self) -> u16 {
+    fn next_u16(&mut self) -> u16 {
         // Little endianess means LSB comes first.
+        self.clock += 1;
         (self.memory[self.registers.pc + 2] as u16) << 8 | self.memory[self.registers.pc + 1] as u16
     }
-    fn read_byte(&self, address: u16) -> u8 {
+    fn read_byte(&mut self, address: u16) -> u8 {
+        self.clock += 1;
         self.memory[address]
     }
-    fn read_io(&self, offset: u8) -> u8 {
+    fn read_io(&mut self, offset: u8) -> u8 {
+        self.clock += 1;
         self.memory[0xFF00 + offset as u16]
     }
     fn set_byte(&mut self, address: u16, value: u8) {
+        self.clock += 1;
         self.memory[address] = value;
     }
 
@@ -337,16 +363,20 @@ impl CPU {
         print!("]\n");
     }
 
-    pub fn read_instruction(&mut self) {
-        if self.registers.pc > 0x90 {
-            println!(
-                "opcode:{:02X}\n{:?}\nregisters:\n{}",
-                self.curr_u8(),
-                INSTRUCTION_TABLE[self.curr_u8() as usize],
-                // 0
-                self.registers
-            );
-        }
+    pub fn cycle(&mut self) -> usize {
+        self.read_instruction()
+    }
+
+    pub fn read_instruction(&mut self) -> usize {
+        // if self.registers.pc > 0x90 {
+        //     println!(
+        //         "opcode:{:02X}\n{:?}\nregisters:\n{}",
+        //         self.curr_u8(),
+        //         INSTRUCTION_TABLE[self.curr_u8() as usize],
+        //         // 0
+        //         self.registers
+        //     );
+        // }
         //**DEBUGG */
         // if self.curr_u8() == 0xCB {
         //     println!(
@@ -365,12 +395,23 @@ impl CPU {
         //         self.registers
         //     );
         // }
-        // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[self.curr_u8() as usize], self.registers.pc, self.registers.hl());
+        // match self.registers.pc {
+        // 0x00|0x03|0x04|0x07|0x08|0x0a|0x0c|0x0f|0x11|0x13|0x14|0x15|0x16|0x18|0x19|0x1a|0x1c|0x1d|0x1f|0x21|0x24|0x27|0x28|0x2b|0x2e|0x2f|0x30|0x32|0x34|0x37|0x39|0x3a|0x3b|0x3c|0x3d|0x3e|0x40|0x42|0x45|0x48|0x4a|0x4b|0x4d|0x4e|0x4f|0x51|0x53|0x55|0x56|0x58|0x59|0x5b|0x5d|0x5f|0x60|0x62|0x64|0x66|0x68|0x6a|0x6b|0x6d|0x6e|0x70|0x72|0x73|0x74|0x76|0x78|0x7a|0x7c|0x7e|0x80|0x81|0x82|0x83|0x85|0x86|0x88|0x89|0x8b|0x8c|0x8e|0x8f|0x91|0x93|0x95|0x96|0x98|0x99|0x9b|0x9c|0x9d|0x9f|0xa0|0xa1|0xa3|0xa4|0xa5|0xa6|0xa7|0xe0|0xe3|0xe6|0xe7|0xe8|0xe9|0xeb|0xec|0xed|0xef|0xf1|0xf3|0xf4|0xf5|0xf6|0xf7|0xf9|0xfa|0xfc|0xfe => {
+
+        // },
+        // _ => panic!("{}", self.registers.pc)
+        // }
+        let prev = self.clock;
+        let curr_u8 = self.curr_u8();
+        if self.registers.pc == 0x00E0{
+            println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}\nB: {}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl(), self.registers.flg_z());
+        }
+        // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         if self.registers.pc > 256 {
             println!("{}", self.registers);
             panic!("We finished the bootrom sequence!!");
         }
-        match self.curr_u8() {
+        match curr_u8 {
             0x00 => {
                 self.registers = self.inc_pc(1);
             }
@@ -388,7 +429,7 @@ impl CPU {
                     pc: ((self.registers.pc as u32 as i32) + (n as i32) + (2 as i32)) as u16,
                     ..self.registers
                 }
-            },
+            }
             0x1E => LD!(self, IMMEDIATE, e),
             0x26 => LD!(self, IMMEDIATE, h),
             0x2E => LD!(self, IMMEDIATE, l),
@@ -405,9 +446,10 @@ impl CPU {
             0xFE => CP!(self, IMMEDIATE),
 
             0xF0 => {
+                let offset = self.next_u8();
                 self.registers = RegisterState {
-                    a: self.read_io(self.next_u8()),
-                    pc: self.registers.pc + 1,
+                    a: self.read_io(offset),
+                    pc: self.registers.pc + 2,
                     ..self.registers
                 }
             }
@@ -470,9 +512,11 @@ impl CPU {
             0x74 => LD!(self, LOAD_MEM, hl, h),
             0x75 => LD!(self, LOAD_MEM, hl, l),
             0x36 => {
-                self.set_byte(self.registers.hl(), self.next_u8());
+                let value = self.next_u8();
+                self.set_byte(self.registers.hl(), value);
                 self.registers = self.inc_pc(2);
             }
+            0x90 => SUB!(self, b),
             //3. LD A,n
             0x0A => LD!(self, READ_MEM, a, bc),
             0x1A => LD!(self, READ_MEM, a, de),
@@ -496,7 +540,8 @@ impl CPU {
             0x12 => LD!(self, LOAD_MEM, de, a),
             0x77 => LD!(self, LOAD_MEM, hl, a),
             0xEA => {
-                self.set_byte(self.next_u16(), self.registers.a);
+                let addr = self.next_u16();
+                self.set_byte(addr, self.registers.a);
                 self.registers = RegisterState {
                     pc: self.registers.pc + 3,
                     ..self.registers
@@ -706,7 +751,8 @@ impl CPU {
                 INSTRUCTION_TABLE[self.curr_u8() as usize],
                 self.registers
             ),
-        }
+        };
+        self.clock
     }
     // Just guessing for now but I guess just take the value, write the 2 bytes and subtract 2 from SP?
     fn push_stack(&mut self, value: u16) {
@@ -716,6 +762,7 @@ impl CPU {
             sp: self.registers.sp - 2,
             ..self.registers
         };
+        self.clock += 1;
         println!("pushed {}", value);
     }
 

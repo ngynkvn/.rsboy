@@ -1,6 +1,7 @@
 use crate::memory::Memory;
 use std::ops::Index;
 
+#[derive(Debug)]
 enum GpuMode {
     HBlank, // 0
     VBlank, // 1
@@ -11,8 +12,9 @@ enum GpuMode {
 
 pub struct GPU {
     mode: GpuMode,
+    master_clock: usize,
     clock: usize,
-    scanline: u8,
+    pub scanline: u8,
     pub vram: [u8; 0x2000],
     lcdc: u8,
 }
@@ -24,11 +26,17 @@ impl GPU {
     pub fn new() -> Self {
         Self {
             mode: GpuMode::HBlank,
+            master_clock: 0,
             clock: 0,
             scanline: 0,
             lcdc: 0,
             vram: [0; 0x2000],
         }
+    }
+    pub fn cycle(&mut self, clock: usize) {
+        self.clock += clock - self.master_clock;
+        self.master_clock = clock;
+        self.step();
     }
     pub fn step(&mut self) {
         match self.mode {

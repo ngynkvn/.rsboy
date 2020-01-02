@@ -34,6 +34,7 @@ impl Index<u16> for Memory {
     fn index(&self, i: u16) -> &Self::Output {
         match i as usize {
             VRAM_START..=VRAM_END => &self.gpu[i - VRAM_START as u16],
+            0xFF44 => &self.gpu.scanline,
             _ => &self.rom[i as usize] 
         }
     }

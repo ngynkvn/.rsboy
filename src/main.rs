@@ -29,7 +29,8 @@ fn main() -> std::io::Result<()> {
     let mut cpu = CPU::new(rom);
     loop {
     // for i in 0..30 {
-        cpu.read_instruction();
+        let cpu_cycles = cpu.cycle();
+        cpu.memory.gpu.cycle(cpu_cycles);
     }
     Ok(())
 }
