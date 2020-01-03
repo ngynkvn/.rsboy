@@ -431,6 +431,7 @@ impl CPU {
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         if self.registers.pc >= 0x100 {
             println!("{}", self.registers);
+            self.memory.dump_io();
             panic!("We finished the bootrom sequence!!");
         }
         match curr_u8 {
