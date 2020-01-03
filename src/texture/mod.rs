@@ -8,8 +8,8 @@ pub enum Color {
 }
 
 impl Color {
-    pub fn value(&self) -> [u8; 3] {
-        match *self {
+    pub fn value(self) -> [u8; 3] {
+        match self {
             Color::White => [224, 248, 208],
             Color::LightGrey => [136, 192, 112],
             Color::DarkGrey => [52, 104, 86],

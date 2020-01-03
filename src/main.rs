@@ -4,7 +4,6 @@
 //SDL
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color as SDLColor;
 use std::time::Duration;
 
 //File IO
@@ -40,12 +39,12 @@ fn main() -> std::io::Result<()> {
     loop {
         // for i in 0..30 {
         let cpu_cycles = cpu.cycle();
-        if cpu.clock > 1000_000 {
-            break;
-        }
+        // if cpu.clock > 1000_000 {
+        //     break;
+        // }
         cpu.memory.gpu.cycle(cpu_cycles);
     }
-    vram_viewer(cpu.memory.gpu.vram);
+    vram_viewer(cpu.memory.gpu.vram).unwrap();
     Ok(())
 }
 
@@ -63,15 +62,9 @@ fn vram_viewer(vram: [u8; 0x2000]) -> Result<(), String> {
     let mut map = Map::new(16, 10, tiles);
     for i in 0..map.tile_set.len() {
         let (x, y) = (i%16, i / 16);
-        println!("{} {} {}", x, y ,i);
         map.set(x, y, i);
     }
     let (w, h) = map.pixel_dims();
-    // for i in 0..5 {
-    //     for j in 0..5 {
-    //         map.set(j, i, i);
-    //     }
-    // }
     let window = video_subsystem
         .window("VRAM Viewer", (scale * w) as u32, (scale * h) as u32)
         .position_centered()

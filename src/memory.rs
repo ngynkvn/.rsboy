@@ -42,8 +42,13 @@ impl Index<u16> for Memory {
     fn index(&self, i: u16) -> &Self::Output {
         match i as usize {
             0x0000..=0x0100 if self.in_bios => &self.bootrom[i as usize],
-            VRAM_START..=VRAM_END => &self.gpu[i - VRAM_START as u16],
+            0xFF40 => &self.gpu.lcdc,
+            0xFF41 => &self.gpu.lcdstat,
+            0xFF42 => &self.gpu.vscroll,
+            0xFF43 => &self.gpu.hscroll,
             0xFF44 => &self.gpu.scanline,
+            0xFF4A | 0xFF4B => panic!(),
+            VRAM_START..=VRAM_END => &self.gpu[i - VRAM_START as u16],
             _ => &self.memory[i as usize],
         }
     }
@@ -53,8 +58,14 @@ impl IndexMut<u16> for Memory {
     fn index_mut(&mut self, i: u16) -> &mut Self::Output {
         match i as usize {
             0x0000..=0x0100 if self.in_bios => {
-                panic!("We tried to access bootrom while in bios mode.")
-            }
+                panic!("We tried to mutate bootrom while in bios mode.")
+            },
+            0xFF40 => {println!("Acc: {:02x}", i); &mut self.gpu.lcdc},
+            0xFF41 => {println!("Acc: {:02x}", i); &mut self.gpu.lcdstat},
+            0xFF42 => {; &mut self.gpu.vscroll},
+            0xFF43 => {println!("Acc: {:02x}", i); &mut self.gpu.hscroll},
+            0xFF44 => {println!("Acc: {:02x}", i); &mut self.gpu.scanline},
+            0xFF4A | 0xFF4B => panic!(),
             VRAM_START..=VRAM_END => &mut self.gpu.vram[i as usize - VRAM_START],
             _ => &mut self.memory[i as usize],
         }

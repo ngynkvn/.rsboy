@@ -160,6 +160,23 @@ macro_rules! INC {
     }};
 }
 
+macro_rules! ADD {
+    ($self: ident, hl) => {{
+        let value = $self.read_byte($self.registers.hl());
+        let result = $self.registers.a.wrapping_add(value);
+        let z = result == 0;
+        let n = false;
+        let h = ($self.registers.a & 0x0f) + (value & 0x0f) > 0x0f;
+        let c = ($self.registers.a as usize) + (value as usize) > 0xFF;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            a: result,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
+}
+
 macro_rules! SUB {
     ($self: ident, $r1: ident) => {{
         let value = $self.registers.$r1;
@@ -412,7 +429,7 @@ impl CPU {
         let curr_u8 = self.curr_u8();
         log::trace!("[REGISTERS]\n{}",self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
-        if self.registers.pc > 256 {
+        if self.registers.pc >= 0x100 {
             println!("{}", self.registers);
             panic!("We finished the bootrom sequence!!");
         }
@@ -522,6 +539,8 @@ impl CPU {
                 self.registers = self.inc_pc(2);
             }
             0x90 => SUB!(self, b),
+
+            0x86 => ADD!(self, hl),
             //3. LD A,n
             0x0A => LD!(self, READ_MEM, a, bc),
             0x1A => LD!(self, READ_MEM, a, de),
