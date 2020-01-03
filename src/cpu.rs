@@ -546,10 +546,11 @@ impl CPU {
             0x0A => LD!(self, READ_MEM, a, bc),
             0x1A => LD!(self, READ_MEM, a, de),
             0xFA => {
-                //Very strange, the opcode tables say to load in a 16bit value but A is a 8 bit register..
+                let addr = self.next_u16();
+                let value = self.read_byte(addr);
                 self.registers = RegisterState {
                     pc: self.registers.pc + 3,
-                    a: self.next_u8() as u8,
+                    a: value,
                     ..self.registers
                 }
             }
