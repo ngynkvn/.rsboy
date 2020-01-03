@@ -1,4 +1,5 @@
 use std::ops::Index;
+use crate::texture::{*};
 
 #[derive(Debug)]
 enum GpuMode {
@@ -52,6 +53,26 @@ impl GPU {
         self.master_clock = clock;
         self.step();
     }
+
+    pub fn background(&self) -> Map {
+        Map {
+            width: 32,
+            height: 32,
+            tile_set: self.tiles(),
+            map: self.vram[0x1800..0x1C00].iter().map(|x| *x as usize).collect(),
+        }
+    }
+
+    pub fn tiles(&self) -> Vec<Tile> {
+        // 0x8000-0x87ff
+        let mut tiles: Vec<Tile> = vec![];
+        for i in (0..0x7ff).step_by(16) {
+            let tile_data = &self.vram[i..(i + 16)];
+            tiles.push(Tile::construct(tile_data));
+        }
+        tiles
+    }
+
     pub fn step(&mut self) {
         match self.mode {
             GpuMode::OAM => {

@@ -8,7 +8,7 @@ const VRAM_START: usize = 0x8000;
 const VRAM_END: usize = 0x9FFF;
 
 pub struct Memory {
-    pub memory: [u8; 0xFFFF],
+    pub memory: [u8; 0x10000],
     pub bootrom: [u8; 0x100],
     pub in_bios: bool,
     pub gpu: GPU,
@@ -24,7 +24,7 @@ fn load_bootrom() -> Vec<u8> {
 
 impl Memory {
     pub fn new(rom_vec: Vec<u8>) -> Self {
-        let mut memory = [0; 0xFFFF];
+        let mut memory = [0; 0x10000];
         let mut bootrom = [0; 0x100];
         let bootrom_vec = load_bootrom();
         bootrom[..].clone_from_slice(&bootrom_vec[..]);
@@ -83,7 +83,6 @@ impl Index<u16> for Memory {
             0xFF42 => &self.gpu.vscroll,
             0xFF43 => &self.gpu.hscroll,
             0xFF44 => &self.gpu.scanline,
-            0xFF4A | 0xFF4B => panic!(),
             VRAM_START..=VRAM_END => &self.gpu[i - VRAM_START as u16],
             _ => &self.memory[i as usize],
         }

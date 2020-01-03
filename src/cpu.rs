@@ -432,7 +432,8 @@ impl CPU {
         if self.registers.pc >= 0x100 {
             println!("{}", self.registers);
             self.memory.dump_io();
-            panic!("We finished the bootrom sequence!!");
+            println!("Finished!");
+            return 0;
         }
         match curr_u8 {
             0x00 => {

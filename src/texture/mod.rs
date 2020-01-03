@@ -19,8 +19,8 @@ impl Color {
     pub fn bit2color(value: u8) -> Self {
         match value {
             0b00 => Color::White,
-            0b01 => Color::LightGrey,
-            0b10 => Color::DarkGrey,
+            0b10 => Color::LightGrey,
+            0b01 => Color::DarkGrey,
             0b11 => Color::Black,
             _ => unreachable!("Are you sure you're reading bit data?"),
         }
