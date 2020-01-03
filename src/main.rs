@@ -21,6 +21,8 @@ mod memory;
 mod registers;
 use crate::cpu::CPU;
 
+const TILE_WIDTH: usize = 8;
+
 fn main() -> std::io::Result<()> {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
     let args: Vec<String> = env::args().collect();
@@ -57,10 +59,10 @@ enum Color {
 impl Color {
     fn value(&self) -> [u8; 3] {
         match *self {
-            Color::White => [255, 255, 255],
-            Color::LightGrey => [192, 192, 192],
-            Color::DarkGrey => [96, 96, 96],
-            Color::Black => [0, 0, 0],
+            Color::White => [224, 248, 208],
+            Color::LightGrey => [136, 192, 112],
+            Color::DarkGrey => [52, 104, 86],
+            Color::Black => [8, 24, 32],
         }
     }
     fn bit2color(value: u8) -> Self {
@@ -128,8 +130,12 @@ impl Map {
         }
     }
     fn set(&mut self, x: usize, y: usize, i: usize) {
-        self.map[y * self.width + x] = i;
+        self.map[x + y * self.width] = i;
     }
+
+    fn pitch(&self) -> usize {
+        self.width * TILE_WIDTH * 3
+    } 
 
     /**
      * Mapping is like this in memory right now:
@@ -144,16 +150,22 @@ impl Map {
      * [1, 1, 1, 1, 1, 1, 1, 1,   2, 2, 2, 2, 2, 2, 2, 2, ...]
      */
     fn texture(&self) -> Vec<u8> {
-        let mut texture = vec![];
-        for &i in self.map.iter() {
-            let mut tile = self.tile_set[i].texture();
-            texture.extend_from_slice(&tile);
+        let mut byte_row = vec![vec![]; TILE_WIDTH*self.height];
+        for (i, row) in self.map.chunks_exact(self.width).enumerate() {
+            for &index in row { // Tile index
+                for (j, tile_row) in self.tile_set[index].texture().chunks_exact(24).enumerate() {
+                    byte_row[i*TILE_WIDTH + j].extend_from_slice(&tile_row);
+                }
+            }
         }
-        texture
+        byte_row.iter().cloned().flatten().collect()
     }
 
     fn dimensions(&self) -> (usize, usize) {
         (self.width, self.height)
+    }
+    fn pixel_dims(&self) -> (usize, usize) {
+        (self.width * TILE_WIDTH, self.height * TILE_WIDTH)
     }
 }
 
@@ -167,20 +179,27 @@ fn vram_viewer(vram: [u8; 0x2000]) -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
 
+    let scale = 8;
+    let mut map = Map::new(16, 10, tiles);
+    for i in 0..map.tile_set.len() {
+        let (x, y) = (i%16, i / 16);
+        println!("{} {} {}", x, y ,i);
+        map.set(x, y, i);
+    }
+    let (w, h) = map.pixel_dims();
+    // for i in 0..5 {
+    //     for j in 0..5 {
+    //         map.set(j, i, i);
+    //     }
+    // }
     let window = video_subsystem
-        .window("VRAM Viewer", 512, 512)
+        .window("VRAM Viewer", (scale * w) as u32, (scale * h) as u32)
         .position_centered()
         .opengl()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
 
-    let mut map = Map::new(5, 5, tiles);
-    for i in 0..5 {
-        for j in 0..5 {
-            map.set(j, i, i);
-        }
-    }
 
     let texture_creator = canvas.texture_creator();
     //Texture width = map_w * tile_w
@@ -196,9 +215,8 @@ fn vram_viewer(vram: [u8; 0x2000]) -> Result<(), String> {
 
     println!("{}", map.texture().len());
     // Pitch = n_bytes(3) * map_w * tile_w
-    let pitch = (3 * map_w * 8);
     texture
-        .update(None, &(map.texture()), pitch)
+        .update(None, &(map.texture()), map.pitch())
         .map_err(|e| e.to_string())?;
     canvas
         .copy(&texture, None, None)
