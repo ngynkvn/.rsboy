@@ -1,6 +1,8 @@
 # RUST GB EMULATOR
 Cause that hasnt been done before.
 
+- The code is extremely rough. View at your own discretion.
+
 ## Some Goals
 - Utilize macros wherever possible to DRY code out and increase legibility.
    - and make it easier to test performance between a mutable implementation and an immutable copy-based approach. (since it's DRYer I'll theoretically have an easier time rewriting part of the codebase to make this a compile-time flag)
