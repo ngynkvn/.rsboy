@@ -113,10 +113,21 @@ mod tests {
         let reg = RegisterState::new();
     }
 
+    #[test]
     fn flag_function() {
         let z_only = flags(true, false, false, false);
         assert_eq!(z_only, 0b1000_0000);
         let zn = flags(true, false, false, false);
         assert_eq!(zn, 0b1010_0000);
+    }
+
+    #[test]
+    fn hl() {
+        let reg = RegisterState {
+            h: 0b0000_0001,
+            l: 0b1000_0001,
+            ..Default::default()
+        };
+        assert_eq!(reg.hl(), 0b0000_0001_1000_0001);
     }
 }

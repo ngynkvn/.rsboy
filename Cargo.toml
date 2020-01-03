@@ -8,3 +8,5 @@ edition = "2018"
 
 [dependencies]
 sdl2 = "0.32.2"
+log = "0.4.8"
+env_logger = "0.7.1"

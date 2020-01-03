@@ -5,7 +5,7 @@ use crate::registers::RegisterState;
 
 pub struct CPU {
     registers: RegisterState,
-    clock: usize,
+    pub clock: usize,
     pub memory: Memory,
     start_debug: bool,
 }
@@ -51,7 +51,7 @@ macro_rules! LD {
     }};
 
     ($self: ident, LOAD_MEM_OFFSET, $r1: ident) => {{
-        let offset = $self.curr_u8();
+        let offset = $self.next_u8();
         $self.set_byte(0xFF00 + offset as u16, $self.registers.$r1());
         $self.registers = RegisterState {
             pc: $self.registers.pc + 2,
@@ -184,7 +184,7 @@ macro_rules! DEC {
         $self.set_byte($self.registers.hl(), n);
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
-            f: flags(n == 0, false, half_carry, $self.registers.flg_c()),
+            f: flags(n == 0, true, half_carry, $self.registers.flg_c()),
             ..$self.registers
         }
     }};
@@ -195,7 +195,7 @@ macro_rules! DEC {
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
-            f: flags(n == 0, false, half_carry, $self.registers.flg_c()),
+            f: flags(n == 0, true, half_carry, $self.registers.flg_c()),
             ..$self.registers
         }
     }};
@@ -405,6 +405,9 @@ impl CPU {
         // },
         // _ => panic!("{}", self.registers.pc)
         // }
+        if self.memory.in_bios && self.registers.pc == 0x100 {
+            self.memory.in_bios = false;
+        }
         let prev = self.clock;
         let curr_u8 = self.curr_u8();
         log::trace!("[REGISTERS]\n{}",self.registers);
@@ -772,7 +775,7 @@ impl CPU {
             ..self.registers
         };
         self.clock += 1;
-        log::info!("[STACK_PUSH] Pushed {} at PC: {:02X}", value, self.registers.pc);
+        // log::info!("[STACK_PUSH] Pushed {} at PC: {:02X}", value, self.registers.pc);
     }
 
     fn pop_u16(&mut self) -> u16 {
@@ -782,7 +785,7 @@ impl CPU {
             sp: self.registers.sp + 2,
             ..self.registers
         };
-        log::info!("[STACK_POP] Popped {} at PC: {:02X}", n, self.registers.pc);
+        // log::info!("[STACK_POP] Popped {} at PC: {:02X}", n, self.registers.pc);
         n
     }
 
