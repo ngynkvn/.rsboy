@@ -93,20 +93,24 @@ macro_rules! XOR {
 
 macro_rules! JP {
     ($self: ident, IMMEDIATE) => {{
+        let addr = $self.next_u16();
+        log::trace!("[JP] Jump from {} to {}", $self.registers.pc, addr);
         $self.registers = RegisterState {
-            pc: $self.next_u16(),
+            pc: addr,
             ..$self.registers
         }
     }};
     ($self: ident, IF, $flag: ident) => {{
         let n = $self.next_u8() as i8;
         if $self.registers.$flag() {
+            log::trace!("[JR] Jump from {} to {}", $self.registers.pc, n);
             $self.clock += 1;
             $self.registers = RegisterState {
                 pc: (($self.registers.pc as u32 as i32) + (n as i32) + (2 as i32)) as u16,
                 ..$self.registers
             };
         } else {
+            log::trace!("[JR] Jump at {} not taken.", $self.registers.pc);
             $self.registers = RegisterState {
                 pc: $self.registers.pc + 2,
                 ..$self.registers
@@ -403,9 +407,7 @@ impl CPU {
         // }
         let prev = self.clock;
         let curr_u8 = self.curr_u8();
-        if self.registers.pc == 0x00E0{
-            println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}\nB: {}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl(), self.registers.flg_z());
-        }
+        log::trace!("[REGISTERS]\n{}",self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         if self.registers.pc > 256 {
             println!("{}", self.registers);
@@ -752,6 +754,13 @@ impl CPU {
                 self.registers
             ),
         };
+        if curr_u8 == 0xCB {
+            log::trace!("[CLOCK] Cycle for Instr CB {} was {}", self.next_u8(), self.clock - 1 - prev);
+            // -1 since next_u8 has a side effect. TODO Fix side effect
+            self.clock -= 1;
+        } else {
+            log::trace!("[CLOCK] Cycle for Instr {} was {}", curr_u8, self.clock - prev);
+        }
         self.clock
     }
     // Just guessing for now but I guess just take the value, write the 2 bytes and subtract 2 from SP?
@@ -763,7 +772,7 @@ impl CPU {
             ..self.registers
         };
         self.clock += 1;
-        println!("pushed {}", value);
+        log::info!("[STACK_PUSH] Pushed {} at PC: {:02X}", value, self.registers.pc);
     }
 
     fn pop_u16(&mut self) -> u16 {
@@ -773,7 +782,7 @@ impl CPU {
             sp: self.registers.sp + 2,
             ..self.registers
         };
-        println!("popped {}", n);
+        log::info!("[STACK_POP] Popped {} at PC: {:02X}", n, self.registers.pc);
         n
     }
 
