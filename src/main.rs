@@ -99,7 +99,7 @@ impl Tile {
         ((i / 8) as usize, (i % 8) as usize)
     }
 
-    fn texture_data(&self) -> [u8; 192] {
+    fn texture(&self) -> [u8; 192] {
         //64 * 3
         let mut buffer = [255; 192];
         let mut p = 0;
@@ -108,6 +108,52 @@ impl Tile {
             p += 3;
         }
         buffer
+    }
+}
+
+struct Map {
+    width: usize,
+    height: usize,
+    tile_set: Vec<Tile>,
+    map: Vec<usize>,
+}
+
+impl Map {
+    fn new(width: usize, height: usize, tile_set: Vec<Tile>) -> Self {
+        Self {
+            width,
+            height,
+            tile_set,
+            map: vec![0; width * height],
+        }
+    }
+    fn set(&mut self, x: usize, y: usize, i: usize) {
+        self.map[y * self.width + x] = i;
+    }
+
+    /**
+     * Mapping is like this in memory right now:
+     *  for a 4x4 tile size
+     * [1, 1, 1, 1] [1, 1, 1, 1]
+     * [2, 2, 2, 2] [2, 2, 2, 2]
+     * [3, 3, 3, 3] [3, 3, 3, 3]
+     * [4, 4, 4, 4] [4, 4, 4, 4]
+     * 
+     * Fine and dandy, but we need the 2d repre to be:
+     *        (ROW 1)      (ROW 2)
+     * [1, 1, 1, 1, 1, 1, 1, 1,   2, 2, 2, 2, 2, 2, 2, 2, ...]
+     */
+    fn texture(&self) -> Vec<u8> {
+        let mut texture = vec![];
+        for &i in self.map.iter() {
+            let mut tile = self.tile_set[i].texture();
+            texture.extend_from_slice(&tile);
+        }
+        texture
+    }
+
+    fn dimensions(&self) -> (usize, usize) {
+        (self.width, self.height)
     }
 }
 
@@ -129,25 +175,34 @@ fn vram_viewer(vram: [u8; 0x2000]) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
 
+    let mut map = Map::new(5, 5, tiles);
+    for i in 0..5 {
+        for j in 0..5 {
+            map.set(j, i, i);
+        }
+    }
+
     let texture_creator = canvas.texture_creator();
+    //Texture width = map_w * tile_w
+    let (map_w, map_h) = map.dimensions();
+    let tile_w = 8;
     let mut texture = texture_creator
-        .create_texture_target(None, 512, 512)
+        .create_texture_static(
+            sdl2::pixels::PixelFormatEnum::RGB24,
+            (map_w * tile_w) as u32,
+            (map_h * tile_w) as u32,
+        )
         .map_err(|e| e.to_string())?;
 
-    canvas.with_texture_canvas(&mut texture, |texture| {
-        for (i, tile) in tiles.iter().enumerate() {
-            let (x, y) = (i / 5, i % 5);
-            for (j, p) in tile.data.iter().enumerate() {
-                let (tx, ty) = Tile::coord(j);
-                let [r, g, b] = p.value();
-                texture.set_draw_color(SDLColor::RGB(r, g, b));
-                texture.draw_point(sdl2::rect::Point::new(
-                    (x * 64 + tx) as i32,
-                    (y * 64 + ty) as i32,
-                ));
-            }
-        }
-    });
+    println!("{}", map.texture().len());
+    // Pitch = n_bytes(3) * map_w * tile_w
+    let pitch = (3 * map_w * 8);
+    texture
+        .update(None, &(map.texture()), pitch)
+        .map_err(|e| e.to_string())?;
+    canvas
+        .copy(&texture, None, None)
+        .map_err(|e| e.to_string())?;
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
 
