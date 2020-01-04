@@ -45,8 +45,7 @@ impl CPU {
         self.memory[address]
     }
     fn read_io(&mut self, offset: u8) -> u8 {
-        self.clock += 1;
-        self.memory[0xFF00 + offset as u16]
+        self.read_byte(0xFF00 + offset as u16)
     }
     fn set_byte(&mut self, address: u16, value: u8) {
         self.clock += 1;

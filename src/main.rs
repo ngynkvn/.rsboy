@@ -54,12 +54,15 @@ fn main() -> std::io::Result<()> {
     // let mut event_pump = context.event_pump().unwrap();
 
     let boot_timer = Instant::now();
+    let mut timer = Instant::now();
     let mut count_loop = 0;
     loop {
         let f = frame(&mut cpu, &mut texture, &mut canvas);
         if f.is_err() {
             break;
         }
+        delay_min(FRAME_TIME, &timer);
+        timer = Instant::now();
         count_loop += 1;
     }
     println!(
@@ -73,7 +76,7 @@ fn main() -> std::io::Result<()> {
 
 fn frame(cpu: &mut CPU, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
-    while i < 70224 {
+    while i < 17556 {
         let cpu_cycles = cpu.cycle();
         i += cpu_cycles;
 

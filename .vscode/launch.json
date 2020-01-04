@@ -5,15 +5,26 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "(Linux) Launch",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/rust-emu",
+            "args": [
+                "./roms/Tetris.gb"
+            ],
+        },
+        {
             "name": "(Windows) Launch",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/rust-emu.exe",
-            "args": ["./roms/Tetris.gb"],
+            "args": [
+                "./roms/Tetris.gb"
+            ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "externalConsole": false
-        }
+        },
     ]
 }
