@@ -6,6 +6,8 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
+use sdl2::render::{Canvas, Texture};
+use sdl2::video::Window;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -49,53 +51,55 @@ fn main() -> std::io::Result<()> {
         .create_texture_streaming(PixelFormatEnum::RGB24, 256, 256)
         .unwrap();
 
-    let mut event_pump = context.event_pump().unwrap();
+    // let mut event_pump = context.event_pump().unwrap();
 
     let boot_timer = Instant::now();
-    let mut i = 0;
-    let mut timer;
     let mut count_loop = 0;
     loop {
-        timer = Instant::now();
-        let cpu_cycles = cpu.cycle();
-        i += cpu_cycles;
-
-        if cpu_cycles == 0 {
+        let f = frame(&mut cpu, &mut texture, &mut canvas);
+        if f.is_err() {
             break;
-        }
-        cpu.memory.gpu.cycle(cpu_cycles);
-        if i >= 70224 {
-            // Wow what a good frame rate limiter /s
-            i = 0;
-            delay_min(Duration::from_millis(16), &timer);
-            let bg = cpu.memory.gpu.background();
-            texture
-                .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-                    if cpu.memory.gpu.is_on() {
-                        buffer[..].copy_from_slice(&bg.texture());
-                    }
-                })
-                .unwrap();
-            let (h, v) = cpu.memory.gpu.scroll();
-            canvas
-                .copy(
-                    &texture,
-                    Rect::from((h as i32, v as i32, (h + 160) as u32, (v + 144) as u32)),
-                    None,
-                )
-                .unwrap();
-            canvas.present();
         }
         count_loop += 1;
     }
-    println!("It took {} loops to finish the bootrom sequence.", i);
     println!(
         "It took {:?} seconds.",
         Instant::now().duration_since(boot_timer)
     );
-    drop(event_pump);
     vram_viewer(&context, cpu.memory.gpu.vram).unwrap();
     map_viewer(&context, cpu.memory.gpu).unwrap();
+    Ok(())
+}
+
+fn frame(cpu: &mut CPU, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
+    let mut i = 0;
+    while i < 70224 {
+        let cpu_cycles = cpu.cycle();
+        i += cpu_cycles;
+
+        if cpu_cycles == 0 {
+            ()
+        }
+        cpu.memory.gpu.cycle(cpu_cycles);
+    }
+    println!("Frame!: {}", cpu.memory.gpu.vscroll);
+    let bg = cpu.memory.gpu.background();
+    texture
+        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+            if cpu.memory.gpu.is_on() {
+                buffer[..].copy_from_slice(&bg.texture());
+            }
+        })
+        .unwrap();
+    let (h, v) = cpu.memory.gpu.scroll();
+    canvas
+        .copy(
+            &texture,
+            Rect::from((h as i32, v as i32, (h + 160) as u32, (v + 144) as u32)),
+            None,
+        )
+        .unwrap();
+    canvas.present();
     Ok(())
 }
 
@@ -106,7 +110,7 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
-fn create_window(context: &sdl2::Sdl) -> sdl2::video::Window {
+fn create_window(context: &sdl2::Sdl) -> Window {
     let video = context.video().unwrap();
     video
         .window("Window", 500, 500)
@@ -135,7 +139,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
     let tile_w = 8;
     let mut texture = texture_creator
         .create_texture_static(
-            sdl2::pixels::PixelFormatEnum::RGB24,
+            PixelFormatEnum::RGB24,
             (map_w * tile_w) as u32,
             (map_h * tile_w) as u32,
         )
@@ -201,7 +205,7 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let tile_w = 8;
     let mut texture = texture_creator
         .create_texture_static(
-            sdl2::pixels::PixelFormatEnum::RGB24,
+            PixelFormatEnum::RGB24,
             (map_w * tile_w) as u32,
             (map_h * tile_w) as u32,
         )

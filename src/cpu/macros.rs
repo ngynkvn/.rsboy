@@ -109,6 +109,10 @@ macro_rules! JP {
             ..$self.registers
         }
     }};
+}
+
+#[macro_export]
+macro_rules! JR {
     ($self: ident, IF, $flag: ident) => {{
         let n = $self.next_u8() as i8;
         if $self.registers.$flag() {

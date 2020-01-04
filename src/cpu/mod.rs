@@ -6,7 +6,7 @@ use crate::registers::RegisterState;
 mod macros;
 use crate::{
     ADD, AND, CALL, CP, DEC, INC, JP, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SUB, SWAP, TEST_BIT,
-    XOR,
+    XOR, JR,
 };
 use self::macros::swap_nibbles;
 
@@ -16,9 +16,6 @@ pub struct CPU {
     pub memory: Memory,
     start_debug: bool,
 }
-
-const MAX: u8 = std::u8::MAX;
-const MIN: u8 = std::u8::MIN;
 
 impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
@@ -118,7 +115,7 @@ impl CPU {
         //     return 0;
         // }
         let curr_u8 = self.curr_u8();
-        log::trace!("[REGISTERS]\n{}", self.registers);
+        // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         match curr_u8 {
             0x00 => {
@@ -358,10 +355,11 @@ impl CPU {
                 // println!("I RETURNED HERE {}",self.registers);
             }
             0xC3 => JP!(self, IMMEDIATE),
-            0x20 => JP!(self, IF, flg_nz),
-            0x28 => JP!(self, IF, flg_z),
-            0x30 => JP!(self, IF, flg_nc),
-            0x38 => JP!(self, IF, flg_c),
+
+            0x20 => JR!(self, IF, flg_nz),
+            0x28 => JR!(self, IF, flg_z),
+            0x30 => JR!(self, IF, flg_nc),
+            0x38 => JR!(self, IF, flg_c),
 
             0x3C => INC!(self, a),
             0x04 => INC!(self, b),
@@ -497,7 +495,7 @@ impl CPU {
         };
         if curr_u8 == 0xCB {
             log::trace!(
-                "[CLOCK] Cycle for Instr CB {} was {}",
+                "[CLOCK] Cycle for Instr CB {:02X} was {}",
                 self.next_u8(),
                 self.clock - 1 - prev
             );
@@ -505,7 +503,7 @@ impl CPU {
             self.clock -= 1;
         } else {
             log::trace!(
-                "[CLOCK] Cycle for Instr {} was {}",
+                "[CLOCK] Cycle for Instr {:02X} was {}",
                 curr_u8,
                 self.clock - prev
             );
