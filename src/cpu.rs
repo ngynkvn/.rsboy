@@ -347,7 +347,7 @@ impl CPU {
             clock: 0,
             memory: Memory::new(rom),
             start_debug: false,
-        }
+}
     }
     // TODO I'll clean these functions up later
     fn curr_u8(&mut self) -> u8 {
@@ -384,8 +384,11 @@ impl CPU {
         println!("]");
     }
 
+    // Returns the delta after processing an instruction.
     pub fn cycle(&mut self) -> usize {
-        self.read_instruction()
+        let prev = self.clock;
+        self.read_instruction();
+        self.clock - prev
     }
 
     pub fn read_instruction(&mut self) -> usize {
@@ -426,15 +429,18 @@ impl CPU {
             self.memory.in_bios = false;
         }
         let prev = self.clock;
-        let curr_u8 = self.curr_u8();
-        log::trace!("[REGISTERS]\n{}",self.registers);
-        // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
+        
+        // self.curr_u8() has a side effect so need to check pc first.
+        // TODO remove side effect..
         if self.registers.pc >= 0x100 {
             println!("{}", self.registers);
             self.memory.dump_io();
             println!("Finished!");
             return 0;
         }
+        let curr_u8 = self.curr_u8();
+        log::trace!("[REGISTERS]\n{}",self.registers);
+        // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         match curr_u8 {
             0x00 => {
                 self.registers = self.inc_pc(1);

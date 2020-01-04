@@ -11,7 +11,6 @@ enum GpuMode {
 
 pub struct GPU {
     mode: GpuMode,
-    master_clock: usize,
     clock: usize,
     pub scanline: u8,
     pub vram: [u8; 0x2000],
@@ -31,7 +30,6 @@ impl GPU {
     pub fn new() -> Self {
         Self {
             mode: GpuMode::HBlank,
-            master_clock: 0,
             clock: 0,
             scanline: 0,
             lcdc: 0,
@@ -48,12 +46,15 @@ impl GPU {
         self.lcdc & 0b1000_0000 == 0b1000_0000
     }
     pub fn cycle(&mut self, clock: usize) {
-        if self.is_on() {
+        if !self.is_on() {
             return;
         }
-        self.clock += clock - self.master_clock;
-        self.master_clock = clock;
+        self.clock += clock;
         self.step();
+    }
+
+    pub fn scroll(&self) -> (u32, u32) {
+        (self.hscroll as u32, self.vscroll as u32)
     }
 
     pub fn background(&self) -> Map {

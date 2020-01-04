@@ -4,7 +4,10 @@
 //SDL
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use sdl2::pixels::PixelFormatEnum;
+use sdl2::rect::Rect;
 use std::time::Duration;
+use std::time::Instant;
 
 //File IO
 use env_logger::Env;
@@ -35,21 +38,65 @@ fn main() -> std::io::Result<()> {
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
     let mut cpu = CPU::new(rom);
-    loop {
+    let context = sdl2::init().unwrap();
+    let window = create_window(&context);
+    let mut canvas = window.into_canvas().build().unwrap();
+    let tex_creator = canvas.texture_creator();
+    let mut texture = tex_creator
+        .create_texture_streaming(PixelFormatEnum::RGB24, 256, 256)
+        .unwrap();
+
+    let mut event_pump = context.event_pump().unwrap();
+
+    let mut i = 0;
+    let mut timer = Instant::now();
+    let mut count_loop = 0;
+    'running: loop {
+
         let cpu_cycles = cpu.cycle();
+        i += cpu_cycles;
+
         if cpu_cycles == 0 {
             break;
         }
         cpu.memory.gpu.cycle(cpu_cycles);
+        if i >= 70224 { // Wow what a good frame rate limiter /s
+            let bg = cpu.memory.gpu.background();
+            texture
+                .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+                    if cpu.memory.gpu.is_on() {
+                        buffer[..].copy_from_slice(&bg.texture());
+                    }
+                })
+                .unwrap();
+            let (h, v) = cpu.memory.gpu.scroll();
+            canvas.copy(&texture, Rect::from((h as i32, v as i32, (h+160) as u32, (v+144) as u32)), None).unwrap();
+            canvas.present();
+            println!("Frame time: {}", timer.elapsed().as_secs_f64());
+            timer = Instant::now();
+            i = 0;
+        }
+        count_loop += 1;
     }
-    vram_viewer(cpu.memory.gpu.vram).unwrap();
-    map_viewer(cpu.memory.gpu).unwrap();
+    println!("It took {} loops to finish the bootrom sequence.", i);
+    drop(event_pump);
+    vram_viewer(&context, cpu.memory.gpu.vram).unwrap();
+    map_viewer(&context, cpu.memory.gpu).unwrap();
     Ok(())
 }
 
-fn map_viewer(gpu: gpu::GPU) -> Result<(), String> {
+fn create_window(context: &sdl2::Sdl) -> sdl2::video::Window {
+    let video = context.video().unwrap();
+    video
+        .window("Window", 500, 500)
+        .position_centered()
+        .opengl()
+        .build()
+        .unwrap()
+}
+
+fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
     let background = gpu.background();
-    let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let (w, h) = background.pixel_dims();
     let scale = 2;
@@ -103,14 +150,13 @@ fn map_viewer(gpu: gpu::GPU) -> Result<(), String> {
     Ok(())
 }
 
-fn vram_viewer(vram: [u8; 0x2000]) -> Result<(), String> {
+fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String> {
     // 0x8000-0x87ff
     let mut tiles: Vec<Tile> = vec![];
     for i in (0..0x7ff).step_by(16) {
         let tile_data = &vram[i..(i + 16)];
         tiles.push(Tile::construct(tile_data));
     }
-    let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
 
     let scale = 8;
