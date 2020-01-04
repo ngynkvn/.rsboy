@@ -280,6 +280,18 @@ macro_rules! DEC {
             ..$self.registers
         }
     }};
+    ($self: ident, $r1: ident, $r2: ident, $r3: ident) => {{
+        let n = $self.registers.$r1();
+        let half_carry = (n & 0x0f) == 0x0f;
+        let n = n.wrapping_sub(1);
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            $r2: (n >> 8) as u8,
+            $r3: (n & 0x00FF) as u8,
+            f: flags(n == 0, true, half_carry, $self.registers.flg_c()),
+            ..$self.registers
+        }
+    }};
 }
 
 /** 
@@ -566,6 +578,10 @@ impl CPU {
                 println!("WARNING: NOT IMPLEMENTED: 0xF3 DISABLE INTERRUPTS");
                 self.registers = self.inc_pc(1);
             }
+            0xFB => {
+                println!("WARNING: NOT IMPLEMENTED: 0xFB ENABLE INTERRUPTS");
+                self.registers = self.inc_pc(1);
+            }
 
             0xBF => CP!(self, a),
             0xB8 => CP!(self, b),
@@ -758,6 +774,7 @@ impl CPU {
             0x3D => DEC!(self, a),
             0x05 => DEC!(self, b),
             0x0D => DEC!(self, c),
+            0x0B => DEC!(self, bc, b, c), //TODO fix hack
             0x15 => DEC!(self, d),
             0x1D => DEC!(self, e),
             0x25 => DEC!(self, h),
