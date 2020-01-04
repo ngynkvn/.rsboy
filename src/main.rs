@@ -55,7 +55,7 @@ fn main() -> std::io::Result<()> {
     let mut i = 0;
     let mut timer;
     let mut count_loop = 0;
-    'running: loop {
+    loop {
         timer = Instant::now();
         let cpu_cycles = cpu.cycle();
         i += cpu_cycles;
@@ -67,7 +67,7 @@ fn main() -> std::io::Result<()> {
         if i >= 70224 {
             // Wow what a good frame rate limiter /s
             i = 0;
-            delay_min(Duration::from_millis(32), &timer);
+            delay_min(Duration::from_millis(16), &timer);
             let bg = cpu.memory.gpu.background();
             texture
                 .with_lock(None, |buffer: &mut [u8], pitch: usize| {
@@ -103,7 +103,7 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     if timer.elapsed() < min_dur {
         ::std::thread::sleep(min_dur - timer.elapsed());
     }
-    println!("Frame time: {}", timer.elapsed().as_secs_f64());
+    // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> sdl2::video::Window {

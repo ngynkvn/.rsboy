@@ -100,7 +100,7 @@ impl IndexMut<u16> for Memory {
             0xFF42 => &mut self.gpu.vscroll,
             0xFF43 => &mut self.gpu.hscroll,
             0xFF44 => &mut self.gpu.scanline,
-            0xFF4A | 0xFF4B => panic!("NOT IMPLEMENTED IN MEM MAP"),
+            0xFF4A | 0xFF4B => panic!("NOT IMPLEMENTED IN MEM MAP {:02x}", i),
             VRAM_START..=VRAM_END => &mut self.gpu.vram[i as usize - VRAM_START],
             _ => &mut self.memory[i as usize],
         }
