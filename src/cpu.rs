@@ -13,7 +13,7 @@ pub struct CPU {
 const MAX: u8 = std::u8::MAX;
 const MIN: u8 = std::u8::MIN;
 
-/** 
+/**
  * MACROS: LOAD
  */
 macro_rules! LD {
@@ -81,7 +81,7 @@ macro_rules! LD16 {
     }};
 }
 
-/** 
+/**
  * MACROS: SUBROUTINES
  */
 macro_rules! CALL {
@@ -108,7 +108,6 @@ macro_rules! CALL {
         }
     }};
 }
-
 
 macro_rules! JP {
     ($self: ident, IMMEDIATE) => {{
@@ -179,7 +178,6 @@ macro_rules! INC {
     }};
 }
 
-
 /**
  * MACROS: ALU / ARITHMETIC
  */
@@ -222,7 +220,6 @@ macro_rules! XOR {
         }
     }};
 }
-
 
 macro_rules! ADD {
     ($self: ident, hl) => {{
@@ -294,7 +291,7 @@ macro_rules! DEC {
     }};
 }
 
-/** 
+/**
  * MACROS: STACK
  */
 macro_rules! PUSH {

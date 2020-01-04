@@ -95,13 +95,23 @@ impl RegisterState {
 
 impl fmt::Display for RegisterState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, concat!("AF: {:04X}\n", 
-                          "BC: {:04X}\n", 
-                          "DE: {:04X}\n", 
-                          "HL: {:04X}\n", 
-                          "SP: {:04X}\n",
-                          "PC: {:04X}\n"), 
-        self.af(), self.bc(), self.de(), self.hl(), self.sp(), self.pc())
+        write!(
+            f,
+            concat!(
+                "AF: {:04X}\n",
+                "BC: {:04X}\n",
+                "DE: {:04X}\n",
+                "HL: {:04X}\n",
+                "SP: {:04X}\n",
+                "PC: {:04X}\n"
+            ),
+            self.af(),
+            self.bc(),
+            self.de(),
+            self.hl(),
+            self.sp(),
+            self.pc()
+        )
     }
 }
 

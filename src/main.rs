@@ -53,7 +53,7 @@ fn main() -> std::io::Result<()> {
 
     let boot_timer = Instant::now();
     let mut i = 0;
-    let mut timer; 
+    let mut timer;
     let mut count_loop = 0;
     'running: loop {
         timer = Instant::now();
@@ -64,10 +64,10 @@ fn main() -> std::io::Result<()> {
             break;
         }
         cpu.memory.gpu.cycle(cpu_cycles);
-        if i >= 70224 { // Wow what a good frame rate limiter /s
+        if i >= 70224 {
+            // Wow what a good frame rate limiter /s
             i = 0;
             delay_min(Duration::from_millis(32), &timer);
-            timer = Instant::now();
             let bg = cpu.memory.gpu.background();
             texture
                 .with_lock(None, |buffer: &mut [u8], pitch: usize| {
@@ -77,13 +77,22 @@ fn main() -> std::io::Result<()> {
                 })
                 .unwrap();
             let (h, v) = cpu.memory.gpu.scroll();
-            canvas.copy(&texture, Rect::from((h as i32, v as i32, (h+160) as u32, (v+144) as u32)), None).unwrap();
+            canvas
+                .copy(
+                    &texture,
+                    Rect::from((h as i32, v as i32, (h + 160) as u32, (v + 144) as u32)),
+                    None,
+                )
+                .unwrap();
             canvas.present();
         }
         count_loop += 1;
     }
     println!("It took {} loops to finish the bootrom sequence.", i);
-    println!("It took {:?} seconds.", Instant::now().duration_since(boot_timer));
+    println!(
+        "It took {:?} seconds.",
+        Instant::now().duration_since(boot_timer)
+    );
     drop(event_pump);
     vram_viewer(&context, cpu.memory.gpu.vram).unwrap();
     map_viewer(&context, cpu.memory.gpu).unwrap();

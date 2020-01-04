@@ -86,7 +86,7 @@ impl Map {
 
     pub fn pitch(&self) -> usize {
         self.width * TILE_WIDTH * 3
-    } 
+    }
 
     /**
      * Mapping is like this in memory right now:
@@ -95,19 +95,20 @@ impl Map {
      * [2, 2, 2, 2] [2, 2, 2, 2]
      * [3, 3, 3, 3] [3, 3, 3, 3]
      * [4, 4, 4, 4] [4, 4, 4, 4]
-     * 
+     *
      * Fine and dandy, but we need the 2d repre to be:
      *        (ROW 1)      (ROW 2)
      * [1, 1, 1, 1, 1, 1, 1, 1,   2, 2, 2, 2, 2, 2, 2, 2, ...]
-     * 
+     *
      * This should definitely be revisited for optimization down the line.
      */
     pub fn texture(&self) -> Vec<u8> {
-        let mut byte_row = vec![vec![]; TILE_WIDTH*self.height];
+        let mut byte_row = vec![vec![]; TILE_WIDTH * self.height];
         for (i, row) in self.map.chunks_exact(self.width).enumerate() {
-            for &index in row { // Tile index
+            for &index in row {
+                // Tile index
                 for (j, tile_row) in self.tile_set[index].texture().chunks_exact(24).enumerate() {
-                    byte_row[i*TILE_WIDTH + j].extend_from_slice(&tile_row);
+                    byte_row[i * TILE_WIDTH + j].extend_from_slice(&tile_row);
                 }
             }
         }
