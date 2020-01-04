@@ -1,14 +1,13 @@
+use crate::texture::*;
 use std::ops::Index;
-use crate::texture::{*};
 
 #[derive(Debug)]
 enum GpuMode {
     HBlank, // 0
     VBlank, // 1
     OAM,    // 2
-    VRAM    // 3
+    VRAM,   // 3
 }
-
 
 pub struct GPU {
     mode: GpuMode,
@@ -45,9 +44,12 @@ impl GPU {
             vram: [0; 0x2000],
         }
     }
+    pub fn is_on(&self) -> bool {
+        self.lcdc & 0b1000_0000 == 0
+    }
     pub fn cycle(&mut self, clock: usize) {
-        if self.lcdc & 0b1000_0000 == 0 {
-            return
+        if self.is_on() {
+            return;
         }
         self.clock += clock - self.master_clock;
         self.master_clock = clock;
@@ -59,7 +61,10 @@ impl GPU {
             width: 32,
             height: 32,
             tile_set: self.tiles(),
-            map: self.vram[0x1800..0x1C00].iter().map(|x| *x as usize).collect(),
+            map: self.vram[0x1800..0x1C00]
+                .iter()
+                .map(|x| *x as usize)
+                .collect(),
         }
     }
 
@@ -80,7 +85,7 @@ impl GPU {
                     self.clock = 0;
                     self.mode = GpuMode::VRAM
                 }
-            },
+            }
             GpuMode::VRAM => {
                 if self.clock >= 172 {
                     self.clock = 0;
@@ -95,7 +100,7 @@ impl GPU {
                         self.mode = GpuMode::VBlank;
                     }
                 }
-            },
+            }
             GpuMode::VBlank => {
                 if self.clock >= 456 {
                     self.clock = 0;
@@ -105,7 +110,7 @@ impl GPU {
                         self.scanline = 0;
                     }
                 }
-            },
+            }
         }
     }
 }
