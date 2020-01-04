@@ -18,6 +18,8 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
+use std::thread;
+
 mod cpu;
 mod gpu;
 mod instructions;
@@ -56,6 +58,12 @@ fn main() -> std::io::Result<()> {
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
     let mut count_loop = 0;
+    thread::spawn(move || {
+        loop {
+            println!("Hi!");
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
     loop {
         let f = frame(&mut cpu, &mut texture, &mut canvas);
         if f.is_err() {
@@ -85,7 +93,6 @@ fn frame(cpu: &mut CPU, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
         }
         cpu.memory.gpu.cycle(cpu_cycles);
     }
-    println!("Frame!: {}", cpu.memory.gpu.vscroll);
     let bg = cpu.memory.gpu.background();
     texture
         .with_lock(None, |buffer: &mut [u8], pitch: usize| {
@@ -110,7 +117,6 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     if timer.elapsed() < min_dur {
         ::std::thread::sleep(min_dur - timer.elapsed());
     }
-    // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> Window {
