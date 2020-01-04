@@ -13,6 +13,9 @@ pub struct CPU {
 const MAX: u8 = std::u8::MAX;
 const MIN: u8 = std::u8::MIN;
 
+/** 
+ * MACROS: LOAD
+ */
 macro_rules! LD {
     // LD n, u8
     ($self: ident, IMMEDIATE, $r: ident) => {{
@@ -59,7 +62,6 @@ macro_rules! LD {
         }
     }};
 }
-
 macro_rules! LD16 {
     ($self: ident, IMMEDIATE, $r1: ident) => {{
         $self.registers = RegisterState {
@@ -79,17 +81,34 @@ macro_rules! LD16 {
     }};
 }
 
-macro_rules! XOR {
-    ($self: ident, $r1: ident, $r2: ident) => {{
-        let xor = $self.registers.$r1() ^ $self.registers.$r2();
+/** 
+ * MACROS: SUBROUTINES
+ */
+macro_rules! CALL {
+    ($self: ident) => {{
+        $self.push_stack($self.registers.pc + 3);
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
-            a: xor,
-            f: flags(xor == 0, false, false, false),
+            pc: $self.next_u16(),
             ..$self.registers
+        };
+        $self.clock += 1;
+    }};
+
+    ($self: ident, $condition: ident) => {{
+        let value = $self.next_u16();
+        $self.clock += 1;
+        if $self.registers.$condition() {
+            $self.push_stack($self.registers.pc + 3);
+            $self.registers = RegisterState {
+                pc: value,
+                ..$self.registers
+            }
+        } else {
+            $self.registers = $self.inc_pc(1);
         }
     }};
 }
+
 
 macro_rules! JP {
     ($self: ident, IMMEDIATE) => {{
@@ -160,6 +179,51 @@ macro_rules! INC {
     }};
 }
 
+
+/**
+ * MACROS: ALU / ARITHMETIC
+ */
+macro_rules! AND {
+    ($self: ident, $getter: expr, $n: literal) => {{
+        let value = $getter;
+        let result = $self.registers.a & value;
+
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + $n,
+            a: result,
+            f: flags(result == 0, false, true, false),
+            ..$self.registers
+        }
+    }};
+}
+macro_rules! OR {
+    ($self: ident, $getter: expr, $n: literal) => {{
+        let value = $getter;
+        let result = $self.registers.a | value;
+
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + $n,
+            a: result,
+            f: flags(result == 0, false, false, false),
+            ..$self.registers
+        }
+    }};
+}
+
+macro_rules! XOR {
+    ($self: ident, $getter: expr, $n: literal) => {{
+        let value = $getter;
+        let result = $self.registers.a ^ value;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + $n,
+            a: result,
+            f: flags(result == 0, false, false, false),
+            ..$self.registers
+        }
+    }};
+}
+
+
 macro_rules! ADD {
     ($self: ident, hl) => {{
         let value = $self.read_byte($self.registers.hl());
@@ -218,6 +282,9 @@ macro_rules! DEC {
     }};
 }
 
+/** 
+ * MACROS: STACK
+ */
 macro_rules! PUSH {
     ($self: ident, $r1: ident) => {{
         $self.push_stack($self.registers.$r1());
@@ -347,7 +414,7 @@ impl CPU {
             clock: 0,
             memory: Memory::new(rom),
             start_debug: false,
-}
+        }
     }
     // TODO I'll clean these functions up later
     fn curr_u8(&mut self) -> u8 {
@@ -429,17 +496,16 @@ impl CPU {
             self.memory.in_bios = false;
         }
         let prev = self.clock;
-        
         // self.curr_u8() has a side effect so need to check pc first.
         // TODO remove side effect..
-        if self.registers.pc >= 0x100 {
-            println!("{}", self.registers);
-            self.memory.dump_io();
-            println!("Finished!");
-            return 0;
-        }
+        // if self.registers.pc >= 0x100 {
+        //     println!("{}", self.registers);
+        //     self.memory.dump_io();
+        //     println!("Finished!");
+        //     return 0;
+        // }
         let curr_u8 = self.curr_u8();
-        log::trace!("[REGISTERS]\n{}",self.registers);
+        log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         match curr_u8 {
             0x00 => {
@@ -464,6 +530,42 @@ impl CPU {
             0x26 => LD!(self, IMMEDIATE, h),
             0x2E => LD!(self, IMMEDIATE, l),
             0xC1 => POP!(self, b, c),
+            0xE1 => POP!(self, h, l),
+            0xF1 => POP!(self, a, f),
+
+            0xA7 => AND!(self, self.registers.a, 1),
+            0xA0 => AND!(self, self.registers.b, 1),
+            0xA1 => AND!(self, self.registers.c, 1),
+            0xA2 => AND!(self, self.registers.d, 1),
+            0xA3 => AND!(self, self.registers.e, 1),
+            0xA4 => AND!(self, self.registers.h, 1),
+            0xA5 => AND!(self, self.registers.l, 1),
+            0xA6 => AND!(self, self.read_byte(self.registers.hl()), 1),
+            0xE6 => AND!(self, self.next_u8(), 2),
+            // Playing around with some alternate syntax
+            //
+            0xB7 => OR!(self, self.registers.a, 1),
+            0xB0 => OR!(self, self.registers.b, 1),
+            0xB1 => OR!(self, self.registers.c, 1),
+            0xB2 => OR!(self, self.registers.d, 1),
+            0xB3 => OR!(self, self.registers.e, 1),
+            0xB4 => OR!(self, self.registers.h, 1),
+            0xB5 => OR!(self, self.registers.l, 1),
+            0xB6 => OR!(self, self.read_byte(self.registers.hl()), 1),
+            0xF6 => OR!(self, self.next_u8(), 2),
+
+            0xAF => XOR!(self, self.registers.a, 1),
+            0xA8 => XOR!(self, self.registers.b, 1),
+            0xA9 => XOR!(self, self.registers.c, 1),
+            0xAA => XOR!(self, self.registers.d, 1),
+            0xAB => XOR!(self, self.registers.e, 1),
+            0xAC => XOR!(self, self.registers.h, 1),
+            0xAD => XOR!(self, self.registers.l, 1),
+
+            0xF3 => {
+                println!("WARNING: NOT IMPLEMENTED: 0xF3 DISABLE INTERRUPTS");
+                self.registers = self.inc_pc(1);
+            }
 
             0xBF => CP!(self, a),
             0xB8 => CP!(self, b),
@@ -625,14 +727,6 @@ impl CPU {
             0x23 => INC!(self, NN, h, l),
             0x33 => INC!(self, NN, sp),
 
-            0xAF => XOR!(self, a, a),
-            0xA8 => XOR!(self, a, b),
-            0xA9 => XOR!(self, a, c),
-            0xAA => XOR!(self, a, d),
-            0xAB => XOR!(self, a, e),
-            0xAC => XOR!(self, a, h),
-            0xAD => XOR!(self, a, l),
-
             0x01 => LD16!(self, IMMEDIATE, b, c),
             0x11 => LD16!(self, IMMEDIATE, d, e),
             0x21 => LD16!(self, IMMEDIATE, h, l),
@@ -647,9 +741,9 @@ impl CPU {
                 // println!("I RETURNED HERE {}",self.registers);
             }
             0xC3 => JP!(self, IMMEDIATE),
-            0x20 => JP!(self, IF, not_flg_z),
+            0x20 => JP!(self, IF, flg_nz),
             0x28 => JP!(self, IF, flg_z),
-            0x30 => JP!(self, IF, not_flg_c),
+            0x30 => JP!(self, IF, flg_nc),
             0x38 => JP!(self, IF, flg_c),
 
             0x3C => INC!(self, a),
@@ -671,13 +765,11 @@ impl CPU {
             0x35 => DEC!(self, hl),
 
             //CALL
-            0xCD => {
-                self.push_stack(self.registers.pc + 3);
-                self.registers = RegisterState {
-                    pc: self.next_u16(),
-                    ..self.registers
-                }
-            }
+            0xCD => CALL!(self),
+            0xC4 => CALL!(self, flg_nz),
+            0xCC => CALL!(self, flg_nz),
+            0xD4 => CALL!(self, flg_nz),
+            0xDC => CALL!(self, flg_nz),
 
             0xF5 => PUSH!(self, af),
             0xC5 => PUSH!(self, bc),
@@ -786,11 +878,19 @@ impl CPU {
             ),
         };
         if curr_u8 == 0xCB {
-            log::trace!("[CLOCK] Cycle for Instr CB {} was {}", self.next_u8(), self.clock - 1 - prev);
+            log::trace!(
+                "[CLOCK] Cycle for Instr CB {} was {}",
+                self.next_u8(),
+                self.clock - 1 - prev
+            );
             // -1 since next_u8 has a side effect. TODO Fix side effect
             self.clock -= 1;
         } else {
-            log::trace!("[CLOCK] Cycle for Instr {} was {}", curr_u8, self.clock - prev);
+            log::trace!(
+                "[CLOCK] Cycle for Instr {} was {}",
+                curr_u8,
+                self.clock - prev
+            );
         }
         self.clock
     }

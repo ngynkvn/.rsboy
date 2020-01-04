@@ -53,25 +53,25 @@ impl RegisterState {
     pub fn flg_z(&self) -> bool {
         (self.f & 0b1000_0000) != 0
     }
-    pub fn not_flg_z(&self) -> bool {
+    pub fn flg_nz(&self) -> bool {
         !self.flg_z()
     }
     pub fn flg_n(&self) -> bool {
         (self.f & 0b0100_0000) != 0
     }
-    pub fn not_flg_n(&self) -> bool {
+    pub fn flg_nn(&self) -> bool {
         !self.flg_n()
     }
     pub fn flg_h(&self) -> bool {
         (self.f & 0b0010_0000) != 0
     }
-    pub fn not_flg_h(&self) -> bool {
+    pub fn flg_nh(&self) -> bool {
         !self.flg_h()
     }
     pub fn flg_c(&self) -> bool {
         (self.f & 0b0001_0000) != 0
     }
-    pub fn not_flg_c(&self) -> bool {
+    pub fn flg_nc(&self) -> bool {
         !self.flg_c()
     }
 

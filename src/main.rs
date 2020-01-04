@@ -25,6 +25,9 @@ mod texture;
 use crate::cpu::CPU;
 use crate::texture::{Map, Tile};
 
+const FRAME_TIME: Duration = Duration::from_nanos(16670000);
+const ZERO: Duration = Duration::from_secs(0);
+
 fn main() -> std::io::Result<()> {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
     let args: Vec<String> = env::args().collect();
@@ -48,11 +51,12 @@ fn main() -> std::io::Result<()> {
 
     let mut event_pump = context.event_pump().unwrap();
 
+    let boot_timer = Instant::now();
     let mut i = 0;
-    let mut timer = Instant::now();
+    let mut timer; 
     let mut count_loop = 0;
     'running: loop {
-
+        timer = Instant::now();
         let cpu_cycles = cpu.cycle();
         i += cpu_cycles;
 
@@ -61,6 +65,9 @@ fn main() -> std::io::Result<()> {
         }
         cpu.memory.gpu.cycle(cpu_cycles);
         if i >= 70224 { // Wow what a good frame rate limiter /s
+            i = 0;
+            delay_min(Duration::from_millis(32), &timer);
+            timer = Instant::now();
             let bg = cpu.memory.gpu.background();
             texture
                 .with_lock(None, |buffer: &mut [u8], pitch: usize| {
@@ -72,17 +79,22 @@ fn main() -> std::io::Result<()> {
             let (h, v) = cpu.memory.gpu.scroll();
             canvas.copy(&texture, Rect::from((h as i32, v as i32, (h+160) as u32, (v+144) as u32)), None).unwrap();
             canvas.present();
-            println!("Frame time: {}", timer.elapsed().as_secs_f64());
-            timer = Instant::now();
-            i = 0;
         }
         count_loop += 1;
     }
     println!("It took {} loops to finish the bootrom sequence.", i);
+    println!("It took {:?} seconds.", Instant::now().duration_since(boot_timer));
     drop(event_pump);
     vram_viewer(&context, cpu.memory.gpu.vram).unwrap();
     map_viewer(&context, cpu.memory.gpu).unwrap();
     Ok(())
+}
+
+fn delay_min(min_dur: Duration, timer: &Instant) {
+    if timer.elapsed() < min_dur {
+        ::std::thread::sleep(min_dur - timer.elapsed());
+    }
+    println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> sdl2::video::Window {
