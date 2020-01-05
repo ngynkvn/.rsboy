@@ -4,11 +4,11 @@ use crate::registers::flags;
 use crate::registers::RegisterState;
 
 mod macros;
-use crate::{
-    ADD, AND, CALL, CP, DEC, INC, JP, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SUB, SWAP, TEST_BIT,
-    XOR, JR,
-};
 use self::macros::swap_nibbles;
+use crate::{
+    ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SUB, SWAP,
+    TEST_BIT, XOR,
+};
 
 pub struct CPU {
     registers: RegisterState,
@@ -170,6 +170,16 @@ impl CPU {
             0xAB => XOR!(self, self.registers.e, 1),
             0xAC => XOR!(self, self.registers.h, 1),
             0xAD => XOR!(self, self.registers.l, 1),
+            0x8F => ADC!(self, self.registers.a, 1),
+            0x88 => ADC!(self, self.registers.b, 1),
+            0x89 => ADC!(self, self.registers.c, 1),
+            0x8A => ADC!(self, self.registers.d, 1),
+            0x8B => ADC!(self, self.registers.e, 1),
+            0x8C => ADC!(self, self.registers.h, 1),
+            0x8D => ADC!(self, self.registers.l, 1),
+            // 0x8E => ADC!(self, (HL)),
+            // 0xCE => ADC!(self, #),
+            0x07 => ROT_THRU_CARRY!(self, LEFT, a),
 
             0xF3 => {
                 println!("WARNING: NOT IMPLEMENTED: 0xF3 DISABLE INTERRUPTS");
@@ -263,7 +273,16 @@ impl CPU {
             }
             0x90 => SUB!(self, b),
 
+            0x87 => ADD!(self, a),
+            0x80 => ADD!(self, b),
+            0x81 => ADD!(self, c),
+            0x82 => ADD!(self, d),
+            0x83 => ADD!(self, e),
+            0x84 => ADD!(self, h),
+            0x85 => ADD!(self, l),
             0x86 => ADD!(self, hl),
+            0xC6 => ADD!(self, IMMEDIATE),
+
             //3. LD A,n
             0x0A => LD!(self, READ_MEM, a, bc),
             0x1A => LD!(self, READ_MEM, a, de),

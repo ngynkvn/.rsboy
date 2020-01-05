@@ -222,6 +222,24 @@ macro_rules! XOR {
     }};
 }
 
+
+#[macro_export]
+macro_rules! ADC {
+
+    ($self: ident, $getter: expr, $n: literal) => {{
+        let value = $getter;
+        let result = $self.registers.a + value + $self.registers.flg_c() as u8;
+        let h = (($self.registers.a & 0xf) + (value & 0xf)) & 0x10 != 0;
+        let c = ($self.registers.a as u16 + value as u16) & 0xFF00 != 0 ;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + $n,
+            a: result,
+            f: flags(result == 0, false, h, c),
+            ..$self.registers
+        }
+    }};
+}
+
 #[macro_export]
 macro_rules! ADD {
     ($self: ident, hl) => {{
@@ -238,8 +256,35 @@ macro_rules! ADD {
             ..$self.registers
         }
     }};
+    ($self: ident, IMMEDIATE) => {{
+        let value = $self.next_u8();
+        let result = $self.registers.a.wrapping_add(value);
+        let z = value == $self.registers.a;
+        let n = false;
+        let h = ($self.registers.a & 0x0f) + (value & 0x0f) > 0x0f;
+        let c = ($self.registers.a as usize) + (value as usize) > 0xFF;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 2,
+            a: result,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
+    ($self: ident, $r1: ident) => {{
+        let value = $self.registers.$r1;
+        let result = $self.registers.a.wrapping_add(value);
+        let z = value == $self.registers.a;
+        let n = false;
+        let h = ($self.registers.a & 0x0f) + (value & 0x0f) > 0x0f;
+        let c = ($self.registers.a as usize) + (value as usize) > 0xFF;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            a: result,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
 }
-
 #[macro_export]
 macro_rules! SUB {
     ($self: ident, $r1: ident) => {{
