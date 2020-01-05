@@ -1,4 +1,5 @@
 # RUST GB EMULATOR
+[![Run on Repl.it](https://repl.it/badge/github/ngynkvn/rust-emu)](https://repl.it/github/ngynkvn/rust-emu)
 Cause that hasnt been done before.
 
 - The code is extremely rough. View at your own discretion.
