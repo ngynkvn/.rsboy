@@ -10,7 +10,6 @@ use sdl2::render::{Canvas, Texture};
 use sdl2::video::Window;
 use std::time::Duration;
 use std::time::Instant;
-use std::sync::mpsc;
 
 //File IO
 use env_logger::Env;
@@ -18,8 +17,6 @@ use log::info;
 use std::env;
 use std::fs::File;
 use std::io::Read;
-
-use std::thread;
 
 mod cpu;
 mod gpu;
@@ -33,7 +30,37 @@ use crate::texture::{Map, Tile};
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
 const ZERO: Duration = Duration::from_secs(0);
 
-fn main() -> std::io::Result<()> {
+fn main() {
+	println!("Started");
+	just_cpu();
+	// sdl_main().unwrap();
+} 
+
+fn init_cpu() -> Result<CPU, std::io::Error> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        println!("Usage: ./gboy [rom]");
+        panic!();
+    }
+    info!("{:?}", args);
+    info!("Attempting to load {:?}", args[1]);
+    let mut file = File::open(args[1].to_string())?;
+    let mut rom = Vec::new();
+    file.read_to_end(&mut rom)?;
+    let cpu = CPU::new(rom);
+	Ok(cpu)
+}
+
+fn just_cpu()  {
+	let mut cpu = init_cpu().unwrap();
+	loop {
+        let cpu_cycles = cpu.cycle();
+        cpu.memory.gpu.cycle(cpu_cycles);
+	}
+}
+
+
+fn sdl_main() -> std::io::Result<()> {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -59,26 +86,12 @@ fn main() -> std::io::Result<()> {
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
     let mut count_loop = 0;
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        let start = Instant::now();
-        let mut frame_count = 0;
-        loop {
-            match rx.recv() {
-                Ok(i) => {
-                    frame_count += 1;
-                    print!("\rFPS: {}", frame_count as f64 / start.elapsed().as_secs_f64());
-                },
-                Err(_) => panic!("Die")
-            }
-        }
-    });
+
     loop {
         let f = frame(&mut cpu, &mut texture, &mut canvas);
         if f.is_err() {
             break;
         }
-        tx.send(1).unwrap();
         delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
         count_loop += 1;

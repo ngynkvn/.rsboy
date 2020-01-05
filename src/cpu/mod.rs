@@ -170,6 +170,9 @@ impl CPU {
             0xAB => XOR!(self, self.registers.e, 1),
             0xAC => XOR!(self, self.registers.h, 1),
             0xAD => XOR!(self, self.registers.l, 1),
+            0xAE => XOR!(self, self.read_byte(self.registers.hl()), 1),
+            0xEE => XOR!(self, self.next_u8(), 2),
+			
             0x8F => ADC!(self, self.registers.a, 1),
             0x88 => ADC!(self, self.registers.b, 1),
             0x89 => ADC!(self, self.registers.c, 1),
@@ -271,7 +274,15 @@ impl CPU {
                 self.set_byte(self.registers.hl(), value);
                 self.registers = self.inc_pc(2);
             }
-            0x90 => SUB!(self, b),
+			0x97 => SUB!(self, a),
+			0x90 => SUB!(self, b),
+			0x91 => SUB!(self, c),
+			0x92 => SUB!(self, d),
+			0x93 => SUB!(self, e),
+			0x94 => SUB!(self, h),
+			0x95 => SUB!(self, l),
+			// 0x96 => SUB!(self, (HL)),
+			0xD6 => SUB!(self, IMMEDIATE),
 
             0x87 => ADD!(self, a),
             0x80 => ADD!(self, b),
@@ -429,6 +440,14 @@ impl CPU {
                     0x34 => SWAP!(self, h),
                     0x35 => SWAP!(self, l),
                     0x36 => SWAP!(self, hl),
+					0x3F => ROT_THRU_CARRY!(self, RIGHT, a),
+					0x38 => ROT_THRU_CARRY!(self, RIGHT, b),
+					0x39 => ROT_THRU_CARRY!(self, RIGHT, c),
+					0x3A => ROT_THRU_CARRY!(self, RIGHT, d),
+					0x3B => ROT_THRU_CARRY!(self, RIGHT, e),
+					0x3C => ROT_THRU_CARRY!(self, RIGHT, h),
+					0x3D => ROT_THRU_CARRY!(self, RIGHT, l),
+					// 0x3E => ROT_THRU_CARRY!(self, RIGHT, hl),
                     0x17 => ROT_THRU_CARRY!(self, LEFT, a),
                     0x10 => ROT_THRU_CARRY!(self, LEFT, b),
                     0x11 => ROT_THRU_CARRY!(self, LEFT, c),

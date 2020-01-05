@@ -225,7 +225,6 @@ macro_rules! XOR {
 
 #[macro_export]
 macro_rules! ADC {
-
     ($self: ident, $getter: expr, $n: literal) => {{
         let value = $getter;
         let result = $self.registers.a + value + $self.registers.flg_c() as u8;
@@ -287,6 +286,20 @@ macro_rules! ADD {
 }
 #[macro_export]
 macro_rules! SUB {
+    ($self: ident, IMMEDIATE) => {{
+        let value = $self.next_u8();
+        let z = value == $self.registers.a;
+        let n = true;
+        let h = ($self.registers.a & 0x0f) > 0x0f;
+        let c = value > $self.registers.a;
+        let value = $self.registers.a.wrapping_sub(value);
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            a: value,
+            f: flags(z, n, h, c),
+            ..$self.registers
+        }
+    }};
     ($self: ident, $r1: ident) => {{
         let value = $self.registers.$r1;
         let z = value == $self.registers.a;
@@ -391,7 +404,7 @@ macro_rules! SWAP {
 #[macro_export]
 macro_rules! ROT_THRU_CARRY {
     ($self: ident, LEFT, $r1: ident) => {{
-        let leftmost = ($self.registers.$r1 & 0b1000_0000 != 0);
+        let leftmost = $self.registers.$r1 & 0b1000_0000 != 0;
         let carry = $self.registers.flg_c() as u8;
         let n = ($self.registers.$r1 << 1) + carry;
         $self.registers = RegisterState {
@@ -402,13 +415,13 @@ macro_rules! ROT_THRU_CARRY {
         }
     }};
     ($self: ident, RIGHT, $r1: ident) => {{
-        let rightmost = ($self.registers.$r1 & 0b0000_0001 != 0);
+        let rightmost = $self.registers.$r1 & 0b0000_0001 != 0;
         let carry = $self.registers.flg_c() as u8;
         let n = ($self.registers.$r1 >> 1) + carry;
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
-            f: flags(n == 0, false, false, leftmost),
+            f: flags(n == 0, false, false, rightmost),
             ..$self.registers
         }
     }};
