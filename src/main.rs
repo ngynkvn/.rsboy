@@ -10,6 +10,7 @@ use sdl2::render::{Canvas, Texture};
 use sdl2::video::Window;
 use std::time::Duration;
 use std::time::Instant;
+use std::sync::mpsc;
 
 //File IO
 use env_logger::Env;
@@ -58,10 +59,18 @@ fn main() -> std::io::Result<()> {
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
     let mut count_loop = 0;
+    let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
+        let start = Instant::now();
+        let mut frame_count = 0;
         loop {
-            println!("Hi!");
-            thread::sleep(Duration::from_secs(1));
+            match rx.recv() {
+                Ok(i) => {
+                    frame_count += 1;
+                    print!("\rFPS: {}", frame_count as f64 / start.elapsed().as_secs_f64());
+                },
+                Err(_) => panic!("Die")
+            }
         }
     });
     loop {
@@ -69,6 +78,7 @@ fn main() -> std::io::Result<()> {
         if f.is_err() {
             break;
         }
+        tx.send(1).unwrap();
         delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
         count_loop += 1;
