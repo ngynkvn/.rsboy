@@ -7,7 +7,7 @@ mod macros;
 use self::macros::swap_nibbles;
 use crate::{
     ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SUB, SWAP,
-    TEST_BIT, XOR,
+    TEST_BIT, XOR, SRL,
 };
 
 pub struct CPU {
@@ -107,12 +107,15 @@ impl CPU {
         let prev = self.clock;
         // self.curr_u8() has a side effect so need to check pc first.
         // TODO remove side effect..
-        // if self.registers.pc >= 0x100 {
-        //     println!("{}", self.registers);
-        //     self.memory.dump_io();
-        //     println!("Finished!");
-        //     return 0;
-        // }
+        #[cfg(feature = "only_bootrom")]
+        {
+            if self.registers.pc >= 0x100 {
+                println!("{}", self.registers);
+                self.memory.dump_io();
+                println!("Finished!");
+                return 0;
+            }
+        }
         let curr_u8 = self.curr_u8();
         // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
@@ -172,7 +175,6 @@ impl CPU {
             0xAD => XOR!(self, self.registers.l, 1),
             0xAE => XOR!(self, self.read_byte(self.registers.hl()), 1),
             0xEE => XOR!(self, self.next_u8(), 2),
-			
             0x8F => ADC!(self, self.registers.a, 1),
             0x88 => ADC!(self, self.registers.b, 1),
             0x89 => ADC!(self, self.registers.c, 1),
@@ -274,15 +276,15 @@ impl CPU {
                 self.set_byte(self.registers.hl(), value);
                 self.registers = self.inc_pc(2);
             }
-			0x97 => SUB!(self, a),
-			0x90 => SUB!(self, b),
-			0x91 => SUB!(self, c),
-			0x92 => SUB!(self, d),
-			0x93 => SUB!(self, e),
-			0x94 => SUB!(self, h),
-			0x95 => SUB!(self, l),
-			// 0x96 => SUB!(self, (HL)),
-			0xD6 => SUB!(self, IMMEDIATE),
+            0x97 => SUB!(self, a),
+            0x90 => SUB!(self, b),
+            0x91 => SUB!(self, c),
+            0x92 => SUB!(self, d),
+            0x93 => SUB!(self, e),
+            0x94 => SUB!(self, h),
+            0x95 => SUB!(self, l),
+            // 0x96 => SUB!(self, (HL)),
+            0xD6 => SUB!(self, IMMEDIATE),
 
             0x87 => ADD!(self, a),
             0x80 => ADD!(self, b),
@@ -440,14 +442,24 @@ impl CPU {
                     0x34 => SWAP!(self, h),
                     0x35 => SWAP!(self, l),
                     0x36 => SWAP!(self, hl),
-					0x3F => ROT_THRU_CARRY!(self, RIGHT, a),
-					0x38 => ROT_THRU_CARRY!(self, RIGHT, b),
-					0x39 => ROT_THRU_CARRY!(self, RIGHT, c),
-					0x3A => ROT_THRU_CARRY!(self, RIGHT, d),
-					0x3B => ROT_THRU_CARRY!(self, RIGHT, e),
-					0x3C => ROT_THRU_CARRY!(self, RIGHT, h),
-					0x3D => ROT_THRU_CARRY!(self, RIGHT, l),
-					// 0x3E => ROT_THRU_CARRY!(self, RIGHT, hl),
+
+                    0x3F => SRL!(self, a),
+                    0x38 => SRL!(self, b),
+                    0x39 => SRL!(self, c),
+                    0x3A => SRL!(self, d),
+                    0x3B => SRL!(self, e),
+                    0x3C => SRL!(self, h),
+                    0x3D => SRL!(self, l),
+
+                    0x1F => ROT_THRU_CARRY!(self, RIGHT, a),
+                    0x18 => ROT_THRU_CARRY!(self, RIGHT, b),
+                    0x19 => ROT_THRU_CARRY!(self, RIGHT, c),
+                    0x1A => ROT_THRU_CARRY!(self, RIGHT, d),
+                    0x1B => ROT_THRU_CARRY!(self, RIGHT, e),
+                    0x1C => ROT_THRU_CARRY!(self, RIGHT, h),
+                    0x1D => ROT_THRU_CARRY!(self, RIGHT, l),
+                    // 0x1E => ROT_THRU_CARRY!(self, RIGHT, (HL)),
+
                     0x17 => ROT_THRU_CARRY!(self, LEFT, a),
                     0x10 => ROT_THRU_CARRY!(self, LEFT, b),
                     0x11 => ROT_THRU_CARRY!(self, LEFT, c),
@@ -455,6 +467,8 @@ impl CPU {
                     0x13 => ROT_THRU_CARRY!(self, LEFT, e),
                     0x14 => ROT_THRU_CARRY!(self, LEFT, h),
                     0x15 => ROT_THRU_CARRY!(self, LEFT, l),
+                    // 0x3E => ROT_THRU_CARRY!(self, RIGHT, hl),
+
                     0x40 => TEST_BIT!(self, b, 0),
                     0x41 => TEST_BIT!(self, c, 0),
                     0x42 => TEST_BIT!(self, d, 0),
