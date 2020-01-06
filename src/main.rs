@@ -32,8 +32,8 @@ const ZERO: Duration = Duration::from_secs(0);
 
 fn main() {
 	println!("Started");
-	just_cpu();
-	// sdl_main().unwrap();
+	// just_cpu();
+	sdl_main().unwrap();
 } 
 
 fn init_cpu() -> Result<CPU, std::io::Error> {
@@ -140,6 +140,7 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     if timer.elapsed() < min_dur {
         ::std::thread::sleep(min_dur - timer.elapsed());
     }
+    println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> Window {

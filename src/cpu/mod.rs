@@ -6,8 +6,8 @@ use crate::registers::RegisterState;
 mod macros;
 use self::macros::swap_nibbles;
 use crate::{
-    ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SUB, SWAP,
-    TEST_BIT, XOR, SRL,
+    ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SRL, SUB,
+    SWAP, TEST_BIT, XOR,
 };
 
 pub struct CPU {
@@ -120,15 +120,17 @@ impl CPU {
         // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         match curr_u8 {
-            0x00 => {
-                self.registers = self.inc_pc(1);
-            }
+            0x00 => self.registers = self.inc_pc(1),
             // 3.3.1. 8-bit Loads
             // 1 LD nn, n
-            0x06 => LD!(self, IMMEDIATE, b),
             0x08 => LD16!(self, IMMEDIATE, sp),
-            0x0E => LD!(self, IMMEDIATE, c),
-            0x16 => LD!(self, IMMEDIATE, d),
+            0x06 => LD!(self, b, self.next_u8(), 2),
+            0x0E => LD!(self, c, self.next_u8(), 2),
+            0x16 => LD!(self, d, self.next_u8(), 2),
+            0x1E => LD!(self, e, self.next_u8(), 2),
+            0x26 => LD!(self, h, self.next_u8(), 2),
+            0x2E => LD!(self, l, self.next_u8(), 2),
+
             0x17 => ROT_THRU_CARRY!(self, LEFT, a),
             //JR n
             0x18 => {
@@ -138,9 +140,6 @@ impl CPU {
                     ..self.registers
                 }
             }
-            0x1E => LD!(self, IMMEDIATE, e),
-            0x26 => LD!(self, IMMEDIATE, h),
-            0x2E => LD!(self, IMMEDIATE, l),
             0xC1 => POP!(self, b, c),
             0xE1 => POP!(self, h, l),
             0xF1 => POP!(self, a, f),
@@ -195,15 +194,15 @@ impl CPU {
                 self.registers = self.inc_pc(1);
             }
 
-            0xBF => CP!(self, a),
-            0xB8 => CP!(self, b),
-            0xB9 => CP!(self, c),
-            0xBA => CP!(self, d),
-            0xBB => CP!(self, e),
-            0xBC => CP!(self, h),
-            0xBD => CP!(self, l),
-            0xBE => CP!(self, hl),
-            0xFE => CP!(self, IMMEDIATE),
+            0xBF => CP!(self, self.registers.a, 1),
+            0xB8 => CP!(self, self.registers.b, 1),
+            0xB9 => CP!(self, self.registers.c, 1),
+            0xBA => CP!(self, self.registers.d, 1),
+            0xBB => CP!(self, self.registers.e, 1),
+            0xBC => CP!(self, self.registers.h, 1),
+            0xBD => CP!(self, self.registers.l, 1),
+            0xBE => CP!(self, self.read_byte(self.registers.hl()), 1),
+            0xFE => CP!(self, self.next_u8(), 2),
 
             0xF0 => {
                 let offset = self.next_u8();
@@ -215,56 +214,56 @@ impl CPU {
             }
 
             //2 LD r1, r2
-            0x7F => LD!(self, REGISTER, a, a),
-            0x78 => LD!(self, REGISTER, a, b),
-            0x79 => LD!(self, REGISTER, a, c),
-            0x7A => LD!(self, REGISTER, a, d),
-            0x7B => LD!(self, REGISTER, a, e),
-            0x7C => LD!(self, REGISTER, a, h),
-            0x7D => LD!(self, REGISTER, a, l),
-            0x7E => LD!(self, READ_MEM, a, hl),
-            0x40 => LD!(self, REGISTER, b, b),
-            0x41 => LD!(self, REGISTER, b, c),
-            0x42 => LD!(self, REGISTER, b, d),
-            0x43 => LD!(self, REGISTER, b, e),
-            0x44 => LD!(self, REGISTER, b, h),
-            0x45 => LD!(self, REGISTER, b, l),
-            0x46 => LD!(self, READ_MEM, b, hl),
-            0x48 => LD!(self, REGISTER, c, b),
-            0x49 => LD!(self, REGISTER, c, c),
-            0x4A => LD!(self, REGISTER, c, d),
-            0x4B => LD!(self, REGISTER, c, e),
-            0x4C => LD!(self, REGISTER, c, h),
-            0x4D => LD!(self, REGISTER, c, l),
-            0x4E => LD!(self, READ_MEM, c, hl),
-            0x50 => LD!(self, REGISTER, d, b),
-            0x51 => LD!(self, REGISTER, d, c),
-            0x52 => LD!(self, REGISTER, d, d),
-            0x53 => LD!(self, REGISTER, d, e),
-            0x54 => LD!(self, REGISTER, d, h),
-            0x55 => LD!(self, REGISTER, d, l),
-            0x56 => LD!(self, READ_MEM, d, hl),
-            0x58 => LD!(self, REGISTER, e, b),
-            0x59 => LD!(self, REGISTER, e, c),
-            0x5A => LD!(self, REGISTER, e, d),
-            0x5B => LD!(self, REGISTER, e, e),
-            0x5C => LD!(self, REGISTER, e, h),
-            0x5D => LD!(self, REGISTER, e, l),
-            0x5E => LD!(self, READ_MEM, e, hl),
-            0x60 => LD!(self, REGISTER, h, b),
-            0x61 => LD!(self, REGISTER, h, c),
-            0x62 => LD!(self, REGISTER, h, d),
-            0x63 => LD!(self, REGISTER, h, e),
-            0x64 => LD!(self, REGISTER, h, h),
-            0x65 => LD!(self, REGISTER, h, l),
-            0x66 => LD!(self, READ_MEM, h, hl),
-            0x68 => LD!(self, REGISTER, l, b),
-            0x69 => LD!(self, REGISTER, l, c),
-            0x6A => LD!(self, REGISTER, l, d),
-            0x6B => LD!(self, REGISTER, l, e),
-            0x6C => LD!(self, REGISTER, l, h),
-            0x6D => LD!(self, REGISTER, l, l),
-            0x6E => LD!(self, READ_MEM, l, hl),
+            0x7F => LD!(self, a, self.registers.a, 1),
+            0x78 => LD!(self, a, self.registers.b, 1),
+            0x79 => LD!(self, a, self.registers.c, 1),
+            0x7A => LD!(self, a, self.registers.d, 1),
+            0x7B => LD!(self, a, self.registers.e, 1),
+            0x7C => LD!(self, a, self.registers.h, 1),
+            0x7D => LD!(self, a, self.registers.l, 1),
+            0x7E => LD!(self, a, self.read_byte(self.registers.hl()), 1),
+            0x40 => LD!(self, b, self.registers.b, 1),
+            0x41 => LD!(self, b, self.registers.c, 1),
+            0x42 => LD!(self, b, self.registers.d, 1),
+            0x43 => LD!(self, b, self.registers.e, 1),
+            0x44 => LD!(self, b, self.registers.h, 1),
+            0x45 => LD!(self, b, self.registers.l, 1),
+            0x46 => LD!(self, b, self.read_byte(self.registers.hl()), 1),
+            0x48 => LD!(self, c, self.registers.b, 1),
+            0x49 => LD!(self, c, self.registers.c, 1),
+            0x4A => LD!(self, c, self.registers.d, 1),
+            0x4B => LD!(self, c, self.registers.e, 1),
+            0x4C => LD!(self, c, self.registers.h, 1),
+            0x4D => LD!(self, c, self.registers.l, 1),
+            0x4E => LD!(self, c, self.read_byte(self.registers.hl()), 1),
+            0x50 => LD!(self, d, self.registers.b, 1),
+            0x51 => LD!(self, d, self.registers.c, 1),
+            0x52 => LD!(self, d, self.registers.d, 1),
+            0x53 => LD!(self, d, self.registers.e, 1),
+            0x54 => LD!(self, d, self.registers.h, 1),
+            0x55 => LD!(self, d, self.registers.l, 1),
+            0x56 => LD!(self, d, self.read_byte(self.registers.hl()), 1),
+            0x58 => LD!(self, e, self.registers.b, 1),
+            0x59 => LD!(self, e, self.registers.c, 1),
+            0x5A => LD!(self, e, self.registers.d, 1),
+            0x5B => LD!(self, e, self.registers.e, 1),
+            0x5C => LD!(self, e, self.registers.h, 1),
+            0x5D => LD!(self, e, self.registers.l, 1),
+            0x5E => LD!(self, e, self.read_byte(self.registers.hl()), 1),
+            0x60 => LD!(self, h, self.registers.b, 1),
+            0x61 => LD!(self, h, self.registers.c, 1),
+            0x62 => LD!(self, h, self.registers.d, 1),
+            0x63 => LD!(self, h, self.registers.e, 1),
+            0x64 => LD!(self, h, self.registers.h, 1),
+            0x65 => LD!(self, h, self.registers.l, 1),
+            0x66 => LD!(self, h, self.read_byte(self.registers.hl()), 1),
+            0x68 => LD!(self, l, self.registers.b, 1),
+            0x69 => LD!(self, l, self.registers.c, 1),
+            0x6A => LD!(self, l, self.registers.d, 1),
+            0x6B => LD!(self, l, self.registers.e, 1),
+            0x6C => LD!(self, l, self.registers.h, 1),
+            0x6D => LD!(self, l, self.registers.l, 1),
+            0x6E => LD!(self, l, self.read_byte(self.registers.hl()), 1),
             0x70 => LD!(self, LOAD_MEM, hl, b),
             0x71 => LD!(self, LOAD_MEM, hl, c),
             0x72 => LD!(self, LOAD_MEM, hl, d),
@@ -308,14 +307,14 @@ impl CPU {
                     ..self.registers
                 }
             }
-            0x3E => LD!(self, IMMEDIATE, a),
+            0x3E => LD!(self, a, self.registers.a, 1),
 
-            0x47 => LD!(self, REGISTER, b, a),
-            0x4F => LD!(self, REGISTER, c, a),
-            0x57 => LD!(self, REGISTER, d, a),
-            0x5F => LD!(self, REGISTER, e, a),
-            0x67 => LD!(self, REGISTER, h, a),
-            0x6F => LD!(self, REGISTER, l, a),
+            0x47 => LD!(self, b, self.registers.a, 1),
+            0x4F => LD!(self, c, self.registers.a, 1),
+            0x57 => LD!(self, d, self.registers.a, 1),
+            0x5F => LD!(self, e, self.registers.a, 1),
+            0x67 => LD!(self, h, self.registers.a, 1),
+            0x6F => LD!(self, l, self.registers.a, 1),
             0x02 => LD!(self, LOAD_MEM, bc, a),
             0x12 => LD!(self, LOAD_MEM, de, a),
             0x77 => LD!(self, LOAD_MEM, hl, a),
@@ -345,7 +344,7 @@ impl CPU {
 
             // 9.
             0x3A => {
-                LD!(self, READ_MEM, a, hl);
+                LD!(self, a, self.read_byte(self.registers.hl()), 1);
                 self.registers = self.dec_hl();
             }
 
@@ -357,7 +356,7 @@ impl CPU {
 
             // 14.
             0x2A => {
-                LD!(self, READ_MEM, a, hl);
+                LD!(self, a, self.read_byte(self.registers.hl()), 1);
                 self.registers = self.inc_hl();
             }
 
@@ -459,7 +458,6 @@ impl CPU {
                     0x1C => ROT_THRU_CARRY!(self, RIGHT, h),
                     0x1D => ROT_THRU_CARRY!(self, RIGHT, l),
                     // 0x1E => ROT_THRU_CARRY!(self, RIGHT, (HL)),
-
                     0x17 => ROT_THRU_CARRY!(self, LEFT, a),
                     0x10 => ROT_THRU_CARRY!(self, LEFT, b),
                     0x11 => ROT_THRU_CARRY!(self, LEFT, c),
@@ -468,7 +466,6 @@ impl CPU {
                     0x14 => ROT_THRU_CARRY!(self, LEFT, h),
                     0x15 => ROT_THRU_CARRY!(self, LEFT, l),
                     // 0x3E => ROT_THRU_CARRY!(self, RIGHT, hl),
-
                     0x40 => TEST_BIT!(self, b, 0),
                     0x41 => TEST_BIT!(self, c, 0),
                     0x42 => TEST_BIT!(self, d, 0),
