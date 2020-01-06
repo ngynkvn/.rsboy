@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Instruction(usize, &'static str);
 // Lifted from CINOOP's cpu.c
 // https://github.com/CTurt/Cinoop/blob/master/source/cpu.c

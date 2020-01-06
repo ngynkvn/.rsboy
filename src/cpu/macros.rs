@@ -178,7 +178,6 @@ macro_rules! alu_op {
 #[macro_export]
 macro_rules! AND {
     ($self: ident, $getter: expr, $n: literal) => {{
-        alu_op!($self, &, $getter, false, $n);
         let value = $getter;
         let result = $self.registers.a & value;
 

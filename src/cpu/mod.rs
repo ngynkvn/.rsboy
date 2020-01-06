@@ -1,10 +1,11 @@
-use crate::instructions::INSTRUCTION_TABLE;
+use crate::instructions::{INSTRUCTION_TABLE, Instruction};
 use crate::memory::Memory;
 use crate::registers::flags;
 use crate::registers::RegisterState;
 
 mod macros;
 use self::macros::swap_nibbles;
+use std::collections::VecDeque;
 use crate::{
     ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SRL, SUB,
     SWAP, TEST_BIT, XOR,
@@ -14,6 +15,7 @@ pub struct CPU {
     registers: RegisterState,
     pub clock: usize,
     pub memory: Memory,
+    instruction_history: VecDeque<(u16, Instruction)>,
     start_debug: bool,
 }
 
@@ -23,6 +25,7 @@ impl CPU {
             registers: RegisterState::new(),
             clock: 0,
             memory: Memory::new(rom),
+            instruction_history: VecDeque::new(),
             start_debug: false,
         }
     }
@@ -117,6 +120,10 @@ impl CPU {
             }
         }
         let curr_u8 = self.curr_u8();
+        self.instruction_history.push_back((self.registers.pc, INSTRUCTION_TABLE[curr_u8 as usize]));
+        if self.instruction_history.len() > 10 {
+            self.instruction_history.pop_front();
+        }
         // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
         match curr_u8 {
@@ -151,7 +158,7 @@ impl CPU {
             0xA3 => AND!(self, self.registers.e, 1),
             0xA4 => AND!(self, self.registers.h, 1),
             0xA5 => AND!(self, self.registers.l, 1),
-            0xA6 => AND!(self, self.read_byte(self.registers.hl()), 1),
+            0xA6 => AND!(self, self.read_byte(self.registers.hl()), 2),
             0xE6 => AND!(self, self.next_u8(), 2),
             // Playing around with some alternate syntax
             //
@@ -162,7 +169,7 @@ impl CPU {
             0xB3 => OR!(self, self.registers.e, 1),
             0xB4 => OR!(self, self.registers.h, 1),
             0xB5 => OR!(self, self.registers.l, 1),
-            0xB6 => OR!(self, self.read_byte(self.registers.hl()), 1),
+            0xB6 => OR!(self, self.read_byte(self.registers.hl()), 2),
             0xF6 => OR!(self, self.next_u8(), 2),
 
             0xAF => XOR!(self, self.registers.a, 1),
@@ -172,7 +179,7 @@ impl CPU {
             0xAB => XOR!(self, self.registers.e, 1),
             0xAC => XOR!(self, self.registers.h, 1),
             0xAD => XOR!(self, self.registers.l, 1),
-            0xAE => XOR!(self, self.read_byte(self.registers.hl()), 1),
+            0xAE => XOR!(self, self.read_byte(self.registers.hl()), 2),
             0xEE => XOR!(self, self.next_u8(), 2),
             0x8F => ADC!(self, self.registers.a, 1),
             0x88 => ADC!(self, self.registers.b, 1),
@@ -296,8 +303,8 @@ impl CPU {
             0xC6 => ADD!(self, IMMEDIATE),
 
             //3. LD A,n
-            0x0A => LD!(self, READ_MEM, a, bc),
-            0x1A => LD!(self, READ_MEM, a, de),
+            0x0A => LD!(self, a, self.read_byte(self.registers.bc()), 1),
+            0x1A => LD!(self, a, self.read_byte(self.registers.de()), 1),
             0xFA => {
                 let addr = self.next_u16();
                 let value = self.read_byte(addr);
@@ -307,7 +314,7 @@ impl CPU {
                     ..self.registers
                 }
             }
-            0x3E => LD!(self, a, self.registers.a, 1),
+            0x3E => LD!(self, a, self.next_u8(), 2),
 
             0x47 => LD!(self, b, self.registers.a, 1),
             0x4F => LD!(self, c, self.registers.a, 1),
@@ -535,10 +542,11 @@ impl CPU {
                 self.registers = self.inc_pc(1)
             }
             _ => panic!(
-                "Unknown Instruction: {:02X}\n{:?}\n{}",
+                "Unknown Instruction: {:02X}\n{:?}\n{}\nLast few instrctions: {:#?}",
                 self.curr_u8(),
                 INSTRUCTION_TABLE[self.curr_u8() as usize],
-                self.registers
+                self.registers,
+                self.instruction_history
             ),
         };
         if curr_u8 == 0xCB {
