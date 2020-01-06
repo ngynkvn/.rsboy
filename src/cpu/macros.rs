@@ -1,31 +1,14 @@
+#![macro_use]
+
 /**
  * MACROS: LOAD
  */
 #[macro_export]
 macro_rules! LD {
-    // LD n, u8
-    ($self: ident, IMMEDIATE, $r: ident) => {{
+    ($self: ident, $dest: ident, $src: expr, $n: literal) => {{
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 2,
-            $r: $self.next_u8(),
-            ..$self.registers
-        };
-    }};
-
-    // LD r1, r2
-    ($self: ident, REGISTER, $r1: ident, $r2: ident) => {{
-        $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
-            $r1: $self.registers.$r2(),
-            ..$self.registers
-        }
-    }};
-
-    // LD r1, (r2), from MEM
-    ($self: ident, READ_MEM, $r1: ident, $r2: ident) => {{
-        $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
-            $r1: $self.read_byte($self.registers.$r2()),
+            pc: $self.registers.pc + $n,
+            $dest: $src,
             ..$self.registers
         }
     }};
@@ -222,14 +205,13 @@ macro_rules! XOR {
     }};
 }
 
-
 #[macro_export]
 macro_rules! ADC {
     ($self: ident, $getter: expr, $n: literal) => {{
         let value = $getter;
         let result = $self.registers.a + value + $self.registers.flg_c() as u8;
         let h = (($self.registers.a & 0xf) + (value & 0xf)) & 0x10 != 0;
-        let c = ($self.registers.a as u16 + value as u16) & 0xFF00 != 0 ;
+        let c = ($self.registers.a as u16 + value as u16) & 0xFF00 != 0;
         $self.registers = RegisterState {
             pc: $self.registers.pc + $n,
             a: result,
@@ -429,9 +411,9 @@ macro_rules! ROT_THRU_CARRY {
 
 #[macro_export]
 macro_rules! SRL {
-        ($self: ident, $r1: ident) => {{
+    ($self: ident, $r1: ident) => {{
         let rightmost = $self.registers.$r1 & 0b0000_0001 != 0;
-        let n = ($self.registers.$r1 >> 1) & & 0b1000_0000;
+        let n = ($self.registers.$r1 >> 1) & 0b1000_0000;
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
@@ -444,38 +426,14 @@ macro_rules! SRL {
 //Stole H logic from Cinoop again :)
 #[macro_export]
 macro_rules! CP {
-    ($self: ident, hl) => {{
-        let value = $self.read_byte($self.registers.hl());
+    ($self: ident, $getter: expr, $n: literal) => {{
+        let value = $getter; 
         let z = $self.registers.a == value;
         let n = true;
         let h = (value & 0x0f) > ($self.registers.a & 0x0f);
         let c = $self.registers.a < value;
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
-            f: flags(z, n, h, c),
-            ..$self.registers
-        }
-    }};
-    ($self: ident, IMMEDIATE) => {{
-        let value = $self.next_u8();
-        let z = $self.registers.a == value;
-        let n = true;
-        let h = (value & 0x0f) > ($self.registers.a & 0x0f);
-        let c = $self.registers.a < value;
-        $self.registers = RegisterState {
-            pc: $self.registers.pc + 2,
-            f: flags(z, n, h, c),
-            ..$self.registers
-        }
-    }};
-    ($self: ident, $r1: ident) => {{
-        let value = $self.registers.$r1();
-        let z = $self.registers.a == value;
-        let n = true;
-        let h = (value & 0x0f) > ($self.registers.a & 0x0f);
-        let c = $self.registers.a < value;
-        $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
+            pc: $self.registers.pc + $n,
             f: flags(z, n, h, c),
             ..$self.registers
         }
