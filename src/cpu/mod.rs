@@ -158,7 +158,7 @@ impl CPU {
             0xA3 => AND!(self, self.registers.e, 1),
             0xA4 => AND!(self, self.registers.h, 1),
             0xA5 => AND!(self, self.registers.l, 1),
-            0xA6 => AND!(self, self.read_byte(self.registers.hl()), 2),
+            0xA6 => AND!(self, self.read_byte(self.registers.hl()), 1),
             0xE6 => AND!(self, self.next_u8(), 2),
             // Playing around with some alternate syntax
             //
@@ -169,7 +169,7 @@ impl CPU {
             0xB3 => OR!(self, self.registers.e, 1),
             0xB4 => OR!(self, self.registers.h, 1),
             0xB5 => OR!(self, self.registers.l, 1),
-            0xB6 => OR!(self, self.read_byte(self.registers.hl()), 2),
+            0xB6 => OR!(self, self.read_byte(self.registers.hl()), 1),
             0xF6 => OR!(self, self.next_u8(), 2),
 
             0xAF => XOR!(self, self.registers.a, 1),
@@ -179,7 +179,7 @@ impl CPU {
             0xAB => XOR!(self, self.registers.e, 1),
             0xAC => XOR!(self, self.registers.h, 1),
             0xAD => XOR!(self, self.registers.l, 1),
-            0xAE => XOR!(self, self.read_byte(self.registers.hl()), 2),
+            0xAE => XOR!(self, self.read_byte(self.registers.hl()), 1),
             0xEE => XOR!(self, self.next_u8(), 2),
             0x8F => ADC!(self, self.registers.a, 1),
             0x88 => ADC!(self, self.registers.b, 1),
