@@ -6,6 +6,9 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+only_bootrom = []
+
 [dependencies]
 sdl2 = "0.32.2"
 log = "0.4.8"

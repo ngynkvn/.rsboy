@@ -32,8 +32,8 @@ const ZERO: Duration = Duration::from_secs(0);
 
 fn main() {
 	println!("Started");
-	just_cpu();
-	// sdl_main().unwrap();
+	// just_cpu();
+	sdl_main().unwrap();
 } 
 
 fn init_cpu() -> Result<CPU, std::io::Error> {
