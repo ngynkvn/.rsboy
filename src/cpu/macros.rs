@@ -427,7 +427,7 @@ macro_rules! ROT_THRU_CARRY {
 macro_rules! SRL {
     ($self: ident, $r1: ident) => {{
         let rightmost = $self.registers.$r1 & 0b0000_0001 != 0;
-        let n = ($self.registers.$r1 >> 1) & &0b1000_0000;
+        let n = ($self.registers.$r1 >> 1) & 0b1000_0000;
         $self.registers = RegisterState {
             pc: $self.registers.pc + 1,
             $r1: n,
