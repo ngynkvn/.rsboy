@@ -160,20 +160,6 @@ macro_rules! INC {
 /**
  * MACROS: ALU / ARITHMETIC
  */
-macro_rules! alu_op {
-    ($self: ident, $op: tt, $rhs: expr, $n_flag: literal, $n: literal) => {{
-            let result = $self.registers.a $op $rhs;
-            let z = result == 0;
-            let n = $n_flag;
-            let h = ($self.registers.a & 0x0f) $op ($rhs & 0x0f) > 0x0f;
-            let c = ($self.registers.a as usize) $op ($rhs as usize) > 0xFF;
-            $self.registers = RegisterState {
-                pc: $self.registers.pc + $n,
-                a: result,
-                ..$self.registers
-            }
-        }};
-}
 
 #[macro_export]
 macro_rules! AND {
@@ -447,7 +433,7 @@ macro_rules! CP {
         let h = (value & 0x0f) > ($self.registers.a & 0x0f);
         let c = $self.registers.a < value;
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
+            pc: $self.registers.pc + $n,
             f: flags(z, n, h, c),
             ..$self.registers
         }
