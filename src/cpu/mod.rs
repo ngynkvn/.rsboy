@@ -1,15 +1,16 @@
-use crate::instructions::{INSTRUCTION_TABLE, Instruction};
+use crate::instructions::{Instruction, INSTRUCTION_TABLE};
 use crate::memory::Memory;
 use crate::registers::flags;
 use crate::registers::RegisterState;
 
 mod macros;
 use self::macros::swap_nibbles;
-use std::collections::VecDeque;
+
 use crate::{
-    ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SUB, SWAP,
-    TEST_BIT, XOR, SRL,
+    ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SRL, SUB,
+    SWAP, TEST_BIT, XOR,
 };
+use std::collections::VecDeque;
 
 pub struct CPU {
     registers: RegisterState,
@@ -18,7 +19,6 @@ pub struct CPU {
     instruction_history: VecDeque<(u16, Instruction)>,
     start_debug: bool,
 }
-
 impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
         Self {
@@ -120,7 +120,8 @@ impl CPU {
             }
         }
         let curr_u8 = self.curr_u8();
-        self.instruction_history.push_back((self.registers.pc, INSTRUCTION_TABLE[curr_u8 as usize]));
+        self.instruction_history
+            .push_back((self.registers.pc, INSTRUCTION_TABLE[curr_u8 as usize]));
         if self.instruction_history.len() > 10 {
             self.instruction_history.pop_front();
         }
@@ -137,6 +138,13 @@ impl CPU {
             0x1E => LD!(self, e, self.next_u8(), 2),
             0x26 => LD!(self, h, self.next_u8(), 2),
             0x2E => LD!(self, l, self.next_u8(), 2),
+            0x2F => {
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 1,
+                    a: !self.registers.a,
+                    ..self.registers
+                }
+            }
 
             0x17 => ROT_THRU_CARRY!(self, LEFT, a),
             //JR n
@@ -147,6 +155,7 @@ impl CPU {
                     ..self.registers
                 }
             }
+            0xD1 => POP!(self, d, e),
             0xC1 => POP!(self, b, c),
             0xE1 => POP!(self, h, l),
             0xF1 => POP!(self, a, f),
@@ -188,9 +197,10 @@ impl CPU {
             0x8B => ADC!(self, self.registers.e, 1),
             0x8C => ADC!(self, self.registers.h, 1),
             0x8D => ADC!(self, self.registers.l, 1),
-            // 0x8E => ADC!(self, (HL)),
-            // 0xCE => ADC!(self, #),
+            0x8E => ADC!(self, self.read_byte(self.registers.hl()), 1),
+            0xCE => ADC!(self, self.next_u8(), 2),
             0x07 => ROT_THRU_CARRY!(self, LEFT, a),
+            0x1F => ROT_THRU_CARRY!(self, RIGHT, a),
 
             0xF3 => {
                 println!("WARNING: NOT IMPLEMENTED: 0xF3 DISABLE INTERRUPTS");
@@ -301,6 +311,21 @@ impl CPU {
             0x85 => ADD!(self, l),
             0x86 => ADD!(self, hl),
             0xC6 => ADD!(self, IMMEDIATE),
+
+            //HL DE
+            0x19 => {
+                let hl = self.registers.hl();
+                let de = self.registers.de();
+                let h = (hl & 0xfff) + (hl & 0xfff) & 0x1000 == 0x1000;
+                let c = (hl as usize) + (de as usize) & 0x10000 == 0x10000;
+                let n = hl.wrapping_add(de);
+                self.registers = RegisterState {
+                    h: (n >> 8) as u8,
+                    l: (n & 0x00FF) as u8,
+                    f: flags(self.registers.flg_z(), false, h, c),
+                    ..self.registers
+                }
+            }
 
             //3. LD A,n
             0x0A => LD!(self, a, self.read_byte(self.registers.bc()), 1),
@@ -438,6 +463,11 @@ impl CPU {
                 }
             }
 
+            0xC0 => RET!(self, flg_nz),
+            0xC8 => RET!(self, flg_z),
+            0xD0 => RET!(self, flg_c),
+            0xD8 => RET!(self, flg_nc),
+
             0xCB => {
                 match self.next_u8() {
                     0x37 => SWAP!(self, a),
@@ -566,6 +596,15 @@ impl CPU {
         }
         self.clock
     }
+
+    fn handle_interrupt(&mut self, addr: u16) {
+        self.push_stack(self.registers.pc);
+        self.registers = RegisterState {
+            pc: addr,
+            ..self.registers
+        }
+    }
+
     // Just guessing for now but I guess just take the value, write the 2 bytes and subtract 2 from SP?
     fn push_stack(&mut self, value: u16) {
         self.set_byte(self.registers.sp, (value >> 8) as u8);
@@ -577,6 +616,7 @@ impl CPU {
         self.clock += 1;
         // log::info!("[STACK_PUSH] Pushed {} at PC: {:02X}", value, self.registers.pc);
     }
+
 
     fn pop_u16(&mut self) -> u16 {
         let n = ((self.read_byte(self.registers.sp + 2) as u16) << 8)

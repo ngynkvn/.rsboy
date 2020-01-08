@@ -33,14 +33,22 @@ pub struct Tile {
 }
 
 impl Tile {
-    pub fn construct(tile_data: &[u8]) -> Self {
+    pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
         let mut raw_data = [0; 16];
         let mut data = [Color::White; 64];
         for row in 0..8 {
             for col in 0..8 {
                 let hi = tile_data[(row * 2) + 1] >> (7 - col) & 1;
                 let lo = tile_data[(row * 2)] >> (7 - col) & 1;
-                data[row * 8 + col] = Color::bit2color((hi << 1) | lo);
+                let index = (hi << 1) | lo;
+                let color = match index {
+                    0b00 => palette & 0b11,
+                    0b01 => (palette & 0b1100) >> 2,
+                    0b10 => (palette & 0b110000) >> 4,
+                    0b11 => (palette & 0b11000000) >> 6,
+                    _ => unreachable!("Are you sure you're reading bit data?"),
+                };
+                data[row * 8 + col] = Color::bit2color(color);
             }
         }
         raw_data[..].clone_from_slice(tile_data);

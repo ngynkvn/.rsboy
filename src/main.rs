@@ -30,11 +30,17 @@ use crate::texture::{Map, Tile};
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
 const ZERO: Duration = Duration::from_secs(0);
 
-fn main() {
-	println!("Started");
-	// just_cpu();
-	sdl_main().unwrap();
-} 
+// #[cfg(sdl)]
+// fn main() {
+// 	println!("Started sdl context");
+// 	sdl_main().unwrap();
+// } 
+
+// #[cfg(not(sdl))]
+fn main () {
+    println!("Just cpu");
+    sdl_main().unwrap();
+}
 
 fn init_cpu() -> Result<CPU, std::io::Error> {
     let args: Vec<String> = env::args().collect();
@@ -213,7 +219,7 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let mut tiles: Vec<Tile> = vec![];
     for i in (0..0x7ff).step_by(16) {
         let tile_data = &vram[i..(i + 16)];
-        tiles.push(Tile::construct(tile_data));
+        tiles.push(Tile::construct(228, tile_data));
     }
     let video_subsystem = sdl_context.video()?;
 

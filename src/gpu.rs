@@ -21,6 +21,10 @@ pub struct GPU {
     pub bgrdpal: u8, //Background Palette
     pub obj0pal: u8, //Object0 Palette
     pub obj1pal: u8, //Object1 Palette
+    pub windowx: u8, //
+    pub windowy: u8, //
+    pub bg_palette: u8,
+    pub irq: bool,
 }
 
 const END_HBLANK: u8 = 143;
@@ -39,6 +43,10 @@ impl GPU {
             bgrdpal: 0,
             obj0pal: 0,
             obj1pal: 0,
+            windowx: 0,
+            windowy: 0,
+            bg_palette: 0,
+            irq: false,
             vram: [0; 0x2000],
         }
     }
@@ -74,7 +82,7 @@ impl GPU {
         let mut tiles: Vec<Tile> = vec![];
         for i in (0..0x7ff).step_by(16) {
             let tile_data = &self.vram[i..(i + 16)];
-            tiles.push(Tile::construct(tile_data));
+            tiles.push(Tile::construct(self.bg_palette, tile_data));
         }
         tiles
     }
@@ -99,6 +107,8 @@ impl GPU {
                     self.scanline += 1;
                     if self.scanline == END_HBLANK {
                         self.mode = GpuMode::VBlank;
+                        //Might be wrong position to trigger interrupt
+                        self.irq = true;
                     }
                 }
             }

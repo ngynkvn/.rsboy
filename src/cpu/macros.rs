@@ -191,6 +191,23 @@ macro_rules! OR {
     }};
 }
 
+macro_rules! RET {
+    ($self: ident, $flag: ident) => {{
+        let ret_addr = $self.pop_u16();
+        if $self.registers.$flag() {
+            $self.registers = RegisterState {
+                pc: ret_addr,
+                ..$self.registers
+            };
+        } else {
+            $self.registers = RegisterState {
+                pc: $self.registers.pc + 1,
+                ..$self.registers
+            };
+        }
+    }};
+}
+
 #[macro_export]
 macro_rules! XOR {
     ($self: ident, $getter: expr, $n: literal) => {{
@@ -427,7 +444,7 @@ macro_rules! SRL {
 #[macro_export]
 macro_rules! CP {
     ($self: ident, $getter: expr, $n: literal) => {{
-        let value = $getter; 
+        let value = $getter;
         let z = $self.registers.a == value;
         let n = true;
         let h = (value & 0x0f) > ($self.registers.a & 0x0f);

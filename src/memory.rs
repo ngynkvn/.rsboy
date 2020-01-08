@@ -83,6 +83,10 @@ impl Index<u16> for Memory {
             0xFF42 => &self.gpu.vscroll,
             0xFF43 => &self.gpu.hscroll,
             0xFF44 => &self.gpu.scanline,
+            0xFF47 => panic!("0xFF47 (bg_palette) is WRITE ONLY"),
+            0xFF4A => &self.gpu.windowy,
+            0xFF4B => &self.gpu.windowx,
+            // 0xFFFF => &self.gpu.,
             VRAM_START..=VRAM_END => &self.gpu[i - VRAM_START as u16],
             _ => &self.memory[i as usize],
         }
@@ -100,7 +104,9 @@ impl IndexMut<u16> for Memory {
             0xFF42 => &mut self.gpu.vscroll,
             0xFF43 => &mut self.gpu.hscroll,
             0xFF44 => &mut self.gpu.scanline,
-            0xFF4A | 0xFF4B => panic!("NOT IMPLEMENTED IN MEM MAP {:02x}", i),
+            0xFF47 => &mut self.gpu.bg_palette,
+            0xFF4A => &mut self.gpu.windowy,
+            0xFF4B => &mut self.gpu.windowx,
             VRAM_START..=VRAM_END => &mut self.gpu.vram[i as usize - VRAM_START],
             _ => &mut self.memory[i as usize],
         }
