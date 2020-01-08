@@ -98,12 +98,12 @@ impl fmt::Display for RegisterState {
         write!(
             f,
             concat!(
-                "AF: {:04X}\n",
-                "BC: {:04X}\n",
-                "DE: {:04X}\n",
-                "HL: {:04X}\n",
-                "SP: {:04X}\n",
-                "PC: {:04X}\n"
+                "AF: 0x{:04X}\n",
+                "BC: 0x{:04X}\n",
+                "DE: 0x{:04X}\n",
+                "HL: 0x{:04X}\n",
+                "SP: 0x{:04X}\n",
+                "PC: 0x{:04X}\n"
             ),
             self.af(),
             self.bc(),

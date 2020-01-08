@@ -58,7 +58,7 @@ impl CPU {
     fn debug_print_stack(&self) {
         print!("[");
         for i in ((self.registers.sp + 1) as usize)..0xFFFF {
-            print!("{:08b},", self.memory[i as u16]);
+            print!("{:02X},", self.memory[i as u16]);
         }
         println!("]");
     }
@@ -66,50 +66,22 @@ impl CPU {
     // Returns the delta after processing an instruction.
     pub fn cycle(&mut self) -> usize {
         let prev = self.clock;
-        self.read_instruction();
+        match self.read_instruction() {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("CPU Dump:");
+                eprintln!("{}", self.registers);
+                panic!("{}", e);
+            }
+        };
         self.clock - prev
     }
 
-    pub fn read_instruction(&mut self) -> usize {
-        // if self.registers.pc > 0x90 {
-        //     println!(
-        //         "opcode:{:02X}\n{:?}\nregisters:\n{}",
-        //         self.curr_u8(),
-        //         INSTRUCTION_TABLE[self.curr_u8() as usize],
-        //         // 0
-        //         self.registers
-        //     );
-        // }
-        //**DEBUGG */
-        // if self.curr_u8() == 0xCB {
-        //     println!(
-        //         "opcode:{:04X}\n{:?}\nregisters:\n{}",
-        //         self.curr_u16(),
-        //         INSTRUCTION_TABLE[self.curr_u8() as usize],
-        //         // 0
-        //         self.registers
-        //     );
-        // } else {
-        //     println!(
-        //         "opcode:{:02X}\n{:?}\nregisters:\n{}",
-        //         self.curr_u8(),
-        //         INSTRUCTION_TABLE[self.curr_u8() as usize],
-        //         // 0
-        //         self.registers
-        //     );
-        // }
-        // match self.registers.pc {
-        // 0x00|0x03|0x04|0x07|0x08|0x0a|0x0c|0x0f|0x11|0x13|0x14|0x15|0x16|0x18|0x19|0x1a|0x1c|0x1d|0x1f|0x21|0x24|0x27|0x28|0x2b|0x2e|0x2f|0x30|0x32|0x34|0x37|0x39|0x3a|0x3b|0x3c|0x3d|0x3e|0x40|0x42|0x45|0x48|0x4a|0x4b|0x4d|0x4e|0x4f|0x51|0x53|0x55|0x56|0x58|0x59|0x5b|0x5d|0x5f|0x60|0x62|0x64|0x66|0x68|0x6a|0x6b|0x6d|0x6e|0x70|0x72|0x73|0x74|0x76|0x78|0x7a|0x7c|0x7e|0x80|0x81|0x82|0x83|0x85|0x86|0x88|0x89|0x8b|0x8c|0x8e|0x8f|0x91|0x93|0x95|0x96|0x98|0x99|0x9b|0x9c|0x9d|0x9f|0xa0|0xa1|0xa3|0xa4|0xa5|0xa6|0xa7|0xe0|0xe3|0xe6|0xe7|0xe8|0xe9|0xeb|0xec|0xed|0xef|0xf1|0xf3|0xf4|0xf5|0xf6|0xf7|0xf9|0xfa|0xfc|0xfe => {
-
-        // },
-        // _ => panic!("{}", self.registers.pc)
-        // }
+    pub fn read_instruction(&mut self) -> Result<(), String> {
         if self.memory.in_bios && self.registers.pc == 0x100 {
             self.memory.in_bios = false;
         }
         let prev = self.clock;
-        // self.curr_u8() has a side effect so need to check pc first.
-        // TODO remove side effect..
         #[cfg(feature = "only_bootrom")]
         {
             if self.registers.pc >= 0x100 {
@@ -127,6 +99,13 @@ impl CPU {
         }
         // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
+        if self.clock > 3122983 + 1000 {
+            dbg!(&self.registers);
+            dbg!(self.registers.de());
+            dbg!(&self.instruction_history);
+            // self.debug_print_stack();
+            return Err(format!("{:?}", INSTRUCTION_TABLE[curr_u8 as usize]));
+        }
         match curr_u8 {
             0x00 => self.registers = self.inc_pc(1),
             // 3.3.1. 8-bit Loads
@@ -456,6 +435,15 @@ impl CPU {
 
             //RST
             0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
+                if curr_u8 == 0xFF {
+                    eprintln!("ERROR! RST 38");
+                    eprintln!(" PC  OP INSTR");
+                    eprintln!("-------------");
+                    for (pc, i) in self.instruction_history.iter() {
+                        eprintln!("{:04X} {:02X} {}", pc, self.memory[(*pc) as u16], i);
+                    }
+                    return Err(String::from(""));
+                }
                 self.push_stack(self.registers.pc);
                 self.registers = RegisterState {
                     pc: (self.curr_u8() - 0xC7) as u16,
@@ -567,17 +555,18 @@ impl CPU {
                     0x7D => TEST_BIT!(self, l, 7),
                     // 0x7E => TEST_BIT!(self),
                     // 0x7F => TEST_BIT!(self),
-                    _ => panic!("Unknown CB Instruction: {:02X}", self.next_u8()),
+                    _ => return Err(format!("Unknown CB Instruction: {:02X}", self.next_u8())),
                 };
                 self.registers = self.inc_pc(1)
             }
-            _ => panic!(
-                "Unknown Instruction: {:02X}\n{:?}\n{}\nLast few instrctions: {:#?}",
-                self.curr_u8(),
-                INSTRUCTION_TABLE[self.curr_u8() as usize],
-                self.registers,
-                self.instruction_history
-            ),
+            _ => {
+                return Err(format!(
+                    "Unknown Instruction: {:02X}\n{:?}\nLast few instructions: {:#?}",
+                    self.curr_u8(),
+                    INSTRUCTION_TABLE[self.curr_u8() as usize],
+                    self.instruction_history
+                ))
+            }
         };
         if curr_u8 == 0xCB {
             log::trace!(
@@ -594,7 +583,7 @@ impl CPU {
                 self.clock - prev
             );
         }
-        self.clock
+        Ok(())
     }
 
     fn handle_interrupt(&mut self, addr: u16) {
@@ -604,7 +593,6 @@ impl CPU {
             ..self.registers
         }
     }
-
     // Just guessing for now but I guess just take the value, write the 2 bytes and subtract 2 from SP?
     fn push_stack(&mut self, value: u16) {
         self.set_byte(self.registers.sp, (value >> 8) as u8);
@@ -614,9 +602,8 @@ impl CPU {
             ..self.registers
         };
         self.clock += 1;
-        // log::info!("[STACK_PUSH] Pushed {} at PC: {:02X}", value, self.registers.pc);
+        log::info!("[STACK_PUSH] Pushed {} at PC: {:02X}", value, self.registers.pc);
     }
-
 
     fn pop_u16(&mut self) -> u16 {
         let n = ((self.read_byte(self.registers.sp + 2) as u16) << 8)
@@ -625,7 +612,7 @@ impl CPU {
             sp: self.registers.sp + 2,
             ..self.registers
         };
-        // log::info!("[STACK_POP] Popped {} at PC: {:02X}", n, self.registers.pc);
+        log::info!("[STACK_POP] Popped {} at PC: {:02X}", n, self.registers.pc);
         n
     }
 

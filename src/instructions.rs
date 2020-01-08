@@ -1,5 +1,14 @@
+use std::fmt;
+
 #[derive(Debug, Clone, Copy)]
 pub struct Instruction(usize, &'static str);
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.1)
+    }
+
+}
 // Lifted from CINOOP's cpu.c
 // https://github.com/CTurt/Cinoop/blob/master/source/cpu.c
 

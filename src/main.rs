@@ -39,7 +39,8 @@ const ZERO: Duration = Duration::from_secs(0);
 // #[cfg(not(sdl))]
 fn main () {
     println!("Just cpu");
-    sdl_main().unwrap();
+    just_cpu();
+//    sdl_main().unwrap();
 }
 
 fn init_cpu() -> Result<CPU, std::io::Error> {
