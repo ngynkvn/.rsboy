@@ -10,6 +10,9 @@ use crate::{
     ADC, ADD, AND, CALL, CP, DEC, INC, JP, JR, LD, LD16, OR, POP, PUSH, ROT_THRU_CARRY, SRL, SUB,
     SWAP, TEST_BIT, XOR,
 };
+
+const HISTORY_SIZE: usize = 10;
+
 use std::collections::VecDeque;
 
 pub struct CPU {
@@ -94,14 +97,13 @@ impl CPU {
         let curr_u8 = self.curr_u8();
         self.instruction_history
             .push_back((self.registers.pc, INSTRUCTION_TABLE[curr_u8 as usize]));
-        if self.instruction_history.len() > 10 {
+        if self.instruction_history.len() > HISTORY_SIZE {
             self.instruction_history.pop_front();
         }
         // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
-        if self.clock > 3122983 + 1000 {
+        if self.clock > 4122983 {
             dbg!(&self.registers);
-            dbg!(self.registers.de());
             dbg!(&self.instruction_history);
             // self.debug_print_stack();
             return Err(format!("{:?}", INSTRUCTION_TABLE[curr_u8 as usize]));
@@ -291,20 +293,8 @@ impl CPU {
             0x86 => ADD!(self, hl),
             0xC6 => ADD!(self, IMMEDIATE),
 
-            //HL DE
-            0x19 => {
-                let hl = self.registers.hl();
-                let de = self.registers.de();
-                let h = (hl & 0xfff) + (hl & 0xfff) & 0x1000 == 0x1000;
-                let c = (hl as usize) + (de as usize) & 0x10000 == 0x10000;
-                let n = hl.wrapping_add(de);
-                self.registers = RegisterState {
-                    h: (n >> 8) as u8,
-                    l: (n & 0x00FF) as u8,
-                    f: flags(self.registers.flg_z(), false, h, c),
-                    ..self.registers
-                }
-            }
+            0x29 => ADD!(self, hl, h, l),
+            0x19 => ADD!(self, hl, d, e),
 
             //3. LD A,n
             0x0A => LD!(self, a, self.read_byte(self.registers.bc()), 1),
@@ -387,6 +377,7 @@ impl CPU {
             0x21 => LD16!(self, IMMEDIATE, h, l),
             0x31 => LD16!(self, IMMEDIATE, sp),
 
+            0xF9 => LD16!(self, sp, h, l),
             0xC9 => {
                 let addr = self.pop_u16();
                 self.registers = RegisterState {
@@ -395,6 +386,8 @@ impl CPU {
                 };
                 // println!("I RETURNED HERE {}",self.registers);
             }
+            0xE9 => JP!(self, hl),
+            0xC2 => JP!(self, IF, flg_nz),
             0xC3 => JP!(self, IMMEDIATE),
 
             0x20 => JR!(self, IF, flg_nz),
@@ -429,6 +422,15 @@ impl CPU {
             0xDC => CALL!(self, flg_nz),
 
             0xF5 => PUSH!(self, af),
+            0xF8 => {
+                let dd = self.next_u8() as i8;
+                let value = (self.registers.sp as u32 as i32 + dd as i32);
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 3,
+                    f: flags(false, false, )
+                    ..self.registers
+                }
+            }
             0xC5 => PUSH!(self, bc),
             0xD5 => PUSH!(self, de),
             0xE5 => PUSH!(self, hl),
