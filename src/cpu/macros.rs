@@ -24,6 +24,9 @@ macro_rules! LD {
 
     ($self: ident, LOAD_MEM_OFFSET, $r1: ident) => {{
         let offset = $self.next_u8();
+        if(offset == 0x01) {
+            println!("{}", $self.registers.$r1() as char);
+        }
         $self.set_byte(0xFF00 + offset as u16, $self.registers.$r1());
         $self.registers = RegisterState {
             pc: $self.registers.pc + 2,
@@ -47,6 +50,14 @@ macro_rules! LD16 {
             pc: $self.registers.pc + 3,
             $r1: (value >> 8) as u8,
             $r2: (value & 0x00FF) as u8,
+            ..$self.registers
+        }
+    }};
+
+    ($self: ident, sp, $r1: ident, $r2: ident) => {{
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            sp: (($self.registers.$r1 as u16) << 8) | $self.registers.$r2 as u16,
             ..$self.registers
         }
     }};
@@ -89,6 +100,32 @@ macro_rules! JP {
         log::trace!("[JP] Jump from {} to {}", $self.registers.pc, addr);
         $self.registers = RegisterState {
             pc: addr,
+            ..$self.registers
+        }
+    }};
+
+    ($self: ident, IF, $flag: ident) => {{
+        let n = $self.next_u16();
+        if $self.registers.$flag() {
+            log::trace!("[JP] Jump from {} to {}", $self.registers.pc, n);
+            $self.clock += 1;
+            $self.registers = RegisterState {
+                pc: n,
+                ..$self.registers
+            };
+        } else {
+            log::trace!("[JP] Jump at {} not taken.", $self.registers.pc);
+            $self.registers = RegisterState {
+                pc: $self.registers.pc + 2,
+                ..$self.registers
+            };
+        }
+    }};
+
+    ($self: ident, $r1: ident) => {{
+        log::trace!("[JP] Jump from {} to {}", $self.registers.pc, $self.registers.hl());
+        $self.registers = RegisterState {
+            pc: $self.registers.hl(),
             ..$self.registers
         }
     }};
@@ -193,13 +230,14 @@ macro_rules! OR {
 
 macro_rules! RET {
     ($self: ident, $flag: ident) => {{
-        let ret_addr = $self.pop_u16();
         if $self.registers.$flag() {
+            let ret_addr = $self.pop_u16();
             $self.registers = RegisterState {
                 pc: ret_addr,
                 ..$self.registers
             };
         } else {
+            $self.clock += 1;
             $self.registers = RegisterState {
                 pc: $self.registers.pc + 1,
                 ..$self.registers
@@ -226,7 +264,7 @@ macro_rules! XOR {
 macro_rules! ADC {
     ($self: ident, $getter: expr, $n: literal) => {{
         let value = $getter;
-        let result = $self.registers.a + value + $self.registers.flg_c() as u8;
+        let result = $self.registers.a.wrapping_add(value).wrapping_add($self.registers.flg_c() as u8);
         let h = (($self.registers.a & 0xf) + (value & 0xf)) & 0x10 != 0;
         let c = ($self.registers.a as u16 + value as u16) & 0xFF00 != 0;
         $self.registers = RegisterState {
@@ -239,7 +277,38 @@ macro_rules! ADC {
 }
 
 #[macro_export]
+macro_rules! SBC {
+    ($self: ident, $getter: expr, $n: literal) => {{
+        let value = $getter;
+        let result = $self.registers.a.wrapping_sub(value).wrapping_sub($self.registers.flg_c() as u8);
+        let h = ($self.registers.a & 0x0f) > 0x0f;
+        let c = value > $self.registers.a;
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + $n,
+            a: result,
+            f: flags(result == 0, true, h, c),
+            ..$self.registers
+        }
+    }};
+}
+
+#[macro_export]
 macro_rules! ADD {
+    ($self: ident, hl, $r1: ident, $r2: ident ) => {{
+        let hl = $self.registers.hl();
+        let value = (($self.registers.$r1 as u16) << 8) | ($self.registers.$r2 as u16);
+        let h = (hl & 0xfff) + (value & 0xfff) & 0x1000 == 0x1000;
+        let c = (hl as usize) + (value as usize) & 0x10000 == 0x10000;
+        let n = hl.wrapping_add(value);
+        $self.registers = RegisterState {
+            pc: $self.registers.pc + 1,
+            h: (n >> 8) as u8,
+            l: (n & 0x00FF) as u8,
+            f: flags($self.registers.flg_z(), false, h, c),
+            ..$self.registers
+        }
+    }};
+
     ($self: ident, hl) => {{
         let value = $self.read_byte($self.registers.hl());
         let result = $self.registers.a.wrapping_add(value);
@@ -293,7 +362,7 @@ macro_rules! SUB {
         let c = value > $self.registers.a;
         let value = $self.registers.a.wrapping_sub(value);
         $self.registers = RegisterState {
-            pc: $self.registers.pc + 1,
+            pc: $self.registers.pc + 2,
             a: value,
             f: flags(z, n, h, c),
             ..$self.registers

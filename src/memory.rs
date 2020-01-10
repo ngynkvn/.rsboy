@@ -87,8 +87,8 @@ impl Index<u16> for Memory {
             0xFF4A => &self.gpu.windowy,
             0xFF4B => &self.gpu.windowx,
             // 0xFFFF => &self.gpu.,
-            0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[i as usize]},
-            0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
+            // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[i as usize]},
+            // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => &self.gpu[i - VRAM_START as u16],
             _ => &self.memory[i as usize],
         }
@@ -109,8 +109,8 @@ impl IndexMut<u16> for Memory {
             0xFF47 => &mut self.gpu.bg_palette,
             0xFF4A => &mut self.gpu.windowy,
             0xFF4B => &mut self.gpu.windowx,
-            0xFF01 => {println!("W: ACC SERIAL TRANSFER DATA"); &mut self.memory[i as usize]},
-            0xFF02 => {println!("W: ACC SERIAL TRANSFER DATA FLGS"); &mut self.memory[i as usize]},
+            // 0xFF01 => {println!("W: ACC SERIAL TRANSFER DATA"); &mut self.memory[i as usize]},
+            // 0xFF02 => {println!("W: ACC SERIAL TRANSFER DATA FLGS"); &mut self.memory[i as usize]},
             VRAM_START..=VRAM_END => &mut self.gpu.vram[i as usize - VRAM_START],
             _ => &mut self.memory[i as usize],
         }

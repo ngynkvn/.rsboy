@@ -102,7 +102,7 @@ impl CPU {
         }
         // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
-        if self.clock > 4122983 {
+        if false && self.clock > 4122983 {
             dbg!(&self.registers);
             dbg!(&self.instruction_history);
             // self.debug_print_stack();
@@ -110,14 +110,65 @@ impl CPU {
         }
         match curr_u8 {
             0x00 => self.registers = self.inc_pc(1),
-            // 3.3.1. 8-bit Loads
-            // 1 LD nn, n
-            0x08 => LD16!(self, IMMEDIATE, sp),
+            0x01 => LD16!(self, IMMEDIATE, b, c),
+            0x02 => LD!(self, LOAD_MEM, bc, a),
+            0x03 => INC!(self, NN, b, c),
+            0x04 => INC!(self, b),
+            0x05 => DEC!(self, b),
             0x06 => LD!(self, b, self.next_u8(), 2),
+            0x07 => ROT_THRU_CARRY!(self, LEFT, a),
+            0x08 => LD16!(self, IMMEDIATE, sp),
+            0x09 => unimplemented!(),
+            0x0A => LD!(self, a, self.read_byte(self.registers.bc()), 1),
+            0x0B => DEC!(self, bc, b, c), //TODO fix hack
+            0x0C => INC!(self, c),
+            0x0D => DEC!(self, c),
             0x0E => LD!(self, c, self.next_u8(), 2),
+            0x0F => unimplemented!(),
+
+            0x10 => {}
+            0x11 => LD16!(self, IMMEDIATE, d, e),
+            0x12 => LD!(self, LOAD_MEM, de, a),
+            0x13 => INC!(self, NN, d, e),
+            0x14 => INC!(self, d),
+            0x15 => DEC!(self, d),
             0x16 => LD!(self, d, self.next_u8(), 2),
+            0x17 => ROT_THRU_CARRY!(self, LEFT, a),
+            0x18 => {
+                let n = self.next_u8() as i8;
+                self.registers = RegisterState {
+                    pc: ((self.registers.pc as u32 as i32) + (n as i32) + (2 as i32)) as u16,
+                    ..self.registers
+                }
+            }
+            0x19 => ADD!(self, hl, d, e),
+            0x1A => LD!(self, a, self.read_byte(self.registers.de()), 1),
+            0x1B => unimplemented!(),
+            0x1C => INC!(self, e),
+            0x1D => DEC!(self, e),
             0x1E => LD!(self, e, self.next_u8(), 2),
+            0x1F => ROT_THRU_CARRY!(self, RIGHT, a),
+
+            0x20 => JR!(self, IF, flg_nz),
+            0x21 => LD16!(self, IMMEDIATE, h, l),
+            0x22 => {
+                LD!(self, LOAD_MEM, hl, a);
+                self.registers = self.inc_hl();
+            }
+            0x23 => INC!(self, NN, h, l),
+            0x24 => INC!(self, h),
+            0x25 => DEC!(self, h),
             0x26 => LD!(self, h, self.next_u8(), 2),
+            0x27 => unimplemented!(),
+            0x28 => JR!(self, IF, flg_z),
+            0x29 => ADD!(self, hl, h, l),
+            0x2A => {
+                LD!(self, a, self.read_byte(self.registers.hl()), 1);
+                self.registers = self.inc_hl();
+            }
+            0x2B => unimplemented!(),
+            0x2C => INC!(self, l),
+            0x2D => DEC!(self, l),
             0x2E => LD!(self, l, self.next_u8(), 2),
             0x2F => {
                 self.registers = RegisterState {
@@ -126,100 +177,31 @@ impl CPU {
                     ..self.registers
                 }
             }
-
-            0x17 => ROT_THRU_CARRY!(self, LEFT, a),
-            //JR n
-            0x18 => {
-                let n = self.next_u8() as i8;
-                self.registers = RegisterState {
-                    pc: ((self.registers.pc as u32 as i32) + (n as i32) + (2 as i32)) as u16,
-                    ..self.registers
-                }
+            0x30 => JR!(self, IF, flg_nc),
+            0x31 => LD16!(self, IMMEDIATE, sp),
+            0x32 => {
+                LD!(self, LOAD_MEM, hl, a);
+                self.registers = self.dec_hl();
             }
-            0xD1 => POP!(self, d, e),
-            0xC1 => POP!(self, b, c),
-            0xE1 => POP!(self, h, l),
-            0xF1 => POP!(self, a, f),
-
-            0xA7 => AND!(self, self.registers.a, 1),
-            0xA0 => AND!(self, self.registers.b, 1),
-            0xA1 => AND!(self, self.registers.c, 1),
-            0xA2 => AND!(self, self.registers.d, 1),
-            0xA3 => AND!(self, self.registers.e, 1),
-            0xA4 => AND!(self, self.registers.h, 1),
-            0xA5 => AND!(self, self.registers.l, 1),
-            0xA6 => AND!(self, self.read_byte(self.registers.hl()), 1),
-            0xE6 => AND!(self, self.next_u8(), 2),
-            // Playing around with some alternate syntax
-            //
-            0xB7 => OR!(self, self.registers.a, 1),
-            0xB0 => OR!(self, self.registers.b, 1),
-            0xB1 => OR!(self, self.registers.c, 1),
-            0xB2 => OR!(self, self.registers.d, 1),
-            0xB3 => OR!(self, self.registers.e, 1),
-            0xB4 => OR!(self, self.registers.h, 1),
-            0xB5 => OR!(self, self.registers.l, 1),
-            0xB6 => OR!(self, self.read_byte(self.registers.hl()), 1),
-            0xF6 => OR!(self, self.next_u8(), 2),
-
-            0xAF => XOR!(self, self.registers.a, 1),
-            0xA8 => XOR!(self, self.registers.b, 1),
-            0xA9 => XOR!(self, self.registers.c, 1),
-            0xAA => XOR!(self, self.registers.d, 1),
-            0xAB => XOR!(self, self.registers.e, 1),
-            0xAC => XOR!(self, self.registers.h, 1),
-            0xAD => XOR!(self, self.registers.l, 1),
-            0xAE => XOR!(self, self.read_byte(self.registers.hl()), 1),
-            0xEE => XOR!(self, self.next_u8(), 2),
-            0x8F => ADC!(self, self.registers.a, 1),
-            0x88 => ADC!(self, self.registers.b, 1),
-            0x89 => ADC!(self, self.registers.c, 1),
-            0x8A => ADC!(self, self.registers.d, 1),
-            0x8B => ADC!(self, self.registers.e, 1),
-            0x8C => ADC!(self, self.registers.h, 1),
-            0x8D => ADC!(self, self.registers.l, 1),
-            0x8E => ADC!(self, self.read_byte(self.registers.hl()), 1),
-            0xCE => ADC!(self, self.next_u8(), 2),
-            0x07 => ROT_THRU_CARRY!(self, LEFT, a),
-            0x1F => ROT_THRU_CARRY!(self, RIGHT, a),
-
-            0xF3 => {
-                println!("WARNING: NOT IMPLEMENTED: 0xF3 DISABLE INTERRUPTS");
-                self.registers = self.inc_pc(1);
-            }
-            0xFB => {
-                println!("WARNING: NOT IMPLEMENTED: 0xFB ENABLE INTERRUPTS");
-                self.registers = self.inc_pc(1);
-            }
-
-            0xBF => CP!(self, self.registers.a, 1),
-            0xB8 => CP!(self, self.registers.b, 1),
-            0xB9 => CP!(self, self.registers.c, 1),
-            0xBA => CP!(self, self.registers.d, 1),
-            0xBB => CP!(self, self.registers.e, 1),
-            0xBC => CP!(self, self.registers.h, 1),
-            0xBD => CP!(self, self.registers.l, 1),
-            0xBE => CP!(self, self.read_byte(self.registers.hl()), 1),
-            0xFE => CP!(self, self.next_u8(), 2),
-
-            0xF0 => {
-                let offset = self.next_u8();
-                self.registers = RegisterState {
-                    a: self.read_io(offset),
-                    pc: self.registers.pc + 2,
-                    ..self.registers
-                }
-            }
-
+            0x33 => INC!(self, NN, sp),
+            0x34 => INC!(self, hl),
+            0x35 => DEC!(self, hl),
             //2 LD r1, r2
-            0x7F => LD!(self, a, self.registers.a, 1),
-            0x78 => LD!(self, a, self.registers.b, 1),
-            0x79 => LD!(self, a, self.registers.c, 1),
-            0x7A => LD!(self, a, self.registers.d, 1),
-            0x7B => LD!(self, a, self.registers.e, 1),
-            0x7C => LD!(self, a, self.registers.h, 1),
-            0x7D => LD!(self, a, self.registers.l, 1),
-            0x7E => LD!(self, a, self.read_byte(self.registers.hl()), 1),
+            0x36 => {
+                let value = self.next_u8();
+                self.set_byte(self.registers.hl(), value);
+                self.registers = self.inc_pc(2);
+            }
+            0x37 => unimplemented!(),
+            0x38 => JR!(self, IF, flg_c),
+            0x39 => unimplemented!(),
+            0x3A => unimplemented!(),
+            0x3B => unimplemented!(),
+            0x3C => INC!(self, a),
+            0x3D => DEC!(self, a),
+            0x3E => LD!(self, a, self.next_u8(), 2),
+            0x3F => unimplemented!(),
+
             0x40 => LD!(self, b, self.registers.b, 1),
             0x41 => LD!(self, b, self.registers.c, 1),
             0x42 => LD!(self, b, self.registers.d, 1),
@@ -227,6 +209,7 @@ impl CPU {
             0x44 => LD!(self, b, self.registers.h, 1),
             0x45 => LD!(self, b, self.registers.l, 1),
             0x46 => LD!(self, b, self.read_byte(self.registers.hl()), 1),
+            0x47 => LD!(self, b, self.registers.a, 1),
             0x48 => LD!(self, c, self.registers.b, 1),
             0x49 => LD!(self, c, self.registers.c, 1),
             0x4A => LD!(self, c, self.registers.d, 1),
@@ -234,6 +217,8 @@ impl CPU {
             0x4C => LD!(self, c, self.registers.h, 1),
             0x4D => LD!(self, c, self.registers.l, 1),
             0x4E => LD!(self, c, self.read_byte(self.registers.hl()), 1),
+            0x4F => LD!(self, c, self.registers.a, 1),
+
             0x50 => LD!(self, d, self.registers.b, 1),
             0x51 => LD!(self, d, self.registers.c, 1),
             0x52 => LD!(self, d, self.registers.d, 1),
@@ -241,6 +226,7 @@ impl CPU {
             0x54 => LD!(self, d, self.registers.h, 1),
             0x55 => LD!(self, d, self.registers.l, 1),
             0x56 => LD!(self, d, self.read_byte(self.registers.hl()), 1),
+            0x57 => LD!(self, d, self.registers.a, 1),
             0x58 => LD!(self, e, self.registers.b, 1),
             0x59 => LD!(self, e, self.registers.c, 1),
             0x5A => LD!(self, e, self.registers.d, 1),
@@ -248,6 +234,8 @@ impl CPU {
             0x5C => LD!(self, e, self.registers.h, 1),
             0x5D => LD!(self, e, self.registers.l, 1),
             0x5E => LD!(self, e, self.read_byte(self.registers.hl()), 1),
+            0x5F => LD!(self, e, self.registers.a, 1),
+
             0x60 => LD!(self, h, self.registers.b, 1),
             0x61 => LD!(self, h, self.registers.c, 1),
             0x62 => LD!(self, h, self.registers.d, 1),
@@ -255,6 +243,7 @@ impl CPU {
             0x64 => LD!(self, h, self.registers.h, 1),
             0x65 => LD!(self, h, self.registers.l, 1),
             0x66 => LD!(self, h, self.read_byte(self.registers.hl()), 1),
+            0x67 => LD!(self, h, self.registers.a, 1),
             0x68 => LD!(self, l, self.registers.b, 1),
             0x69 => LD!(self, l, self.registers.c, 1),
             0x6A => LD!(self, l, self.registers.d, 1),
@@ -262,28 +251,24 @@ impl CPU {
             0x6C => LD!(self, l, self.registers.h, 1),
             0x6D => LD!(self, l, self.registers.l, 1),
             0x6E => LD!(self, l, self.read_byte(self.registers.hl()), 1),
+            0x6F => LD!(self, l, self.registers.a, 1),
             0x70 => LD!(self, LOAD_MEM, hl, b),
             0x71 => LD!(self, LOAD_MEM, hl, c),
             0x72 => LD!(self, LOAD_MEM, hl, d),
             0x73 => LD!(self, LOAD_MEM, hl, e),
             0x74 => LD!(self, LOAD_MEM, hl, h),
             0x75 => LD!(self, LOAD_MEM, hl, l),
-            0x36 => {
-                let value = self.next_u8();
-                self.set_byte(self.registers.hl(), value);
-                self.registers = self.inc_pc(2);
-            }
-            0x97 => SUB!(self, a),
-            0x90 => SUB!(self, b),
-            0x91 => SUB!(self, c),
-            0x92 => SUB!(self, d),
-            0x93 => SUB!(self, e),
-            0x94 => SUB!(self, h),
-            0x95 => SUB!(self, l),
-            // 0x96 => SUB!(self, (HL)),
-            0xD6 => SUB!(self, IMMEDIATE),
+            0x76 => unimplemented!(),
+            0x77 => LD!(self, LOAD_MEM, hl, a),
+            0x78 => LD!(self, a, self.registers.b, 1),
+            0x79 => LD!(self, a, self.registers.c, 1),
+            0x7A => LD!(self, a, self.registers.d, 1),
+            0x7B => LD!(self, a, self.registers.e, 1),
+            0x7C => LD!(self, a, self.registers.h, 1),
+            0x7D => LD!(self, a, self.registers.l, 1),
+            0x7E => LD!(self, a, self.read_byte(self.registers.hl()), 1),
+            0x7F => LD!(self, a, self.registers.a, 1),
 
-            0x87 => ADD!(self, a),
             0x80 => ADD!(self, b),
             0x81 => ADD!(self, c),
             0x82 => ADD!(self, d),
@@ -291,93 +276,68 @@ impl CPU {
             0x84 => ADD!(self, h),
             0x85 => ADD!(self, l),
             0x86 => ADD!(self, hl),
+            0x87 => ADD!(self, a),
+            0x88 => ADC!(self, self.registers.b, 1),
+            0x89 => ADC!(self, self.registers.c, 1),
+            0x8A => ADC!(self, self.registers.d, 1),
+            0x8B => ADC!(self, self.registers.e, 1),
+            0x8C => ADC!(self, self.registers.h, 1),
+            0x8D => ADC!(self, self.registers.l, 1),
+            0x8E => ADC!(self, self.read_byte(self.registers.hl()), 1),
+            0x8F => ADC!(self, self.registers.a, 1),
+
+            0x90 => SUB!(self, b),
+            0x91 => SUB!(self, c),
+            0x92 => SUB!(self, d),
+            0x93 => SUB!(self, e),
+            0x94 => SUB!(self, h),
+            0x95 => SUB!(self, l),
+            // 0x96 => SUB!(self, (HL)),
+            0x97 => SUB!(self, a),
+            0x98 => unimplemented!(),
+            0x9A => unimplemented!(),
+            0x9C => unimplemented!(),
+            0x9E => unimplemented!(),
+            0xA0 => AND!(self, self.registers.b, 1),
+            0xA1 => AND!(self, self.registers.c, 1),
+            0xA2 => AND!(self, self.registers.d, 1),
+            0xA3 => AND!(self, self.registers.e, 1),
+            0xA4 => AND!(self, self.registers.h, 1),
+            0xA5 => AND!(self, self.registers.l, 1),
+            0xA6 => AND!(self, self.read_byte(self.registers.hl()), 1),
+            0xA7 => AND!(self, self.registers.a, 1),
+            0xA8 => XOR!(self, self.registers.b, 1),
+            0xA9 => XOR!(self, self.registers.c, 1),
+            0xAA => XOR!(self, self.registers.d, 1),
+            0xAB => XOR!(self, self.registers.e, 1),
+            0xAC => XOR!(self, self.registers.h, 1),
+            0xAD => XOR!(self, self.registers.l, 1),
+            0xAE => XOR!(self, self.read_byte(self.registers.hl()), 1),
+            0xAF => XOR!(self, self.registers.a, 1),
+            0xB0 => OR!(self, self.registers.b, 1),
+            0xB1 => OR!(self, self.registers.c, 1),
+            0xB2 => OR!(self, self.registers.d, 1),
+            0xB3 => OR!(self, self.registers.e, 1),
+            0xB4 => OR!(self, self.registers.h, 1),
+            0xB5 => OR!(self, self.registers.l, 1),
+            0xB6 => OR!(self, self.read_byte(self.registers.hl()), 1),
+            0xB7 => OR!(self, self.registers.a, 1),
+            0xB8 => CP!(self, self.registers.b, 1),
+            0xB9 => CP!(self, self.registers.c, 1),
+            0xBA => CP!(self, self.registers.d, 1),
+            0xBB => CP!(self, self.registers.e, 1),
+            0xBC => CP!(self, self.registers.h, 1),
+            0xBD => CP!(self, self.registers.l, 1),
+            0xBE => CP!(self, self.read_byte(self.registers.hl()), 1),
+            0xBF => CP!(self, self.registers.a, 1),
+            0xC0 => RET!(self, flg_nz),
+            0xC1 => POP!(self, b, c),
+            0xC2 => JP!(self, IF, flg_nz),
+            0xC3 => JP!(self, IMMEDIATE),
+            0xC4 => CALL!(self, flg_nz),
+            0xC5 => PUSH!(self, bc),
             0xC6 => ADD!(self, IMMEDIATE),
-
-            0x29 => ADD!(self, hl, h, l),
-            0x19 => ADD!(self, hl, d, e),
-
-            //3. LD A,n
-            0x0A => LD!(self, a, self.read_byte(self.registers.bc()), 1),
-            0x1A => LD!(self, a, self.read_byte(self.registers.de()), 1),
-            0xFA => {
-                let addr = self.next_u16();
-                let value = self.read_byte(addr);
-                self.registers = RegisterState {
-                    pc: self.registers.pc + 3,
-                    a: value,
-                    ..self.registers
-                }
-            }
-            0x3E => LD!(self, a, self.next_u8(), 2),
-
-            0x47 => LD!(self, b, self.registers.a, 1),
-            0x4F => LD!(self, c, self.registers.a, 1),
-            0x57 => LD!(self, d, self.registers.a, 1),
-            0x5F => LD!(self, e, self.registers.a, 1),
-            0x67 => LD!(self, h, self.registers.a, 1),
-            0x6F => LD!(self, l, self.registers.a, 1),
-            0x02 => LD!(self, LOAD_MEM, bc, a),
-            0x12 => LD!(self, LOAD_MEM, de, a),
-            0x77 => LD!(self, LOAD_MEM, hl, a),
-            0xEA => {
-                let addr = self.next_u16();
-                self.set_byte(addr, self.registers.a);
-                self.registers = RegisterState {
-                    pc: self.registers.pc + 3,
-                    ..self.registers
-                }
-            }
-            0xE0 => LD!(self, LOAD_MEM_OFFSET, a),
-
-            // 5
-            0xF2 => {
-                self.registers = RegisterState {
-                    pc: self.registers.pc + 1,
-                    a: self.read_byte(0xFF00 + self.registers.c() as u16),
-                    ..self.registers
-                }
-            }
-            // 6
-            0xE2 => {
-                self.set_byte(0xFF00 + self.registers.c() as u16, self.registers.a());
-                self.registers = self.inc_pc(1);
-            }
-
-            // 9.
-            0x3A => {
-                LD!(self, a, self.read_byte(self.registers.hl()), 1);
-                self.registers = self.dec_hl();
-            }
-
-            // 12. LDD (HL), A
-            0x32 => {
-                LD!(self, LOAD_MEM, hl, a);
-                self.registers = self.dec_hl();
-            }
-
-            // 14.
-            0x2A => {
-                LD!(self, a, self.read_byte(self.registers.hl()), 1);
-                self.registers = self.inc_hl();
-            }
-
-            // 18.
-            0x22 => {
-                LD!(self, LOAD_MEM, hl, a);
-                self.registers = self.inc_hl();
-            }
-
-            0x03 => INC!(self, NN, b, c),
-            0x13 => INC!(self, NN, d, e),
-            0x23 => INC!(self, NN, h, l),
-            0x33 => INC!(self, NN, sp),
-
-            0x01 => LD16!(self, IMMEDIATE, b, c),
-            0x11 => LD16!(self, IMMEDIATE, d, e),
-            0x21 => LD16!(self, IMMEDIATE, h, l),
-            0x31 => LD16!(self, IMMEDIATE, sp),
-
-            0xF9 => LD16!(self, sp, h, l),
+            0xC8 => RET!(self, flg_z),
             0xC9 => {
                 let addr = self.pop_u16();
                 self.registers = RegisterState {
@@ -387,55 +347,62 @@ impl CPU {
                 // println!("I RETURNED HERE {}",self.registers);
             }
             0xE9 => JP!(self, hl),
-            0xC2 => JP!(self, IF, flg_nz),
-            0xC3 => JP!(self, IMMEDIATE),
-
-            0x20 => JR!(self, IF, flg_nz),
-            0x28 => JR!(self, IF, flg_z),
-            0x30 => JR!(self, IF, flg_nc),
-            0x38 => JR!(self, IF, flg_c),
-
-            0x3C => INC!(self, a),
-            0x04 => INC!(self, b),
-            0x0C => INC!(self, c),
-            0x14 => INC!(self, d),
-            0x1C => INC!(self, e),
-            0x24 => INC!(self, h),
-            0x2C => INC!(self, l),
-            0x34 => INC!(self, hl),
-
-            0x3D => DEC!(self, a),
-            0x05 => DEC!(self, b),
-            0x0D => DEC!(self, c),
-            0x0B => DEC!(self, bc, b, c), //TODO fix hack
-            0x15 => DEC!(self, d),
-            0x1D => DEC!(self, e),
-            0x25 => DEC!(self, h),
-            0x2D => DEC!(self, l),
-            0x35 => DEC!(self, hl),
-
-            //CALL
-            0xCD => CALL!(self),
-            0xC4 => CALL!(self, flg_nz),
+            0xCA => unimplemented!(),
             0xCC => CALL!(self, flg_nz),
+            0xCD => CALL!(self),
+            0xCE => ADC!(self, self.next_u8(), 2),
+            0xD0 => RET!(self, flg_c),
+            0xD1 => POP!(self, d, e),
+            0xD2 => unimplemented!(),
             0xD4 => CALL!(self, flg_nz),
-            0xDC => CALL!(self, flg_nz),
-
-            0xF5 => PUSH!(self, af),
-            0xF8 => {
-                let dd = self.next_u8() as i8;
-                let value = (self.registers.sp as u32 as i32 + dd as i32);
+            0xD5 => PUSH!(self, de),
+            0xD6 => SUB!(self, IMMEDIATE),
+            0xD8 => RET!(self, flg_nc),
+            0xD9 => unimplemented!(),
+            0xDB => unimplemented!(),
+            0xDD => unimplemented!(),
+            0xE0 => LD!(self, LOAD_MEM_OFFSET, a),
+            0xE1 => POP!(self, h, l),
+            0xE2 => {
+                self.set_byte(0xFF00 + self.registers.c() as u16, self.registers.a());
+                self.registers = self.inc_pc(1);
+            }
+            0xE3 => unimplemented!(),
+            0xE5 => PUSH!(self, hl),
+            0xE6 => AND!(self, self.next_u8(), 2),
+            0xE8 => unimplemented!(),
+            0xEA => {
+                let addr = self.next_u16();
+                self.set_byte(addr, self.registers.a);
                 self.registers = RegisterState {
                     pc: self.registers.pc + 3,
-                    f: flags(false, false, )
                     ..self.registers
                 }
             }
-            0xC5 => PUSH!(self, bc),
-            0xD5 => PUSH!(self, de),
-            0xE5 => PUSH!(self, hl),
-
-            //RST
+            0xEB => unimplemented!(),
+            0xED => unimplemented!(),
+            0xF0 => {
+                let offset = self.next_u8();
+                self.registers = RegisterState {
+                    a: self.read_io(offset),
+                    pc: self.registers.pc + 2,
+                    ..self.registers
+                }
+            }
+            0xF1 => POP!(self, a, f),
+            0xF2 => {
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 1,
+                    a: self.read_byte(0xFF00 + self.registers.c() as u16),
+                    ..self.registers
+                }
+            }
+            0xF3 => {
+                println!("WARNING: NOT IMPLEMENTED: 0xF3 DISABLE INTERRUPTS");
+                self.registers = self.inc_pc(1);
+            }
+            0xF4 => unimplemented!(),
+            0xF6 => OR!(self, self.next_u8(), 2),
             0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
                 if curr_u8 == 0xFF {
                     eprintln!("ERROR! RST 38");
@@ -452,12 +419,31 @@ impl CPU {
                     ..self.registers
                 }
             }
-
-            0xC0 => RET!(self, flg_nz),
-            0xC8 => RET!(self, flg_z),
-            0xD0 => RET!(self, flg_c),
-            0xD8 => RET!(self, flg_nc),
-
+            // 0xF8 => {
+            //     let dd = self.next_u8() as i8;
+            //     let value = (self.registers.sp as u32 as i32 + dd as i32);
+            //     self.registers = RegisterState {
+            //         pc: self.registers.pc + 3,
+            //         f: flags(false, false),
+            //         ..self.registers,
+            //     }
+            // }
+            0xF9 => LD16!(self, sp, h, l),
+            0xFA => {
+                let addr = self.next_u16();
+                let value = self.read_byte(addr);
+                self.registers = RegisterState {
+                    pc: self.registers.pc + 3,
+                    a: value,
+                    ..self.registers
+                }
+            }
+            0xFB => {
+                println!("WARNING: NOT IMPLEMENTED: 0xFB ENABLE INTERRUPTS");
+                self.registers = self.inc_pc(1);
+            }
+            0xFC => unimplemented!(),
+            0xFE => CP!(self, self.next_u8(), 2),
             0xCB => {
                 match self.next_u8() {
                     0x37 => SWAP!(self, a),
@@ -563,10 +549,8 @@ impl CPU {
             }
             _ => {
                 return Err(format!(
-                    "Unknown Instruction: {:02X}\n{:?}\nLast few instructions: {:#?}",
-                    self.curr_u8(),
-                    INSTRUCTION_TABLE[self.curr_u8() as usize],
-                    self.instruction_history
+                    "Last few instructions: {:#?}\nUnknown Instruction: {:02X}\n{:?}",
+                    self.instruction_history, curr_u8, INSTRUCTION_TABLE[curr_u8 as usize],
                 ))
             }
         };
@@ -604,7 +588,11 @@ impl CPU {
             ..self.registers
         };
         self.clock += 1;
-        log::info!("[STACK_PUSH] Pushed {} at PC: {:02X}", value, self.registers.pc);
+        log::info!(
+            "[STACK_PUSH] Pushed {} at PC: {:02X}",
+            value,
+            self.registers.pc
+        );
     }
 
     fn pop_u16(&mut self) -> u16 {
