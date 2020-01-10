@@ -25,7 +25,7 @@ macro_rules! LD {
     ($self: ident, LOAD_MEM_OFFSET, $r1: ident) => {{
         let offset = $self.next_u8();
         if(offset == 0x01) {
-            println!("{}", $self.registers.$r1() as char);
+            print!("{}", $self.registers.$r1() as char);
         }
         $self.set_byte(0xFF00 + offset as u16, $self.registers.$r1());
         $self.registers = RegisterState {

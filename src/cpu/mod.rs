@@ -102,7 +102,7 @@ impl CPU {
         }
         // log::trace!("[REGISTERS]\n{}", self.registers);
         // println!("OP: {:?}\nPC: {:02X}\nHL: {:04X}", INSTRUCTION_TABLE[curr_u8 as usize], self.registers.pc, self.registers.hl());
-        if false && self.clock > 4122983 {
+        if true && self.clock > 8122983 {
             dbg!(&self.registers);
             dbg!(&self.instruction_history);
             // self.debug_print_stack();
@@ -361,6 +361,8 @@ impl CPU {
             0xD9 => unimplemented!(),
             0xDB => unimplemented!(),
             0xDD => unimplemented!(),
+            0xDE => SBC!(self, self.next_u8(), 2),
+
             0xE0 => LD!(self, LOAD_MEM_OFFSET, a),
             0xE1 => POP!(self, h, l),
             0xE2 => {
@@ -381,6 +383,7 @@ impl CPU {
             }
             0xEB => unimplemented!(),
             0xED => unimplemented!(),
+            0xEE => XOR!(self, self.next_u8(), 2),
             0xF0 => {
                 let offset = self.next_u8();
                 self.registers = RegisterState {
@@ -401,33 +404,20 @@ impl CPU {
                 println!("WARNING: NOT IMPLEMENTED: 0xF3 DISABLE INTERRUPTS");
                 self.registers = self.inc_pc(1);
             }
+            0xF5 => PUSH!(self, af),
             0xF4 => unimplemented!(),
             0xF6 => OR!(self, self.next_u8(), 2),
-            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
-                if curr_u8 == 0xFF {
-                    eprintln!("ERROR! RST 38");
-                    eprintln!(" PC  OP INSTR");
-                    eprintln!("-------------");
-                    for (pc, i) in self.instruction_history.iter() {
-                        eprintln!("{:04X} {:02X} {}", pc, self.memory[(*pc) as u16], i);
-                    }
-                    return Err(String::from(""));
-                }
-                self.push_stack(self.registers.pc);
+            0xF8 => {
+                let dd = self.next_u8() as i8;
+                let value = self.registers.sp as u32 as i32 + dd as i32;
+                let h = ((self.registers.sp as i32 & 0xf) + (dd as i32 & 0xf)) & 0x10 != 0;
+                let c = (self.registers.sp as i32 + dd as i32) & 0xFF00 != 0;
                 self.registers = RegisterState {
-                    pc: (self.curr_u8() - 0xC7) as u16,
+                    pc: self.registers.pc + 3,
+                    f: flags(false, false, h, c),
                     ..self.registers
                 }
             }
-            // 0xF8 => {
-            //     let dd = self.next_u8() as i8;
-            //     let value = (self.registers.sp as u32 as i32 + dd as i32);
-            //     self.registers = RegisterState {
-            //         pc: self.registers.pc + 3,
-            //         f: flags(false, false),
-            //         ..self.registers,
-            //     }
-            // }
             0xF9 => LD16!(self, sp, h, l),
             0xFA => {
                 let addr = self.next_u16();
@@ -444,6 +434,22 @@ impl CPU {
             }
             0xFC => unimplemented!(),
             0xFE => CP!(self, self.next_u8(), 2),
+            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
+                if curr_u8 == 0xFF {
+                    eprintln!("ERROR! RST 38");
+                    eprintln!(" PC  OP INSTR");
+                    eprintln!("-------------");
+                    for (pc, i) in self.instruction_history.iter() {
+                        eprintln!("{:04X} {:02X} {}", pc, self.memory[(*pc) as u16], i);
+                    }
+                    return Err(String::from(""));
+                }
+                self.push_stack(self.registers.pc);
+                self.registers = RegisterState {
+                    pc: (self.curr_u8() - 0xC7) as u16,
+                    ..self.registers
+                }
+            }
             0xCB => {
                 match self.next_u8() {
                     0x37 => SWAP!(self, a),
