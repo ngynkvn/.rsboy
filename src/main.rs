@@ -18,6 +18,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
+mod disassembly;
 mod cpu;
 mod gpu;
 mod instructions;
@@ -39,8 +40,19 @@ const ZERO: Duration = Duration::from_secs(0);
 // #[cfg(not(sdl))]
 fn main () {
     println!("Just cpu");
-    just_cpu();
-//    sdl_main().unwrap();
+    // just_cpu();
+    //    sdl_main().unwrap();
+    decompiler();
+}
+
+fn decompiler() -> std::io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+
+    let mut file = File::open(args[1].to_string())?;
+    let mut rom = Vec::new();
+    file.read_to_end(&mut rom)?;
+    disassembly::print_all(&rom);
+    Ok(())
 }
 
 fn init_cpu() -> Result<CPU, std::io::Error> {
