@@ -1,16 +1,25 @@
-use crate::cpu::CPU2;
+use crate::cpu::CPU;
+use crate::cpu::Controller;
 use crate::gpu::GPU;
 use crate::memory::Memory;
 
 // Global emu struct.
 pub struct Emu {
-    pub cpu: CPU2,
+    pub cpu: CPU,
     pub gpu: GPU,
     pub memory: Memory,
 }
 
 impl Emu {
-    fn cycle() {
+    pub fn cycle(&mut self) {
+        let cycles = self.cpu.cycle(&mut self.memory);
+    }
 
+    pub fn new (rom: Vec<u8>) -> Emu {
+        Emu {
+            cpu: CPU::new(),
+            gpu: GPU::new(),
+            memory: Memory::new(rom)
+        }
     }
 }

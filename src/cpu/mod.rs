@@ -6,8 +6,8 @@ use std::convert::TryInto;
 
 const HISTORY_SIZE: usize = 10;
 
-trait Controller {
-    fn cycle(&mut self, emu: Emu) -> usize;
+pub trait Controller {
+    fn cycle(&mut self, memory: &mut Memory) -> usize;
 }
 
 pub struct CPU {
@@ -16,38 +16,40 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new(rom: Vec<u8>) -> Self {
+    pub fn new() -> Self {
         Self {
             registers: RegisterState::new(),
             clock: 0,
         }
     }
-    fn curr_u8(&mut self, memory: Memory) -> u8 {
+    fn curr_u8(&mut self, memory: &Memory) -> u8 {
         self.clock += 1;
         memory[self.registers.pc]
     }
-    fn next_u8(&mut self, memory: Memory) -> u8 {
+    fn next_u8(&mut self, memory: &Memory) -> u8 {
         self.clock += 1;
-        memory[(self.registers.pc + 1)]
+        self.registers.pc += 1;
+        memory[(self.registers.pc)]
     }
-    fn next_u16(&mut self, memory: Memory) -> u16 {
+    fn next_u16(&mut self, memory: &Memory) -> u16 {
         // Little endianess means LSB comes first.
         self.clock += 1;
-        (memory[self.registers.pc + 2] as u16) << 8 | memory[self.registers.pc + 1] as u16
+        self.registers.pc += 2;
+        (memory[self.registers.pc] as u16) << 8 | memory[self.registers.pc - 1] as u16
     }
-    fn read_byte(&mut self, address: u16, memory: Memory) -> u8 {
+    fn read_byte(&mut self, address: u16, memory: &Memory) -> u8 {
         self.clock += 1;
         memory[address]
     }
-    fn read_io(&mut self, offset: u8, memory: Memory) -> u8 {
+    fn read_io(&mut self, offset: u8, memory: &Memory) -> u8 {
         self.read_byte(0xFF00 + offset as u16, memory)
     }
-    fn set_byte(&mut self, address: u16, value: u8, memory: Memory) {
+    fn set_byte(&mut self, address: u16, value: u8, memory:&mut Memory) {
         self.clock += 1;
         memory[address] = value;
     }
 
-    fn read_location(&mut self, location: &Location, memory: Memory) -> u16 {
+    fn read_location(&mut self, location: &Location, memory: &mut Memory) -> u16 {
         match location {
             Location::Immediate(1) => self.next_u8(memory).into(),
             Location::Immediate(2) => self.next_u16(memory),
@@ -70,49 +72,53 @@ impl CPU {
         }
     }
 
-    fn load(&mut self, into: &Location, from: &Location, memory: Memory) {
+    fn load(&mut self, into: &Location, from: &Location, memory: &mut Memory) -> Result<(), String> {
         let from_value = self.read_location(from, memory);
         match into {
-            Location::Immediate(_) => panic!("Tried to write into ROM?"),
+            Location::Immediate(_) => return Err(String::from("Tried to write into ROM?")),
             Location::Register(r) => {
-                self.registers = self.registers.put(from_value, r);
+                self.registers = self.registers.put(from_value, r)?;
             },
             Location::Memory(r) => {
                 match self.registers.get_dual_reg(r) {
                     Some(address) => self.set_byte(address, from_value.try_into().unwrap(), memory),
-                    None => panic!("I tried to access a u8 as a memory address.")
+                    None => return Err(String::from("I tried to access a u8 as a memory address."))
                 }
             },
             Location::MemOffsetImm => {
                 let next = self.next_u8(memory);
-                self.set_byte((0xFF00 + next).into(), from_value
+                self.set_byte(0xFF00 + next as u16, from_value
                                                         .try_into()
                                                         .unwrap(), 
                                                         memory);
             }
             Location::MemOffsetRegister(r) => {
                 let offset = self.registers.fetch_u8(r);
-                self.set_byte((0xFF00 + offset).into(), from_value.try_into().unwrap(), memory);
+                self.set_byte(0xFF00 + offset as u16, from_value.try_into().unwrap(), memory);
             }
         };
+        Ok(())
     }
 
-    fn read_instruction(&mut self, emu: Emu) -> Result<(), String> {
-        let curr_byte = self.curr_u8(emu.memory);
-        println!("{}", curr_byte);
-        match &INSTR_TABLE[curr_byte as usize] {
-            Instr::LD(into, from) => self.load(into, from, emu.memory),
-            Instr::NOOP => {}
+    fn read_instruction(&mut self, memory: &mut Memory) -> Result<(), String> {
+        let curr_byte = self.curr_u8(memory);
+        println!("0x{:04X}: 0x{:02X}", self.registers.pc,curr_byte);
+        let instruction = &INSTR_TABLE[curr_byte as usize];
+        match instruction {
+            Instr::LD(into, from) => self.load(into, from, memory).or_else(|e| Err(format!("0x{:04X}: 0x{:02X} {:?}, {:?}", 
+                                                                                   self.registers.pc, curr_byte, instruction, e))),
+            Instr::NOOP => {Ok(())}
             Instr::UNIMPLEMENTED => panic!("Unimplemented"),
-            x => panic!(format!("Not done {:?}", x)),
+            x => panic!(format!("0x{:04X}: 0x{:02X} {:?}", self.registers.pc, curr_byte, x)),
         }
-        Ok(())
     }
 }
 
 impl Controller for CPU {
-    fn cycle(&mut self, emu: Emu) -> usize {
-        self.read_instruction(emu);
+    fn cycle(&mut self, memory: &mut Memory) -> usize {
+        if let Err(e) = self.read_instruction(memory) {
+            panic!(e);
+        }
         0
     }
 }

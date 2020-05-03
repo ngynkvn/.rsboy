@@ -49,13 +49,17 @@ impl RegisterState {
         }
     }
 
-    pub fn put(self, value: u16, reg: &Register) -> Self {
+    pub fn put(&self, value: u16, reg: &Register) -> Result<Self, String> {
         match reg {
-            A => Self {
+            A => Ok(Self {
                 a: value.try_into().unwrap(),
-                ..self
-            },
-            _ => panic!(),
+                ..(*self)
+            }),
+            SP => Ok(Self {
+                sp: value,
+                ..(*self)
+            }),
+            _ => Err(value.to_string()),
         }
     }
 
