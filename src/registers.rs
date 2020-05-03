@@ -1,6 +1,7 @@
-use std::fmt;
 use crate::instructions::Register;
 use crate::instructions::Register::*;
+use std::convert::TryInto;
+use std::fmt;
 
 #[derive(Default, Debug)]
 pub struct RegisterState {
@@ -15,11 +16,6 @@ pub struct RegisterState {
     pub sp: u16,
     pub pc: u16,
 }
-
-pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
-    ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
-}
-
 
 /**
  * u16_reg(n, a, b) will create a u16 "register" named `n` defined as a | b
@@ -53,6 +49,52 @@ impl RegisterState {
         }
     }
 
+    pub fn put(self, value: u16, reg: &Register) -> Self {
+        match reg {
+            A => Self {
+                a: value.try_into().unwrap(),
+                ..self
+            },
+            _ => panic!(),
+        }
+    }
+
+    pub fn fetch_u8(&self, reg: &Register) -> u8 {
+        match reg {
+            A => self.a,
+            B => self.b,
+            C => self.c,
+            D => self.d,
+            E => self.e,
+            F => self.f,
+            _ => panic!(),
+        }
+    }
+
+    pub fn fetch_u16(&self, reg: &Register) -> u16 {
+        match reg {
+            SP => self.sp(),
+            PC => self.pc(),
+            BC => self.bc(),
+            DE => self.de(),
+            HL => self.hl(),
+            AF => self.af(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_dual_reg(&self, reg: &Register) -> Option<u16> {
+        match reg {
+            SP => Some(self.sp()),
+            PC => Some(self.pc()),
+            BC => Some(self.bc()),
+            DE => Some(self.de()),
+            HL => Some(self.hl()),
+            AF => Some(self.af()),
+            _ => None,
+        }
+    }
+
     pub fn fetch(&self, reg: &Register) -> u16 {
         match reg {
             A => self.a.into(),
@@ -67,7 +109,7 @@ impl RegisterState {
             AF => self.af(),
             SP => self.sp,
             PC => self.pc,
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -112,6 +154,10 @@ impl RegisterState {
     u16_reg!(bc, b, c);
     u16_reg!(de, d, e);
     u16_reg!(hl, h, l);
+}
+
+pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
+    ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
 }
 
 impl fmt::Display for RegisterState {

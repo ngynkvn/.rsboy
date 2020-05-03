@@ -18,6 +18,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
+mod emu;
 mod disassembly;
 mod cpu;
 mod gpu;
