@@ -1,4 +1,6 @@
 use std::fmt;
+use crate::instructions::Register;
+use crate::instructions::Register::*;
 
 #[derive(Default, Debug)]
 pub struct RegisterState {
@@ -17,6 +19,7 @@ pub struct RegisterState {
 pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
     ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
 }
+
 
 /**
  * u16_reg(n, a, b) will create a u16 "register" named `n` defined as a | b
@@ -47,6 +50,24 @@ impl RegisterState {
     pub fn new() -> Self {
         Self {
             ..Default::default()
+        }
+    }
+
+    pub fn fetch(&self, reg: &Register) -> u16 {
+        match reg {
+            A => self.a.into(),
+            B => self.b.into(),
+            C => self.c.into(),
+            D => self.d.into(),
+            E => self.e.into(),
+            F => self.f.into(),
+            BC => self.bc(),
+            DE => self.de(),
+            HL => self.hl(),
+            AF => self.af(),
+            SP => self.sp,
+            PC => self.pc,
+            _ => panic!()
         }
     }
 

@@ -24,7 +24,7 @@ macro_rules! LD {
 
     ($self: ident, LOAD_MEM_OFFSET, $r1: ident) => {{
         let offset = $self.next_u8();
-        if(offset == 0x01) {
+        if (offset == 0x01) {
             print!("{}", $self.registers.$r1() as char);
         }
         $self.set_byte(0xFF00 + offset as u16, $self.registers.$r1());
@@ -123,7 +123,11 @@ macro_rules! JP {
     }};
 
     ($self: ident, $r1: ident) => {{
-        log::trace!("[JP] Jump from {} to {}", $self.registers.pc, $self.registers.hl());
+        log::trace!(
+            "[JP] Jump from {} to {}",
+            $self.registers.pc,
+            $self.registers.hl()
+        );
         $self.registers = RegisterState {
             pc: $self.registers.hl(),
             ..$self.registers
@@ -264,7 +268,11 @@ macro_rules! XOR {
 macro_rules! ADC {
     ($self: ident, $getter: expr, $n: literal) => {{
         let value = $getter;
-        let result = $self.registers.a.wrapping_add(value).wrapping_add($self.registers.flg_c() as u8);
+        let result = $self
+            .registers
+            .a
+            .wrapping_add(value)
+            .wrapping_add($self.registers.flg_c() as u8);
         let h = (($self.registers.a & 0xf) + (value & 0xf)) & 0x10 != 0;
         let c = ($self.registers.a as u16 + value as u16) & 0xFF00 != 0;
         $self.registers = RegisterState {
@@ -280,7 +288,11 @@ macro_rules! ADC {
 macro_rules! SBC {
     ($self: ident, $getter: expr, $n: literal) => {{
         let value = $getter;
-        let result = $self.registers.a.wrapping_sub(value).wrapping_sub($self.registers.flg_c() as u8);
+        let result = $self
+            .registers
+            .a
+            .wrapping_sub(value)
+            .wrapping_sub($self.registers.flg_c() as u8);
         let h = ($self.registers.a & 0x0f) > 0x0f;
         let c = value > $self.registers.a;
         $self.registers = RegisterState {

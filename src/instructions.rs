@@ -18,11 +18,10 @@ pub enum Register {
     L,
     SP,
     PC,
-    MEM,
-
     BC,
     DE,
     HL,
+    AF,
 }
 
 #[derive(Debug)]
@@ -38,7 +37,8 @@ pub enum Location {
     Memory(Register),
     Immediate(usize), // Bytes
     Register(Register),
-    MemoryOffset,
+    MemOffsetImm,
+    MemOffsetRegister(Register),
 }
 
 #[derive(Debug)]
@@ -49,7 +49,7 @@ pub enum Direction {
 
 #[derive(Debug)]
 pub enum JumpType {
-    Imm,
+    Always,
     If(Flag),
     To(Location),
 }
@@ -58,79 +58,87 @@ pub enum JumpType {
 pub enum Instr {
     NOOP,
     UNIMPLEMENTED,
-    LD(Location, Location), // (From, To)
+    LD(Location, Location), // (To, From)
+    LDD(Location), 
     INC(Location),
     DEC(Location),
     ADD(Location),
-    ADD2(Location, Location),
+    ADD2(Location,Location ),
     ADC(Location),
     SUB(Location),
     AND(Location),
     XOR(Location),
     OR(Location),
     CP(Location),
-    SDC(Location),
+    SBC(Location),
     JR,
+    STOP,
+    DisableInterrupts,
+    EnableInterrupts,
     JP(JumpType),
     RET(JumpType),
+    RETI,
+    DAA,
     POP(Location),
     PUSH(Location),
     NOT(Location),
     CALL(JumpType),
     RotThruCarry(Direction, Location),
+    RST(usize),
+    Composite(Box<Instr>, Box<Instr>)
 }
 
 pub const INSTR_TABLE: [Instr; 256] = [
     NOOP,                             //0x00
-    LD(Immediate(2), Register(BC)),   //0x01
-    LD(Register(A), Memory(BC)),      //0x02
+    LD(Register(BC),Immediate(2) ),   //0x01
+    LD(Memory(BC),Register(A) ),      //0x02
     INC(Register(BC)),                //0x03
     INC(Register(B)),                 //0x04
     DEC(Register(B)),                 //0x05
-    LD(Immediate(1), Register(B)),    //0x06
+    LD(Register(B),Immediate(1) ),    //0x06
     RotThruCarry(LEFT, Register(A)),  //0x07
-    LD(Immediate(2), Register(SP)),   //0x08
-    UNIMPLEMENTED,                    //0x09
-    LD(Register(A), Memory(BC)),      //0x0A
+    LD(Register(SP),Immediate(2) ),   //0x08
+    ADD2(Register(HL), Register(BC)),                    //0x09
+    LD(Memory(BC),Register(A) ),      //0x0A
     DEC(Register(BC)),                //0x0B
     INC(Register(C)),                 //0x0C
     DEC(Register(C)),                 //0x0D
-    LD(Immediate(1), Register(C)),    //0x0E
+    LD(Register(C),Immediate(1) ),    //0x0E
     UNIMPLEMENTED,                    //0x0F
-    UNIMPLEMENTED,                    //0x10
-    LD(Immediate(2), Register(DE)),   //0x11
-    LD(Register(A), Memory(DE)),      //0x12
+    STOP,                    //0x10
+    LD(Register(DE),Immediate(2) ),   //0x11
+    LD(Memory(DE),Register(A) ),      //0x12
     INC(Register(DE)),                //0x13
     INC(Register(D)),                 //0x14
     DEC(Register(D)),                 //0x15
-    LD(Immediate(1), Register(D)),    //0x16
+    LD(Register(D),Immediate(1) ),    //0x16
     RotThruCarry(LEFT, Register(A)),  //0x17
     NOOP,                             //0x18
-    ADD2(Register(HL), Register(DE)), //0x19
-    LD(Register(A), Memory(DE)),      //0x1A
+    ADD2(Register(DE),Register(HL) ), //0x19
+    LD(Memory(DE),Register(A) ),      //0x1A
     UNIMPLEMENTED,                    //0x1B
     INC(Register(E)),                 //0x1C
     DEC(Register(E)),                 //0x1D
-    LD(Immediate(1), Register(E)),    //0x1E
+    LD(Register(E),Immediate(1) ),    //0x1E
     RotThruCarry(RIGHT, Register(A)), //0x1F
     JR,                               //0x20
-    LD(Immediate(2), Register(HL)),   //0x21
+    LD(Register(HL),Immediate(2) ),   //0x21
     NOOP,                             //0x22
     INC(Register(HL)),                //0x23
     INC(Register(H)),                 //0x24
     DEC(Register(H)),                 //0x25
-    LD(Immediate(1), Register(H)),    //0x26
-    UNIMPLEMENTED,                    //0x27
+    LD(Register(H),Immediate(1) ),    //0x26
+    DAA,                    //0x27
     JR,                               //0x28
-    ADD2(Register(HL), Register(HL)), //0x29
+    ADD2(Register(HL),Register(HL) ), //0x29
     NOOP,                             //0x2A
     UNIMPLEMENTED,                    //0x2B
     INC(Register(L)),                 //0x2C
     DEC(Register(L)),                 //0x2D
-    LD(Immediate(1), Register(L)),    //0x2E
+    LD(Register(L),Immediate(1) ),    //0x2E
     NOT(Register(A)),                 //0x2F
     JR,                               //0x30
-    LD(Immediate(2), Register(SP)),   //0x31
+    LD(Register(SP),Immediate(2) ),   //0x31
     NOOP,                             //0x32
     INC(Register(SP)),                //0x33
     INC(Register(HL)),                //0x34
@@ -138,77 +146,77 @@ pub const INSTR_TABLE: [Instr; 256] = [
     NOOP,                             //0x36
     UNIMPLEMENTED,                    //0x37
     JR,                               //0x38
-    UNIMPLEMENTED,                    //0x39
-    UNIMPLEMENTED,                    //0x3A
-    UNIMPLEMENTED,                    //0x3B
+    ADD2(Register(HL), Register(SP)),                    //0x39
+    LDD(Register(A)),                    //0x3A
+    DEC(Register(SP)),                    //0x3B
     INC(Register(A)),                 //0x3C
     DEC(Register(A)),                 //0x3D
-    LD(Immediate(1), Register(A)),    //0x3E
+    LD(Register(A),Immediate(1) ),    //0x3E
     UNIMPLEMENTED,                    //0x3F
-    LD(Register(B), Register(B)),     //0x40
-    LD(Register(B), Register(C)),     //0x41
-    LD(Register(B), Register(D)),     //0x42
-    LD(Register(B), Register(E)),     //0x43
-    LD(Register(B), Register(H)),     //0x44
-    LD(Register(B), Register(L)),     //0x45
-    LD(Register(B), Memory(HL)),      //0x46
-    LD(Register(B), Register(A)),     //0x47
-    LD(Register(C), Register(B)),     //0x48
-    LD(Register(C), Register(C)),     //0x49
-    LD(Register(C), Register(D)),     //0x4A
-    LD(Register(C), Register(E)),     //0x4B
-    LD(Register(C), Register(H)),     //0x4C
-    LD(Register(C), Register(L)),     //0x4D
-    LD(Register(C), Memory(HL)),      //0x4E
-    LD(Register(C), Register(A)),     //0x4F
-    LD(Register(D), Register(B)),     //0x50
-    LD(Register(D), Register(C)),     //0x51
-    LD(Register(D), Register(D)),     //0x52
-    LD(Register(D), Register(E)),     //0x53
-    LD(Register(D), Register(H)),     //0x54
-    LD(Register(D), Register(L)),     //0x55
-    LD(Register(D), Memory(HL)),      //0x56
-    LD(Register(D), Register(A)),     //0x57
-    LD(Register(E), Register(B)),     //0x58
-    LD(Register(E), Register(C)),     //0x59
-    LD(Register(E), Register(D)),     //0x5A
-    LD(Register(E), Register(E)),     //0x5B
-    LD(Register(E), Register(H)),     //0x5C
-    LD(Register(E), Register(L)),     //0x5D
-    LD(Register(E), Memory(HL)),      //0x5E
-    LD(Register(E), Register(A)),     //0x5F
-    LD(Register(H), Register(B)),     //0x60
-    LD(Register(H), Register(C)),     //0x61
-    LD(Register(H), Register(D)),     //0x62
-    LD(Register(H), Register(E)),     //0x63
-    LD(Register(H), Register(H)),     //0x64
-    LD(Register(H), Register(L)),     //0x65
-    LD(Register(H), Memory(HL)),      //0x66
-    LD(Register(H), Register(A)),     //0x67
-    LD(Register(L), Register(B)),     //0x68
-    LD(Register(L), Register(C)),     //0x69
-    LD(Register(L), Register(D)),     //0x6A
-    LD(Register(L), Register(E)),     //0x6B
-    LD(Register(L), Register(H)),     //0x6C
-    LD(Register(L), Register(L)),     //0x6D
-    LD(Register(L), Memory(HL)),      //0x6E
-    LD(Register(L), Register(A)),     //0x6F
-    LD(Register(B), Memory(HL)),      //0x70
-    LD(Register(C), Memory(HL)),      //0x71
-    LD(Register(D), Memory(HL)),      //0x72
-    LD(Register(E), Memory(HL)),      //0x73
-    LD(Register(H), Memory(HL)),      //0x74
-    LD(Register(L), Memory(HL)),      //0x75
+    LD(Register(B),Register(B) ),     //0x40
+    LD(Register(C),Register(B) ),     //0x41
+    LD(Register(D),Register(B) ),     //0x42
+    LD(Register(E),Register(B) ),     //0x43
+    LD(Register(H),Register(B) ),     //0x44
+    LD(Register(L),Register(B) ),     //0x45
+    LD(Memory(HL),Register(B) ),      //0x46
+    LD(Register(A),Register(B) ),     //0x47
+    LD(Register(B),Register(C) ),     //0x48
+    LD(Register(C),Register(C) ),     //0x49
+    LD(Register(D),Register(C) ),     //0x4A
+    LD(Register(E),Register(C) ),     //0x4B
+    LD(Register(H),Register(C) ),     //0x4C
+    LD(Register(L),Register(C) ),     //0x4D
+    LD(Memory(HL),Register(C) ),      //0x4E
+    LD(Register(A),Register(C) ),     //0x4F
+    LD(Register(B),Register(D) ),     //0x50
+    LD(Register(C),Register(D) ),     //0x51
+    LD(Register(D),Register(D) ),     //0x52
+    LD(Register(E),Register(D) ),     //0x53
+    LD(Register(H),Register(D) ),     //0x54
+    LD(Register(L),Register(D) ),     //0x55
+    LD(Memory(HL),Register(D) ),      //0x56
+    LD(Register(A),Register(D) ),     //0x57
+    LD(Register(B),Register(E) ),     //0x58
+    LD(Register(C),Register(E) ),     //0x59
+    LD(Register(D),Register(E) ),     //0x5A
+    LD(Register(E),Register(E) ),     //0x5B
+    LD(Register(H),Register(E) ),     //0x5C
+    LD(Register(L),Register(E) ),     //0x5D
+    LD(Memory(HL),Register(E) ),      //0x5E
+    LD(Register(A),Register(E) ),     //0x5F
+    LD(Register(B),Register(H) ),     //0x60
+    LD(Register(C),Register(H) ),     //0x61
+    LD(Register(D),Register(H) ),     //0x62
+    LD(Register(E),Register(H) ),     //0x63
+    LD(Register(H),Register(H) ),     //0x64
+    LD(Register(L),Register(H) ),     //0x65
+    LD(Memory(HL),Register(H) ),      //0x66
+    LD(Register(A),Register(H) ),     //0x67
+    LD(Register(B),Register(L) ),     //0x68
+    LD(Register(C),Register(L) ),     //0x69
+    LD(Register(D),Register(L) ),     //0x6A
+    LD(Register(E),Register(L) ),     //0x6B
+    LD(Register(H),Register(L) ),     //0x6C
+    LD(Register(L),Register(L) ),     //0x6D
+    LD(Memory(HL),Register(L) ),      //0x6E
+    LD(Register(A),Register(L) ),     //0x6F
+    LD(Memory(HL),Register(B) ),      //0x70
+    LD(Memory(HL),Register(C) ),      //0x71
+    LD(Memory(HL),Register(D) ),      //0x72
+    LD(Memory(HL),Register(E) ),      //0x73
+    LD(Memory(HL),Register(H) ),      //0x74
+    LD(Memory(HL),Register(L) ),      //0x75
     UNIMPLEMENTED,                    //0x76
-    LD(Register(A), Memory(HL)),      //0x77
-    LD(Register(A), Register(B)),     //0x78
-    LD(Register(A), Register(C)),     //0x79
-    LD(Register(A), Register(D)),     //0x7A
-    LD(Register(A), Register(E)),     //0x7B
-    LD(Register(A), Register(H)),     //0x7C
-    LD(Register(A), Register(L)),     //0x7D
-    LD(Register(A), Memory(HL)),      //0x7E
-    LD(Register(A), Register(A)),     //0x7F
+    LD(Memory(HL),Register(A) ),      //0x77
+    LD(Register(B),Register(A) ),     //0x78
+    LD(Register(C),Register(A) ),     //0x79
+    LD(Register(D),Register(A) ),     //0x7A
+    LD(Register(E),Register(A) ),     //0x7B
+    LD(Register(H),Register(A) ),     //0x7C
+    LD(Register(L),Register(A) ),     //0x7D
+    LD(Memory(HL),Register(A) ),      //0x7E
+    LD(Register(A),Register(A) ),     //0x7F
     ADD(Register(B)),                 //0x80
     ADD(Register(C)),                 //0x81
     ADD(Register(D)),                 //0x82
@@ -234,13 +242,13 @@ pub const INSTR_TABLE: [Instr; 256] = [
     SUB(Memory(HL)),                  //0x96
     SUB(Register(A)),                 //0x97
     UNIMPLEMENTED,                    //0x98
-    UNIMPLEMENTED,                    //0x99
+    SBC(Register(C)),                    //0x99
     UNIMPLEMENTED,                    //0x9A
     UNIMPLEMENTED,                    //0x9B
     UNIMPLEMENTED,                    //0x9C
-    UNIMPLEMENTED,                    //0x9D
+    SBC(Register(L)),                    //0x9D
     UNIMPLEMENTED,                    //0x9E
-    UNIMPLEMENTED,                    //0x9F
+    SBC(Register(A)),                    //0x9F
     AND(Register(B)),                 //0xA0
     AND(Register(C)),                 //0xA1
     AND(Register(D)),                 //0xA2
@@ -276,43 +284,43 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RET(If(FlagNZ)),                  //0xC0
     POP(Register(BC)),                //0xC1
     JP(If(FlagNZ)),                   //0xC2
-    JP(Imm),                          //0xC3
+    JP(To(Immediate(2))),             //0xC3
     CALL(If(FlagNZ)),                 //0xC4
     PUSH(Register(BC)),               //0xC5
     ADD(Immediate(2)),                //0xC6
     UNIMPLEMENTED,                    //0xC7
     RET(If(FlagZ)),                   //0xC8
-    UNIMPLEMENTED,                    //0xC9
+    RET(Always),                    //0xC9
     UNIMPLEMENTED,                    //0xCA
     UNIMPLEMENTED,                    //0xCB
-    CALL(If(FlagNZ)),                 //0xCC
-    CALL(Imm),                        //0xCD
+    CALL(If(FlagZ)),                 //0xCC
+    CALL(Always),           //0xCD
     ADC(Immediate(1)),                //0xCE
-    UNIMPLEMENTED,                    //0xCF
+    RST(8),                    //0xCF
     UNIMPLEMENTED,                    //0xD0
-    UNIMPLEMENTED,                    //0xD1
+    POP(Register(DE)),                    //0xD1
     UNIMPLEMENTED,                    //0xD2
     UNIMPLEMENTED,                    //0xD3
-    UNIMPLEMENTED,                    //0xD4
-    UNIMPLEMENTED,                    //0xD5
+    CALL(If(FlagNC)),                    //0xD4
+    PUSH(Register(DE)),               //0xD5
     UNIMPLEMENTED,                    //0xD6
-    UNIMPLEMENTED,                    //0xD7
+    RST(10),                    //0xD7
     UNIMPLEMENTED,                    //0xD8
-    UNIMPLEMENTED,                    //0xD9
+    RETI,                    //0xD9
     UNIMPLEMENTED,                    //0xDA
     UNIMPLEMENTED,                    //0xDB
     UNIMPLEMENTED,                    //0xDC
     UNIMPLEMENTED,                    //0xDD
-    UNIMPLEMENTED,                    //0xDE
-    UNIMPLEMENTED,                    //0xDF
-    UNIMPLEMENTED,                    //0xE0
-    UNIMPLEMENTED,                    //0xE1
+    SBC(Immediate(1)),                    //0xDE
+    RST(18),                    //0xDF Push present address onto stack. Jump to address $0000 + n.
+    LD(MemOffsetImm,Register(A) ),    //0xE0
+    POP(Register(HL)),                //0xE1
     UNIMPLEMENTED,                    //0xE2
     UNIMPLEMENTED,                    //0xE3
     UNIMPLEMENTED,                    //0xE4
-    UNIMPLEMENTED,                    //0xE5
-    UNIMPLEMENTED,                    //0xE6
-    UNIMPLEMENTED,                    //0xE7
+    PUSH(Register(HL)),                    //0xE5
+    AND(Immediate(1)),                    //0xE6
+    RST(20),                    //0xE7
     JP(To(Register(HL))),             //0xE8
     RET(If(FlagC)),                   //0xE9
     POP(Register(DE)),                //0xEA
@@ -320,23 +328,23 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CALL(If(FlagZ)),                  //0xEC
     PUSH(Register(DE)),               //0xED
     SUB(Immediate(2)),                //0xEE
-    RET(If(FlagNC)),                  //0xEF
-    UNIMPLEMENTED,                    //0xF0
-    UNIMPLEMENTED,                    //0xF1
-    UNIMPLEMENTED,                    //0xF2
-    SDC(Immediate(2)),                //0xF3
-    LD(Register(A), MemoryOffset),    //0xF4
+    RST(28),                  //0xEF
+    LD(Register(A), MemOffsetImm),                    //0xF0
+    POP(Register(AF)),                    //0xF1
+    LD(Register(A), MemOffsetRegister(C)),                    //0xF2
+    DisableInterrupts,                //0xF3
+    LD(MemOffsetImm, Register(A) ),    //0xF4
     POP(Register(HL)),                //0xF5
     UNIMPLEMENTED,                    //0xF6
-    UNIMPLEMENTED,                    //0xF7
+    RST(30),                    //0xF7
     PUSH(Register(HL)),               //0xF8
     AND(Immediate(2)),                //0xF9
-    UNIMPLEMENTED,                    //0xFA
-    UNIMPLEMENTED,                    //0xFB
+    LD(Register(A),Immediate(2) ),                    //0xFA
+    EnableInterrupts,                    //0xFB
     UNIMPLEMENTED,                    //0xFC
     UNIMPLEMENTED,                    //0xFD
-    UNIMPLEMENTED,                    //0xFE
-    UNIMPLEMENTED,                    //0xFF
+    CP(Immediate(1)),                    //0xFE
+    RST(38),                //0xFF
 ];
 // (InstrLen, ASM String)
 #[derive(Debug, Clone, Copy)]

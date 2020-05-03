@@ -40,9 +40,9 @@ const ZERO: Duration = Duration::from_secs(0);
 // #[cfg(not(sdl))]
 fn main () {
     println!("Just cpu");
-    // just_cpu();
+    just_cpu();
     //    sdl_main().unwrap();
-    decompiler();
+    // decompiler();
 }
 
 fn decompiler() -> std::io::Result<()> {

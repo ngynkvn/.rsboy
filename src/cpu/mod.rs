@@ -1,7 +1,8 @@
-use crate::instructions::{Instruction, INSTRUCTION_TABLE};
+use crate::instructions::*;
 use crate::memory::Memory;
 use crate::registers::flags;
 use crate::registers::RegisterState;
+use std::convert::TryInto;
 
 mod macros;
 use self::macros::swap_nibbles;
@@ -15,21 +16,113 @@ const HISTORY_SIZE: usize = 10;
 
 use std::collections::VecDeque;
 
+trait Controller {
+    fn cycle(&mut self) -> usize;
+}
+
+pub struct CPU2 {
+    registers: RegisterState,
+    pub clock: usize,
+    pub memory: Memory,
+}
+
+impl CPU2 {
+    pub fn new(rom: Vec<u8>) -> Self {
+        Self {
+            registers: RegisterState::new(),
+            clock: 0,
+            memory: Memory::new(rom),
+        }
+    }
+    fn curr_u8(&mut self) -> u8 {
+        self.clock += 1;
+        self.memory[self.registers.pc]
+    }
+    fn next_u8(&mut self) -> u8 {
+        self.clock += 1;
+        self.memory[(self.registers.pc + 1)]
+    }
+    fn next_u16(&mut self) -> u16 {
+        // Little endianess means LSB comes first.
+        self.clock += 1;
+        (self.memory[self.registers.pc + 2] as u16) << 8 | self.memory[self.registers.pc + 1] as u16
+    }
+    fn read_byte(&mut self, address: u16) -> u8 {
+        self.clock += 1;
+        self.memory[address]
+    }
+    fn read_io(&mut self, offset: u8) -> u8 {
+        self.read_byte(0xFF00 + offset as u16)
+    }
+    fn set_byte(&mut self, address: u16, value: u8) {
+        self.clock += 1;
+        self.memory[address] = value;
+    }
+
+    fn read_location(&mut self, location: &Location) -> u16 {
+        match location {
+            Location::Immediate(1) => self.next_u8().into(),
+            Location::Immediate(2) => self.next_u16(),
+            Location::Immediate(_) => panic!(),
+            Location::Register(r) => self.registers.fetch(r),
+            Location::Memory(r) => self.read_byte(self.registers.fetch(r)).into(),
+            Location::MemOffsetImm => {
+                let next = self.next_u8();
+                self.read_io(next).into()
+            }
+            Location::MemOffsetRegister(r) => self
+                .read_io(
+                    self.registers
+                        .fetch(r)
+                        .try_into()
+                        .expect("Offset was too large."),
+                )
+                .into(),
+        }
+    }
+
+    fn load(&mut self, into: &Location, from: &Location) {
+        let from_value = self.read_location(into);
+    }
+
+    fn read_instruction(&mut self) -> Result<(), String> {
+        let curr_byte = self.curr_u8();
+        println!("{}", curr_byte);
+        match &INSTR_TABLE[curr_byte as usize] {
+            Instr::LD(into, from) => self.load(into, from),
+            Instr::NOOP => {}
+            Instr::UNIMPLEMENTED => panic!("Unimplemented"),
+            x => panic!(format!("Not done {:?}", x)),
+        }
+        Ok(())
+    }
+}
+
+impl Controller for CPU2 {
+    fn cycle(&mut self) -> usize {
+        self.read_instruction();
+        0
+    }
+}
+
 pub struct CPU {
     registers: RegisterState,
     pub clock: usize,
     pub memory: Memory,
     instruction_history: VecDeque<(u16, Instruction)>,
     start_debug: bool,
+    cpu2: CPU2,
 }
 impl CPU {
     pub fn new(rom: Vec<u8>) -> Self {
+        let copy = rom.to_vec();
         Self {
             registers: RegisterState::new(),
             clock: 0,
             memory: Memory::new(rom),
             instruction_history: VecDeque::new(),
             start_debug: false,
+            cpu2: CPU2::new(copy),
         }
     }
     // TODO I'll clean these functions up later
@@ -69,6 +162,7 @@ impl CPU {
     // Returns the delta after processing an instruction.
     pub fn cycle(&mut self) -> usize {
         let prev = self.clock;
+        self.cpu2.read_instruction();
         match self.read_instruction() {
             Ok(_) => {}
             Err(e) => {
