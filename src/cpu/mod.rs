@@ -22,20 +22,18 @@ impl CPU {
             clock: 0,
         }
     }
-    fn curr_u8(&mut self, memory: &Memory) -> u8 {
-        self.clock += 1;
-        memory[self.registers.pc]
-    }
     fn next_u8(&mut self, memory: &Memory) -> u8 {
         self.clock += 1;
+        let val = memory[(self.registers.pc)];
         self.registers.pc += 1;
-        memory[(self.registers.pc)]
+        val
     }
     fn next_u16(&mut self, memory: &Memory) -> u16 {
         // Little endianess means LSB comes first.
         self.clock += 1;
+        let val = (memory[self.registers.pc + 1] as u16) << 8 | (memory[self.registers.pc] as u16);
         self.registers.pc += 2;
-        (memory[self.registers.pc] as u16) << 8 | memory[self.registers.pc - 1] as u16
+        val
     }
     fn read_byte(&mut self, address: u16, memory: &Memory) -> u8 {
         self.clock += 1;
@@ -111,26 +109,32 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, memory: &mut Memory) -> Result<(), String> {
-        let curr_byte = self.curr_u8(memory);
-        println!("0x{:04X}: 0x{:02X}", self.registers.pc,curr_byte);
+        let curr_byte = self.next_u8(memory);
+        println!("0x{:04X}: 0x{:02X}", self.registers.pc - 1, curr_byte);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         match instruction {
             Instr::LD(into, from) => self.load(into, from, memory).or_else(|e| Err(format!("0x{:04X}: 0x{:02X} {:?}, {:?}", 
-                                                                                   self.registers.pc, curr_byte, instruction, e))),
+                                                                                   self.registers.pc - 1, curr_byte, instruction, e))),
             Instr::NOOP => {Ok(())}
             Instr::RST(size) => {
                 self.push_stack(self.registers.pc, memory);
                 self.registers.pc = *size as u16;
                 Ok(())
-            },
+            }
             Instr::ADD(Location::Register(r)) => {
                 let value = self.registers.fetch_u8(r);
                 self.registers.a = self.registers.a.wrapping_add(value as u8);
                 self.inc_pc();
                 Ok(())
             }
+            Instr::XOR(Location::Register(r)) => {
+                let value = self.registers.fetch_u8(r);
+                self.registers.a = self.registers.a ^ (value as u8);
+                self.inc_pc();
+                Ok(())
+            }
             Instr::UNIMPLEMENTED => panic!("Unimplemented"),
-            x => panic!(format!("0x{:04X}: 0x{:02X} {:?}", self.registers.pc, curr_byte, x)),
+            x => panic!(format!("0x{:04X}: 0x{:02X} {:?}", self.registers.pc - 1, curr_byte, x)),
         }
     }
 }
