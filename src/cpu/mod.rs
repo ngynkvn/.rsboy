@@ -100,6 +100,16 @@ impl CPU {
         Ok(())
     }
 
+    fn push_stack(&mut self, value: u16, memory: &mut Memory) {
+        let bytes = value.to_be_bytes();
+        self.set_byte(self.registers.sp, bytes[0], memory);
+        self.set_byte(self.registers.sp, bytes[1], memory);
+    }
+
+    fn inc_pc(&mut self) {
+        self.registers.pc += 1;
+    }
+
     fn read_instruction(&mut self, memory: &mut Memory) -> Result<(), String> {
         let curr_byte = self.curr_u8(memory);
         println!("0x{:04X}: 0x{:02X}", self.registers.pc,curr_byte);
@@ -108,6 +118,17 @@ impl CPU {
             Instr::LD(into, from) => self.load(into, from, memory).or_else(|e| Err(format!("0x{:04X}: 0x{:02X} {:?}, {:?}", 
                                                                                    self.registers.pc, curr_byte, instruction, e))),
             Instr::NOOP => {Ok(())}
+            Instr::RST(size) => {
+                self.push_stack(self.registers.pc, memory);
+                self.registers.pc = *size as u16;
+                Ok(())
+            },
+            Instr::ADD(Location::Register(r)) => {
+                let value = self.registers.fetch_u8(r);
+                self.registers.a = self.registers.a.wrapping_add(value as u8);
+                self.inc_pc();
+                Ok(())
+            }
             Instr::UNIMPLEMENTED => panic!("Unimplemented"),
             x => panic!(format!("0x{:04X}: 0x{:02X} {:?}", self.registers.pc, curr_byte, x)),
         }
