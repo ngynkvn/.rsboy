@@ -108,8 +108,9 @@ impl CPU {
             // self.debug_print_stack();
             return Err(format!("{:?}", INSTRUCTION_TABLE[curr_u8 as usize]));
         }
+
         match curr_u8 {
-            0x00 => self.registers = self.inc_pc(1),
+            0x00 => self.registers = self.inc_pc(1), // NOOP
             0x01 => LD16!(self, IMMEDIATE, b, c),
             0x02 => LD!(self, LOAD_MEM, bc, a),
             0x03 => INC!(self, NN, b, c),
@@ -344,7 +345,6 @@ impl CPU {
                     pc: addr,
                     ..self.registers
                 };
-                // println!("I RETURNED HERE {}",self.registers);
             }
             0xE9 => JP!(self, hl),
             0xCA => unimplemented!(),

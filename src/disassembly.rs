@@ -1,4 +1,5 @@
 use crate::instructions::INSTRUCTION_TABLE;
+use crate::instructions::INSTR_TABLE;
 use crate::instructions::Instruction;
 
 pub fn print(rom: &Vec<u8>, from: usize, to: usize) {
@@ -11,14 +12,13 @@ pub fn print(rom: &Vec<u8>, from: usize, to: usize) {
             2 => ((rom[pc+2] as u16) << 8) + rom[pc+1] as u16,
             _ => 0,
         };
-        let word_str = if length == 1 {
-            format!("{:02X}", word)
-        } else if length == 2 {
-            format!("{:04X}", word)
-        } else {
-            String::from("")
+        let word_str = match length {
+            1 => format!("{:02X}", word),
+            2 => format!("{:04X}", word),
+            0 => String::from(""),
+            _ => panic!("Length was unexpected..")
         };
-        println!("{:04X} {:02X} {} ", pc, rom[pc], string.replace("??", &word_str));
+        println!("{:04X} {:02X} {} {:?}", pc, rom[pc], string.replace("??", &word_str), INSTR_TABLE[rom[pc] as usize]);
         pc += length + 1;
     }
 }
