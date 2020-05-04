@@ -54,7 +54,7 @@ impl GPU {
     pub fn is_on(&self) -> bool {
         self.lcdc & 0b1000_0000 == 0b1000_0000
     }
-    pub fn cycle(&mut self, emu: &mut Emu, clock: usize) {
+    pub fn cycle(&mut self, clock: usize) {
         if !self.is_on() {
             return;
         }

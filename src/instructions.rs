@@ -60,6 +60,7 @@ pub enum Instr {
     UNIMPLEMENTED,
     LD(Location, Location), // (To, From)
     LDD(Location, Location),
+    LDI(Location, Location),
     INC(Location),
     DEC(Location),
     ADD(Location),
@@ -116,7 +117,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RotThruCarry(LEFT, Register(A)),       //0x17
     JR(Always),                            //0x18
     ADD2(Register(DE), Register(HL)),      //0x19
-    LD(Memory(DE), Register(A)),           //0x1A
+    LD(Register(A), Memory(DE)),           //0x1A
     UNIMPLEMENTED,                         //0x1B
     INC(Register(E)),                      //0x1C
     DEC(Register(E)),                      //0x1D
@@ -124,7 +125,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RotThruCarry(RIGHT, Register(A)),      //0x1F
     JR(If(FlagNZ)),                        //0x20
     LD(Register(HL), Immediate(2)),        //0x21
-    NOOP,                                  //0x22
+    LDI(Memory(HL), Register(A)),          //0x22
     INC(Register(HL)),                     //0x23
     INC(Register(H)),                      //0x24
     DEC(Register(H)),                      //0x25
@@ -155,53 +156,53 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Register(A), Immediate(1)),         //0x3E
     UNIMPLEMENTED,                         //0x3F
     LD(Register(B), Register(B)),          //0x40
-    LD(Register(C), Register(B)),          //0x41
-    LD(Register(D), Register(B)),          //0x42
-    LD(Register(E), Register(B)),          //0x43
-    LD(Register(H), Register(B)),          //0x44
-    LD(Register(L), Register(B)),          //0x45
-    LD(Memory(HL), Register(B)),           //0x46
-    LD(Register(A), Register(B)),          //0x47
-    LD(Register(B), Register(C)),          //0x48
+    LD(Register(B), Register(C)),          //0x41
+    LD(Register(B), Register(D)),          //0x42
+    LD(Register(B), Register(E)),          //0x43
+    LD(Register(B), Register(H)),          //0x44
+    LD(Register(B), Register(L)),          //0x45
+    LD(Register(B), Memory(HL)),           //0x46
+    LD(Register(B), Register(A)),          //0x47
+    LD(Register(C), Register(B)),          //0x48
     LD(Register(C), Register(C)),          //0x49
-    LD(Register(D), Register(C)),          //0x4A
-    LD(Register(E), Register(C)),          //0x4B
-    LD(Register(H), Register(C)),          //0x4C
-    LD(Register(L), Register(C)),          //0x4D
-    LD(Memory(HL), Register(C)),           //0x4E
-    LD(Register(A), Register(C)),          //0x4F
-    LD(Register(B), Register(D)),          //0x50
-    LD(Register(C), Register(D)),          //0x51
+    LD(Register(C), Register(D)),          //0x4A
+    LD(Register(C), Register(E)),          //0x4B
+    LD(Register(C), Register(H)),          //0x4C
+    LD(Register(C), Register(L)),          //0x4D
+    LD(Register(C), Memory(HL)),           //0x4E
+    LD(Register(C), Register(A)),          //0x4F
+    LD(Register(D), Register(B)),          //0x50
+    LD(Register(D), Register(C)),          //0x51
     LD(Register(D), Register(D)),          //0x52
-    LD(Register(E), Register(D)),          //0x53
-    LD(Register(H), Register(D)),          //0x54
-    LD(Register(L), Register(D)),          //0x55
-    LD(Memory(HL), Register(D)),           //0x56
-    LD(Register(A), Register(D)),          //0x57
-    LD(Register(B), Register(E)),          //0x58
-    LD(Register(C), Register(E)),          //0x59
-    LD(Register(D), Register(E)),          //0x5A
+    LD(Register(D), Register(E)),          //0x53
+    LD(Register(D), Register(H)),          //0x54
+    LD(Register(D), Register(L)),          //0x55
+    LD(Register(D), Memory(HL)),           //0x56
+    LD(Register(D), Register(A)),          //0x57
+    LD(Register(E), Register(B)),          //0x58
+    LD(Register(E), Register(C)),          //0x59
+    LD(Register(E), Register(D)),          //0x5A
     LD(Register(E), Register(E)),          //0x5B
-    LD(Register(H), Register(E)),          //0x5C
-    LD(Register(L), Register(E)),          //0x5D
-    LD(Memory(HL), Register(E)),           //0x5E
-    LD(Register(A), Register(E)),          //0x5F
-    LD(Register(B), Register(H)),          //0x60
-    LD(Register(C), Register(H)),          //0x61
-    LD(Register(D), Register(H)),          //0x62
-    LD(Register(E), Register(H)),          //0x63
+    LD(Register(E), Register(H)),          //0x5C
+    LD(Register(E), Register(L)),          //0x5D
+    LD(Register(E), Memory(HL)),           //0x5E
+    LD(Register(E), Register(A)),          //0x5F
+    LD(Register(H), Register(B)),          //0x60
+    LD(Register(H), Register(C)),          //0x61
+    LD(Register(H), Register(D)),          //0x62
+    LD(Register(H), Register(E)),          //0x63
     LD(Register(H), Register(H)),          //0x64
-    LD(Register(L), Register(H)),          //0x65
-    LD(Memory(HL), Register(H)),           //0x66
-    LD(Register(A), Register(H)),          //0x67
-    LD(Register(B), Register(L)),          //0x68
-    LD(Register(C), Register(L)),          //0x69
-    LD(Register(D), Register(L)),          //0x6A
-    LD(Register(E), Register(L)),          //0x6B
-    LD(Register(H), Register(L)),          //0x6C
+    LD(Register(H), Register(L)),          //0x65
+    LD(Register(H), Memory(HL)),           //0x66
+    LD(Register(H), Register(A)),          //0x67
+    LD(Register(L), Register(B)),          //0x68
+    LD(Register(L), Register(C)),          //0x69
+    LD(Register(L), Register(D)),          //0x6A
+    LD(Register(L), Register(E)),          //0x6B
+    LD(Register(L), Register(H)),          //0x6C
     LD(Register(L), Register(L)),          //0x6D
-    LD(Memory(HL), Register(L)),           //0x6E
-    LD(Register(A), Register(L)),          //0x6F
+    LD(Register(L), Memory(HL)),           //0x6E
+    LD(Register(L), Register(A)),          //0x6F
     LD(Memory(HL), Register(B)),           //0x70
     LD(Memory(HL), Register(C)),           //0x71
     LD(Memory(HL), Register(D)),           //0x72
@@ -210,13 +211,13 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Memory(HL), Register(L)),           //0x75
     UNIMPLEMENTED,                         //0x76
     LD(Memory(HL), Register(A)),           //0x77
-    LD(Register(B), Register(A)),          //0x78
-    LD(Register(C), Register(A)),          //0x79
-    LD(Register(D), Register(A)),          //0x7A
-    LD(Register(E), Register(A)),          //0x7B
-    LD(Register(H), Register(A)),          //0x7C
-    LD(Register(L), Register(A)),          //0x7D
-    LD(Memory(HL), Register(A)),           //0x7E
+    LD(Register(A), Register(B)),          //0x78
+    LD(Register(A), Register(C)),          //0x79
+    LD(Register(A), Register(D)),          //0x7A
+    LD(Register(A), Register(E)),          //0x7B
+    LD(Register(A), Register(H)),          //0x7C
+    LD(Register(A), Register(L)),          //0x7D
+    LD(Register(A), Memory(HL)),           //0x7E
     LD(Register(A), Register(A)),          //0x7F
     ADD(Register(B)),                      //0x80
     ADD(Register(C)),                      //0x81
@@ -316,7 +317,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RST(18), //0xDF Push present address onto stack. Jump to address $0000 + n.
     LD(MemOffsetImm, Register(A)), //0xE0
     POP(Register(HL)), //0xE1
-    UNIMPLEMENTED, //0xE2
+    LD(MemOffsetRegister(C), Register(A)), //0xE2
     UNIMPLEMENTED, //0xE3
     UNIMPLEMENTED, //0xE4
     PUSH(Register(HL)), //0xE5

@@ -61,6 +61,19 @@ macro_rules! SWAP_NIBBLE {
     };
 }
 
+macro_rules! RL {
+    ($self: ident, $r1: ident) => {{
+        let leftmost = $self.$r1 & 0b1000_0000 != 0;
+        let carry = $self.flg_c() as u8;
+        let n = ($self.$r1 << 1) + carry;
+        Ok(RegisterState {
+            $r1: n,
+            f: flags(n == 0, false, false, leftmost),
+            ..(*$self)
+        })
+    }};
+}
+
 fn swapped_nibbles(byte: u8) -> u8 {
     let [hi, lo] = [byte >> 4, byte & 0xF];
     (lo << 4) | byte
@@ -93,6 +106,30 @@ impl RegisterState {
         }
     }
 
+    pub fn cmp(&self, value: u8) -> Result<Self, String> {
+        let half_carry = (self.a & 0x0f) == 0x0f;
+        if half_carry && self.a < value {
+            panic!()
+        }
+        Ok(Self {
+            f: flags(value == self.a, true, half_carry, self.a < value),
+            ..(*self)
+        })
+    }
+
+    pub fn rot_thru_carry(&self, reg: &Register) -> Result<Self, String> {
+        match reg {
+            A => RL!(self, a),
+            B => RL!(self, b),
+            C => RL!(self, c),
+            D => RL!(self, d),
+            E => RL!(self, e),
+            H => RL!(self, h),
+            L => RL!(self, l),
+            _ => Err(format!("swap_nibble: {:?}", reg)),
+        }
+    }
+
     pub fn swap_nibbles(&self, reg: &Register) -> Result<Self, String> {
         match reg {
             A => SWAP_NIBBLE!(self, a),
@@ -108,19 +145,25 @@ impl RegisterState {
 
     pub fn put(&self, value: u16, reg: &Register) -> Result<Self, String> {
         match reg {
-            A => Ok(Self {
-                a: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            SP => Ok(Self {
-                sp: value,
-                ..(*self)
-            }),
+            A => Ok(Self { a: value.try_into().unwrap(), ..(*self) }),
+            B => Ok(Self { b: value.try_into().unwrap(), ..(*self) }),
+            C => Ok(Self { c: value.try_into().unwrap(), ..(*self) }),
+            D => Ok(Self { d: value.try_into().unwrap(), ..(*self) }),
+            E => Ok(Self { e: value.try_into().unwrap(), ..(*self) }),
+            SP => Ok(Self { sp: value, ..(*self) }),
             HL => {
                 let [h, l] = value.to_be_bytes();
                 Ok(Self { h, l, ..(*self) })
             }
-            _ => Err(format!("Put: {}", value.to_string())),
+            DE => {
+                let [d, e] = value.to_be_bytes();
+                Ok(Self { d, e, ..(*self) })
+            }
+            BC => {
+                let [b, c] = value.to_be_bytes();
+                Ok(Self { b, c, ..(*self) })
+            }
+            _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),
         }
     }
 
@@ -136,13 +179,28 @@ impl RegisterState {
                 let [b, c] = (n.wrapping_add(1)).to_be_bytes();
                 Self { b, c, ..(*self) }
             }
+            DE => {
+                let n = self.bc();
+                let [d, e] = (n.wrapping_add(1)).to_be_bytes();
+                Self { d, e, ..(*self) }
+            }
             C => {
                 let n = self.c;
                 let c = self.c.wrapping_add(1);
                 let half_carry = (n & 0x0f) == 0x0f;
                 Self {
-                    f: flags(n == 0, true, half_carry, self.flg_c()),
+                    f: flags(c == 0, true, half_carry, self.flg_c()),
                     c,
+                    ..(*self)
+                }
+            }
+            B => {
+                let n = self.b;
+                let b = self.b.wrapping_add(1);
+                let half_carry = (n & 0x0f) == 0x0f;
+                Self {
+                    f: flags(b == 0, true, half_carry, self.flg_c()),
+                    b,
                     ..(*self)
                 }
             }
@@ -162,12 +220,22 @@ impl RegisterState {
                 let [b, c] = (n.wrapping_sub(1)).to_be_bytes();
                 Self { b, c, ..(*self) }
             }
+            B => {
+                let n = self.b;
+                let b = self.b.wrapping_sub(1);
+                let half_carry = (n & 0x0f) == 0x0f;
+                Self {
+                    f: flags(b == 0, true, half_carry, self.flg_c()),
+                    b,
+                    ..(*self)
+                }
+            }
             C => {
                 let n = self.c;
                 let c = self.c.wrapping_sub(1);
                 let half_carry = (n & 0x0f) == 0x0f;
                 Self {
-                    f: flags(n == 0, true, half_carry, self.flg_c()),
+                    f: flags(c == 0, true, half_carry, self.flg_c()),
                     c,
                     ..(*self)
                 }

@@ -101,8 +101,16 @@ impl CPU {
 
     fn push_stack(&mut self, value: u16, memory: &mut Memory) {
         let bytes = value.to_be_bytes();
-        self.set_byte(self.registers.sp, bytes[0], memory);
+        self.set_byte(self.registers.sp - 1, bytes[0], memory);
         self.set_byte(self.registers.sp, bytes[1], memory);
+        self.registers.sp -= 2;
+    }
+
+    fn pop_stack(&mut self, memory: &mut Memory) -> u16 {
+        let b1 = self.read_byte(self.registers.sp + 1, memory);
+        let b2 = self.read_byte(self.registers.sp + 2, memory);
+        self.registers.sp += 2;
+        ((b1 as u16) << 8) | b2 as u16
     }
 
     fn dec(&mut self, r: &Register) {
@@ -118,6 +126,7 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, memory: &mut Memory) -> CpuResult {
+        println!("{}", self.registers);
         let curr_byte = self.next_u8(memory);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
@@ -152,10 +161,30 @@ impl CPU {
                 self.clock += 1; // TODO
                 Ok(())
             }
+            Instr::LDI(into, from) => {
+                self.load(into, from, memory).or_else(|e| {
+                    Err(format!(
+                        "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
+                        self.registers.pc - instr_len,
+                        curr_byte,
+                        instruction,
+                        e
+                    ))
+                })?;
+                self.inc(&Register::HL);
+                self.clock += 1; // TODO
+                Ok(())
+            }
             Instr::NOOP => Ok(()),
             Instr::RST(size) => {
                 self.push_stack(self.registers.pc, memory);
                 self.registers.pc = *size as u16;
+                Ok(())
+            }
+            Instr::CP(location) => {
+                let value = self.read_location(location, memory);
+                println!("{:#}", self.registers);
+                self.registers = self.registers.cmp(value.try_into().unwrap())?;
                 Ok(())
             }
             Instr::ADD(Location::Register(r)) => {
@@ -166,16 +195,18 @@ impl CPU {
             Instr::XOR(Location::Register(r)) => {
                 let value = self.registers.fetch_u8(r);
                 self.registers.a = self.registers.a ^ (value as u8);
+                self.registers.f =
+                    crate::registers::flags(self.registers.a == 0, false, false, false);
                 Ok(())
             }
             Instr::CB => self.handle_cb(memory),
             Instr::JR(jump_type) => {
-                let offset = self.next_u8(memory);
-                self.handle_jump(self.registers.pc + offset as u16, jump_type)
+                let offset = self.next_u8(memory) as i8;
+                self.handle_jump(self.registers.pc.wrapping_add(offset as u16), jump_type)
             }
             Instr::CALL(jump_type) => {
                 let address = self.next_u16(memory);
-                self.push_stack(self.registers.pc + 1, memory);
+                self.push_stack(self.registers.pc, memory);
                 self.handle_jump(address, jump_type)
             }
             Instr::DEC(Location::Register(r)) => {
@@ -184,6 +215,24 @@ impl CPU {
             }
             Instr::INC(Location::Register(r)) => {
                 self.inc(r);
+                Ok(())
+            }
+            Instr::PUSH(Location::Register(r)) => {
+                let addr = self.registers.fetch_u16(r);
+                self.push_stack(addr, memory);
+                Ok(())
+            }
+            Instr::POP(Location::Register(r)) => {
+                let addr = self.pop_stack(memory);
+                self.registers = self.registers.put(addr, r)?;
+                Ok(())
+            }
+            Instr::RET(jump_type) => {
+                let addr = self.pop_stack(memory);
+                self.handle_jump(addr, jump_type)
+            }
+            Instr::RotThruCarry(Direction::LEFT, Location::Register(r)) => {
+                self.registers = self.registers.rot_thru_carry(r)?;
                 Ok(())
             }
             x => Err(format!(
@@ -246,6 +295,16 @@ impl CPU {
             0x7B => self.registers = self.registers.test_bit(&Register::E, 7)?,
             0x7C => self.registers = self.registers.test_bit(&Register::H, 7)?,
             0x7D => self.registers = self.registers.test_bit(&Register::L, 7)?,
+            0x17 => self.registers = self.registers.rot_thru_carry(&Register::A)?,
+            0x10 => self.registers = self.registers.rot_thru_carry(&Register::B)?,
+            0x11 => self.registers = self.registers.rot_thru_carry(&Register::C)?,
+            0x12 => self.registers = self.registers.rot_thru_carry(&Register::D)?,
+            0x13 => self.registers = self.registers.rot_thru_carry(&Register::E)?,
+            0x14 => self.registers = self.registers.rot_thru_carry(&Register::H)?,
+            0x15 => self.registers = self.registers.rot_thru_carry(&Register::L)?,
+            // 0x16 => {
+            //     //rot_thru_carry (hl)
+            // }
             _ => return Err(format!("CB: {:02X}", opcode)),
         }
         Ok(())
@@ -253,10 +312,13 @@ impl CPU {
 }
 
 impl Controller for CPU {
+    // TODO rn CPU is the "master clock"
+    // Should make an actual master clock later
     fn cycle(&mut self, memory: &mut Memory) -> usize {
+        let prev = self.clock;
         if let Err(e) = self.read_instruction(memory) {
             panic!(e);
         }
-        0
+        self.clock - prev
     }
 }
