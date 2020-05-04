@@ -146,7 +146,7 @@ impl RegisterState {
                     ..(*self)
                 }
             }
-            _ => panic!("inc not impl"),
+            _ => panic!("inc not impl for {:?}", reg),
         }
     }
 
@@ -162,7 +162,17 @@ impl RegisterState {
                 let [b, c] = (n.wrapping_sub(1)).to_be_bytes();
                 Self { b, c, ..(*self) }
             }
-            _ => panic!("dec not impl"),
+            C => {
+                let n = self.c;
+                let c = self.c.wrapping_sub(1);
+                let half_carry = (n & 0x0f) == 0x0f;
+                Self {
+                    f: flags(n == 0, true, half_carry, self.flg_c()),
+                    c,
+                    ..(*self)
+                }
+            }
+            _ => panic!("dec not impl for {:?}", reg),
         }
     }
 
