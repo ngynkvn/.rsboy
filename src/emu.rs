@@ -1,5 +1,5 @@
-use crate::cpu::CPU;
 use crate::cpu::Controller;
+use crate::cpu::CPU;
 use crate::gpu::GPU;
 use crate::memory::Memory;
 
@@ -15,11 +15,11 @@ impl Emu {
         let cycles = self.cpu.cycle(&mut self.memory);
     }
 
-    pub fn new (rom: Vec<u8>) -> Emu {
+    pub fn new(rom: Vec<u8>) -> Emu {
         Emu {
             cpu: CPU::new(),
             gpu: GPU::new(),
-            memory: Memory::new(rom)
+            memory: Memory::new(rom),
         }
     }
 }

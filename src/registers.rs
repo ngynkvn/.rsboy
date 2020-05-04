@@ -42,10 +42,67 @@ macro_rules! u8_reg {
     };
 }
 
+macro_rules! TEST_BIT {
+    ($self: ident, $reg: ident, $bit: expr) => {{
+        let r = $self.$reg & (1 << ($bit)) == 0;
+        Ok(RegisterState {
+            f: flags(r, false, true, $self.flg_c()),
+            ..(*$self)
+        })
+    }};
+}
+
+macro_rules! SWAP_NIBBLE {
+    ($self: ident, $reg: ident) => {
+        Ok(RegisterState {
+            $reg: swapped_nibbles($self.$reg),
+            ..(*$self)
+        })
+    };
+}
+
+fn swapped_nibbles(byte: u8) -> u8 {
+    let [hi, lo] = [byte >> 4, byte & 0xF];
+    (lo << 4) | byte
+}
+
 impl RegisterState {
     pub fn new() -> Self {
         Self {
             ..Default::default()
+        }
+    }
+
+    pub fn jump(&self, address: u16) -> Result<Self, String> {
+        Ok(Self {
+            pc: address,
+            ..(*self)
+        })
+    }
+
+    pub fn test_bit(&self, reg: &Register, bit: usize) -> Result<Self, String> {
+        match reg {
+            A => TEST_BIT!(self, a, bit),
+            B => TEST_BIT!(self, b, bit),
+            C => TEST_BIT!(self, c, bit),
+            D => TEST_BIT!(self, d, bit),
+            E => TEST_BIT!(self, e, bit),
+            H => TEST_BIT!(self, h, bit),
+            L => TEST_BIT!(self, l, bit),
+            _ => Err(format!("swap_nibble: {:?}", reg)),
+        }
+    }
+
+    pub fn swap_nibbles(&self, reg: &Register) -> Result<Self, String> {
+        match reg {
+            A => SWAP_NIBBLE!(self, a),
+            B => SWAP_NIBBLE!(self, b),
+            C => SWAP_NIBBLE!(self, c),
+            D => SWAP_NIBBLE!(self, d),
+            E => SWAP_NIBBLE!(self, e),
+            H => SWAP_NIBBLE!(self, h),
+            L => SWAP_NIBBLE!(self, l),
+            _ => Err(format!("swap_nibble: {:?}", reg)),
         }
     }
 
@@ -59,7 +116,53 @@ impl RegisterState {
                 sp: value,
                 ..(*self)
             }),
-            _ => Err(value.to_string()),
+            HL => {
+                let [h, l] = value.to_be_bytes();
+                Ok(Self { h, l, ..(*self) })
+            }
+            _ => Err(format!("Put: {}", value.to_string())),
+        }
+    }
+
+    pub fn inc(&self, reg: &Register) -> Self {
+        match reg {
+            HL => {
+                let n = self.hl();
+                let [h, l] = (n.wrapping_add(1)).to_be_bytes();
+                Self { h, l, ..(*self) }
+            }
+            BC => {
+                let n = self.bc();
+                let [b, c] = (n.wrapping_add(1)).to_be_bytes();
+                Self { b, c, ..(*self) }
+            }
+            C => {
+                let n = self.c;
+                let c = self.c.wrapping_add(1);
+                let half_carry = (n & 0x0f) == 0x0f;
+                Self {
+                    f: flags(n == 0, true, half_carry, self.flg_c()),
+                    c,
+                    ..(*self)
+                }
+            }
+            _ => panic!("inc not impl"),
+        }
+    }
+
+    pub fn dec(&self, reg: &Register) -> Self {
+        match reg {
+            HL => {
+                let n = self.hl();
+                let [h, l] = (n.wrapping_sub(1)).to_be_bytes();
+                Self { h, l, ..(*self) }
+            }
+            BC => {
+                let n = self.bc();
+                let [b, c] = (n.wrapping_sub(1)).to_be_bytes();
+                Self { b, c, ..(*self) }
+            }
+            _ => panic!("dec not impl"),
         }
     }
 
@@ -107,13 +210,14 @@ impl RegisterState {
             D => self.d.into(),
             E => self.e.into(),
             F => self.f.into(),
+            H => self.h.into(),
+            L => self.l.into(),
             BC => self.bc(),
             DE => self.de(),
             HL => self.hl(),
             AF => self.af(),
             SP => self.sp,
             PC => self.pc,
-            _ => panic!(),
         }
     }
 

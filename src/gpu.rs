@@ -1,5 +1,5 @@
-use crate::texture::*;
 use crate::emu::Emu;
+use crate::texture::*;
 use std::ops::Index;
 
 #[derive(Debug)]

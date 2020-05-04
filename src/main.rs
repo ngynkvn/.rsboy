@@ -18,17 +18,17 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
-mod emu;
-mod disassembly;
 mod cpu;
+mod disassembly;
+mod emu;
 mod gpu;
 mod instructions;
 mod memory;
 mod registers;
 mod texture;
+use crate::cpu::Controller;
 use crate::cpu::CPU;
 use crate::emu::Emu;
-use crate::cpu::Controller;
 use crate::texture::{Map, Tile};
 
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
@@ -38,10 +38,10 @@ const ZERO: Duration = Duration::from_secs(0);
 // fn main() {
 // 	println!("Started sdl context");
 // 	sdl_main().unwrap();
-// } 
+// }
 
 // #[cfg(not(sdl))]
-fn main () {
+fn main() {
     println!("Just cpu");
     just_cpu();
     //    sdl_main().unwrap();
@@ -58,7 +58,7 @@ fn decompiler() -> std::io::Result<()> {
     Ok(())
 }
 
-fn init () -> Result<Emu, std::io::Error> {
+fn init() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
@@ -70,17 +70,16 @@ fn init () -> Result<Emu, std::io::Error> {
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
     let emu = Emu::new(rom);
-	Ok(emu)
+    Ok(emu)
 }
 
-fn just_cpu()  {
-	let mut emu = init().unwrap();
-	loop {
+fn just_cpu() {
+    let mut emu = init().unwrap();
+    loop {
         let cpu_cycles = emu.cycle();
         // cpu.memory.gpu.cycle(cpu_cycles);
-	}
+    }
 }
-
 
 // fn sdl_main() -> std::io::Result<()> {
 //     env_logger::from_env(Env::default().default_filter_or("info")).init();
