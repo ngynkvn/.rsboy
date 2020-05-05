@@ -134,9 +134,6 @@ impl CPU {
         if memory.in_bios && self.registers.pc == 0x100 {
             memory.in_bios = false;
         }
-        if self.registers.pc == 0x59 {
-            println!("{}", self.registers);
-        }
         let curr_byte = self.next_u8(memory);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
@@ -206,6 +203,11 @@ impl CPU {
                 self.registers.a = self.registers.a ^ (value as u8);
                 self.registers.f =
                     crate::registers::flags(self.registers.a == 0, false, false, false);
+                Ok(())
+            }
+            Instr::SUB(Location::Register(r)) => {
+                let value = self.registers.fetch_u8(r);
+                self.registers.a = self.registers.a.wrapping_sub(value);
                 Ok(())
             }
             Instr::CB => self.handle_cb(memory),

@@ -61,6 +61,32 @@ macro_rules! SWAP_NIBBLE {
     };
 }
 
+macro_rules! INC {
+    ($self: ident, $r1: ident) => {{
+        let n = $self.$r1;
+        let half_carry = (n & 0x0f) == 0x0f;
+        let n = n.wrapping_add(1);
+        RegisterState {
+            $r1: n,
+            f: flags(n == 0, true, half_carry, $self.flg_c()),
+            ..(*$self)
+        }
+    }};
+}
+
+macro_rules! DEC {
+    ($self: ident, $r1: ident) => {{
+        let n = $self.$r1;
+        let half_carry = (n & 0x0f) == 0x0f;
+        let n = n.wrapping_sub(1);
+        RegisterState {
+            $r1: n,
+            f: flags(n == 0, true, half_carry, $self.flg_c()),
+            ..(*$self)
+        }
+    }};
+}
+
 macro_rules! RL {
     ($self: ident, $r1: ident) => {{
         let leftmost = $self.$r1 & 0b1000_0000 != 0;
@@ -186,26 +212,13 @@ impl RegisterState {
                 let [d, e] = (n.wrapping_add(1)).to_be_bytes();
                 Self { d, e, ..(*self) }
             }
-            C => {
-                let n = self.c;
-                let c = self.c.wrapping_add(1);
-                let half_carry = (n & 0x0f) == 0x0f;
-                Self {
-                    f: flags(c == 0, true, half_carry, self.flg_c()),
-                    c,
-                    ..(*self)
-                }
-            }
-            B => {
-                let n = self.b;
-                let b = self.b.wrapping_add(1);
-                let half_carry = (n & 0x0f) == 0x0f;
-                Self {
-                    f: flags(b == 0, true, half_carry, self.flg_c()),
-                    b,
-                    ..(*self)
-                }
-            }
+            A => INC!(self, a),
+            B => INC!(self, b),
+            C => INC!(self, c),
+            D => INC!(self, d),
+            E => INC!(self, e),
+            H => INC!(self, h),
+            L => INC!(self, l),
             _ => panic!("inc not impl for {:?}", reg),
         }
     }
@@ -222,46 +235,13 @@ impl RegisterState {
                 let [b, c] = (n.wrapping_sub(1)).to_be_bytes();
                 Self { b, c, ..(*self) }
             }
-            A => {
-                let n = self.a;
-                let a = self.a.wrapping_sub(1);
-                let half_carry = (n & 0x0f) == 0x0f;
-                Self {
-                    f: flags(a == 0, true, half_carry, self.flg_c()),
-                    a,
-                    ..(*self)
-                }
-            }
-            B => {
-                let n = self.b;
-                let b = self.b.wrapping_sub(1);
-                let half_carry = (n & 0x0f) == 0x0f;
-                Self {
-                    f: flags(b == 0, true, half_carry, self.flg_c()),
-                    b,
-                    ..(*self)
-                }
-            }
-            C => {
-                let n = self.c;
-                let c = self.c.wrapping_sub(1);
-                let half_carry = (n & 0x0f) == 0x0f;
-                Self {
-                    f: flags(c == 0, true, half_carry, self.flg_c()),
-                    c,
-                    ..(*self)
-                }
-            }
-            E => {
-                let n = self.e;
-                let e = self.e.wrapping_sub(1);
-                let half_carry = (n & 0x0f) == 0x0f;
-                Self {
-                    f: flags(e == 0, true, half_carry, self.flg_c()),
-                    e,
-                    ..(*self)
-                }
-            }
+            A => DEC!(self, a),
+            B => DEC!(self, b),
+            C => DEC!(self, c),
+            D => DEC!(self, d),
+            E => DEC!(self, e),
+            H => DEC!(self, h),
+            L => DEC!(self, l),
             _ => panic!("dec not impl for {:?}", reg),
         }
     }
