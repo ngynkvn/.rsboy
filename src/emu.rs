@@ -6,7 +6,7 @@ use crate::memory::Memory;
 // Global emu struct.
 pub struct Emu {
     pub cpu: CPU,
-    pub gpu: GPU,
+    // pub gpu: GPU,
     pub memory: Memory,
 }
 
@@ -21,13 +21,13 @@ impl Emu {
                 break;
             }
         }
-        self.gpu.cycle(i);
+        self.memory.gpu.cycle(i);
     }
 
     pub fn new(rom: Vec<u8>) -> Emu {
         Emu {
             cpu: CPU::new(),
-            gpu: GPU::new(),
+            // gpu: GPU::new(),
             memory: Memory::new(rom),
         }
     }

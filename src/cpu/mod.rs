@@ -69,6 +69,7 @@ impl CPU {
                     memory,
                 )
                 .into(),
+            _ => panic!()
         }
     }
 
@@ -94,6 +95,10 @@ impl CPU {
                     from_value.try_into().unwrap(),
                     memory,
                 );
+            }
+            Location::MemoryImmediate => {
+                let addr = self.next_u16(memory);
+                self.set_byte(addr, from_value.try_into().unwrap(), memory);
             }
         };
         Ok(())
@@ -126,17 +131,22 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, memory: &mut Memory) -> CpuResult {
-        println!("{}", self.registers);
+        if memory.in_bios && self.registers.pc == 0x100 {
+            memory.in_bios = false;
+        }
+        if self.registers.pc == 0x59 {
+            println!("{}", self.registers);
+        }
         let curr_byte = self.next_u8(memory);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
-        println!(
-            "0x{:04X}: 0x{:02X} {:?}",
-            self.registers.pc - 1,
-            curr_byte,
-            instruction
-        );
+        // println!(
+        //     "0x{:04X}: 0x{:02X} {:?}",
+        //     self.registers.pc - 1,
+        //     curr_byte,
+        //     instruction
+        // );
         match instruction {
             Instr::LD(into, from) => self.load(into, from, memory).or_else(|e| {
                 Err(format!(
@@ -183,7 +193,6 @@ impl CPU {
             }
             Instr::CP(location) => {
                 let value = self.read_location(location, memory);
-                println!("{:#}", self.registers);
                 self.registers = self.registers.cmp(value.try_into().unwrap())?;
                 Ok(())
             }

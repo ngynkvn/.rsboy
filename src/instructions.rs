@@ -38,6 +38,7 @@ pub enum Location {
     Immediate(usize), // Bytes
     Register(Register),
     MemOffsetImm,
+    MemoryImmediate,
     MemOffsetRegister(Register),
 }
 
@@ -325,7 +326,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RST(20), //0xE7
     JP(To(Register(HL))), //0xE8
     RET(If(FlagC)), //0xE9
-    POP(Register(DE)), //0xEA
+    LD(MemoryImmediate, Register(A)), //0xEA
     UNIMPLEMENTED, //0xEB
     CALL(If(FlagZ)), //0xEC
     PUSH(Register(DE)), //0xED

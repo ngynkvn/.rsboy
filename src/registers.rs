@@ -107,9 +107,9 @@ impl RegisterState {
     }
 
     pub fn cmp(&self, value: u8) -> Result<Self, String> {
-        let half_carry = (self.a & 0x0f) == 0x0f;
+        let half_carry = (value & 0x0f) == 0x0f;
         if half_carry && self.a < value {
-            panic!()
+            panic!("{:08b} - {:08b} = {:08b}", self.a, value, self.a.wrapping_sub(value));
         }
         Ok(Self {
             f: flags(value == self.a, true, half_carry, self.a < value),
@@ -150,6 +150,8 @@ impl RegisterState {
             C => Ok(Self { c: value.try_into().unwrap(), ..(*self) }),
             D => Ok(Self { d: value.try_into().unwrap(), ..(*self) }),
             E => Ok(Self { e: value.try_into().unwrap(), ..(*self) }),
+            H => Ok(Self { h: value.try_into().unwrap(), ..(*self) }),
+            L => Ok(Self { l: value.try_into().unwrap(), ..(*self) }),
             SP => Ok(Self { sp: value, ..(*self) }),
             HL => {
                 let [h, l] = value.to_be_bytes();
@@ -180,7 +182,7 @@ impl RegisterState {
                 Self { b, c, ..(*self) }
             }
             DE => {
-                let n = self.bc();
+                let n = self.de();
                 let [d, e] = (n.wrapping_add(1)).to_be_bytes();
                 Self { d, e, ..(*self) }
             }
@@ -220,6 +222,16 @@ impl RegisterState {
                 let [b, c] = (n.wrapping_sub(1)).to_be_bytes();
                 Self { b, c, ..(*self) }
             }
+            A => {
+                let n = self.a;
+                let a = self.a.wrapping_sub(1);
+                let half_carry = (n & 0x0f) == 0x0f;
+                Self {
+                    f: flags(a == 0, true, half_carry, self.flg_c()),
+                    a,
+                    ..(*self)
+                }
+            }
             B => {
                 let n = self.b;
                 let b = self.b.wrapping_sub(1);
@@ -237,6 +249,16 @@ impl RegisterState {
                 Self {
                     f: flags(c == 0, true, half_carry, self.flg_c()),
                     c,
+                    ..(*self)
+                }
+            }
+            E => {
+                let n = self.e;
+                let e = self.e.wrapping_sub(1);
+                let half_carry = (n & 0x0f) == 0x0f;
+                Self {
+                    f: flags(e == 0, true, half_carry, self.flg_c()),
+                    e,
                     ..(*self)
                 }
             }

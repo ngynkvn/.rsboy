@@ -43,8 +43,8 @@ const ZERO: Duration = Duration::from_secs(0);
 // #[cfg(not(sdl))]
 fn main() {
     println!("Just cpu");
-    just_cpu();
-    // sdl_main().unwrap();
+    // just_cpu();
+    sdl_main().unwrap();
     // decompiler();
 }
 
@@ -120,22 +120,22 @@ fn sdl_main() -> std::io::Result<()> {
         "It took {:?} seconds.",
         Instant::now().duration_since(boot_timer)
     );
-    vram_viewer(&context, emu.gpu.vram).unwrap();
-    map_viewer(&context, emu.gpu).unwrap();
+    // vram_viewer(&context, emu.memory.gpu.vram).unwrap();
+    // map_viewer(&context, emu.memory.gpu).unwrap();
     Ok(())
 }
 
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let cpu_cycles = emu.cycle();
-    let bg = emu.gpu.background();
+    let bg = emu.memory.gpu.background();
     texture
         .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            if emu.gpu.is_on() {
+            if emu.memory.gpu.is_on() {
                 buffer[..].copy_from_slice(&bg.texture());
             }
         })
         .unwrap();
-    let (h, v) = emu.gpu.scroll();
+    let (h, v) = emu.memory.gpu.scroll();
     canvas
         .copy(
             &texture,
