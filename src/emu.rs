@@ -11,17 +11,10 @@ pub struct Emu {
 }
 
 impl Emu {
-    pub fn cycle(&mut self) {
-        let mut i = 0;
-        while i < 17556 {
-            let cycles = self.cpu.cycle(&mut self.memory);
-            i += cycles;
-            if cycles == 0 {
-                println!("No cycles from cpu..");
-                break;
-            }
-        }
-        self.memory.gpu.cycle(i);
+    pub fn cycle(&mut self) -> usize {
+        let cycles = self.cpu.cycle(&mut self.memory);
+        self.memory.gpu.cycle(cycles);
+        cycles
     }
 
     pub fn new(rom: Vec<u8>) -> Emu {

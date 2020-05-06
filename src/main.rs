@@ -112,7 +112,7 @@ fn sdl_main() -> std::io::Result<()> {
         if f.is_err() {
             break;
         }
-        delay_min(FRAME_TIME, &timer);
+        // delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
         count_loop += 1;
     }
@@ -126,7 +126,14 @@ fn sdl_main() -> std::io::Result<()> {
 }
 
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
-    let cpu_cycles = emu.cycle();
+    let mut i = 0;
+    while i < 17556 {
+        let cpu_cycles = emu.cycle();
+        i += cpu_cycles;
+        if cpu_cycles == 0 {
+            ()
+        }
+    }
     let bg = emu.memory.gpu.background();
     texture
         .with_lock(None, |buffer: &mut [u8], pitch: usize| {
@@ -136,6 +143,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
         })
         .unwrap();
     let (h, v) = emu.memory.gpu.scroll();
+    println!("{},{}", h, v);
     canvas
         .copy(
             &texture,

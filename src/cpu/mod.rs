@@ -320,12 +320,7 @@ impl CPU {
         }
         Ok(())
     }
-}
-
-impl Controller for CPU {
-    // TODO rn CPU is the "master clock"
-    // Should make an actual master clock later
-    fn cycle(&mut self, memory: &mut Memory) -> usize {
+    pub fn cycle(&mut self, memory: &mut Memory) -> usize {
         let prev = self.clock;
         if let Err(e) = self.read_instruction(memory) {
             panic!(e);

@@ -254,7 +254,7 @@ impl RegisterState {
             D => self.d,
             E => self.e,
             F => self.f,
-            _ => panic!(),
+            _ => panic!("{:?}", reg),
         }
     }
 
