@@ -45,10 +45,6 @@ impl CPU {
     fn set_byte(&mut self, address: u16, value: u8, memory: &mut Memory) -> CpuResult<()> {
         self.clock += 1;
         memory.gpu.cycle().unwrap();
-        if address == 0xff47 {
-            println!("{}", self.registers);
-            return Err(String::from(""));
-        }
         memory[address] = value;
         Ok(())
     }
@@ -134,18 +130,13 @@ impl CPU {
     fn inc_pc(&mut self) {
         self.registers.pc += 1;
     }
+    
 
     fn read_instruction(&mut self, memory: &mut Memory) -> CpuResult<()> {
         let curr_byte = self.next_u8(memory);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
-        // println!(
-        //     "0x{:04X}: 0x{:02X} {:?}",
-        //     self.registers.pc - 1,
-        //     curr_byte,
-        //     instruction
-        // );
         match instruction {
             Instr::LD(into, from) => self.load(into, from, memory).or_else(|e| {
                 Err(format!(
@@ -197,20 +188,20 @@ impl CPU {
                 self.registers = self.registers.cmp(value)?;
                 Ok(())
             }
-            Instr::ADD(Location::Register(r)) => {
-                let value = self.registers.fetch_u8(r)?;
-                self.registers.a = self.registers.a.wrapping_add(value as u8);
+            Instr::ADD(location) => {
+                let value = self.read_location(location, memory).try_into().unwrap();
+                self.registers.a = self.registers.a.wrapping_add(value);
                 Ok(())
             }
-            Instr::XOR(Location::Register(r)) => {
-                let value = self.registers.fetch_u8(r)?;
-                self.registers.a = self.registers.a ^ (value as u8);
+            Instr::XOR(location) => {
+                let value :u8 = self.read_location(location, memory).try_into().unwrap();
+                self.registers.a = self.registers.a ^ (value);
                 self.registers.f =
                     crate::registers::flags(self.registers.a == 0, false, false, false);
                 Ok(())
             }
-            Instr::SUB(Location::Register(r)) => {
-                let value = self.registers.fetch_u8(r)?;
+            Instr::SUB(location) => {
+                let value = self.read_location(location, memory).try_into().unwrap();
                 self.registers.a = self.registers.a.wrapping_sub(value);
                 Ok(())
             }
