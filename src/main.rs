@@ -19,6 +19,7 @@ use std::fs::File;
 use std::io::Read;
 
 mod cpu;
+mod controller;
 mod disassembly;
 mod emu;
 mod gpu;
@@ -26,8 +27,6 @@ mod instructions;
 mod memory;
 mod registers;
 mod texture;
-use crate::cpu::Controller;
-use crate::cpu::CPU;
 use crate::emu::Emu;
 use crate::texture::{Map, Tile};
 
@@ -112,7 +111,7 @@ fn sdl_main() -> std::io::Result<()> {
         if f.is_err() {
             break;
         }
-        // delay_min(FRAME_TIME, &timer);
+        delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
         count_loop += 1;
     }
@@ -127,12 +126,8 @@ fn sdl_main() -> std::io::Result<()> {
 
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
-    while i < 17556 {
-        let cpu_cycles = emu.cycle();
-        i += cpu_cycles;
-        if cpu_cycles == 0 {
-            ()
-        }
+    while i < 17476 {
+        i += emu.cycle().unwrap();
     }
     let bg = emu.memory.gpu.background();
     texture
@@ -143,7 +138,6 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
         })
         .unwrap();
     let (h, v) = emu.memory.gpu.scroll();
-    println!("{},{}", h, v);
     canvas
         .copy(
             &texture,

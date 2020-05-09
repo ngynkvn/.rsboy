@@ -1,4 +1,5 @@
 use crate::emu::Emu;
+use crate::memory::Memory;
 use crate::texture::*;
 use std::ops::Index;
 
@@ -54,12 +55,13 @@ impl GPU {
     pub fn is_on(&self) -> bool {
         self.lcdc & 0b1000_0000 == 0b1000_0000
     }
-    pub fn cycle(&mut self, clock: usize) {
+    pub fn cycle(&mut self) -> Result<(), String> {
         if !self.is_on() {
-            return;
+            return Ok(())
         }
-        self.clock += clock;
+        self.clock += 1;
         self.step();
+        Ok(())
     }
 
     pub fn scroll(&self) -> (u32, u32) {

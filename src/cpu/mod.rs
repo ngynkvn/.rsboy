@@ -1,4 +1,4 @@
-use crate::emu::Emu;
+use crate::controller::Controller;
 use crate::instructions::*;
 use crate::memory::Memory;
 use crate::registers::RegisterState;
@@ -6,16 +6,12 @@ use std::convert::TryInto;
 
 const HISTORY_SIZE: usize = 10;
 
-pub trait Controller {
-    fn cycle(&mut self, memory: &mut Memory) -> usize;
-}
-
 pub struct CPU {
     registers: RegisterState,
     pub clock: usize,
 }
 
-type CpuResult = Result<(), String>;
+type CpuResult<T> = Result<T, String>;
 
 impl CPU {
     pub fn new() -> Self {
@@ -24,28 +20,32 @@ impl CPU {
             clock: 0,
         }
     }
-    fn next_u8(&mut self, memory: &Memory) -> u8 {
+    fn next_u8(&mut self, memory: &mut Memory) -> u8 {
         self.clock += 1;
+        memory.gpu.cycle();
         let val = memory[(self.registers.pc)];
         self.registers.pc += 1;
         val
     }
-    fn next_u16(&mut self, memory: &Memory) -> u16 {
+    fn next_u16(&mut self, memory: &mut Memory) -> u16 {
         // Little endianess means LSB comes first.
         self.clock += 1;
+        memory.gpu.cycle();
         let val = (memory[self.registers.pc + 1] as u16) << 8 | (memory[self.registers.pc] as u16);
         self.registers.pc += 2;
         val
     }
-    fn read_byte(&mut self, address: u16, memory: &Memory) -> u8 {
+    fn read_byte(&mut self, address: u16, memory: &mut Memory) -> u8 {
         self.clock += 1;
+        memory.gpu.cycle();
         memory[address]
     }
-    fn read_io(&mut self, offset: u8, memory: &Memory) -> u8 {
+    fn read_io(&mut self, offset: u8, memory: &mut Memory) -> u8 {
         self.read_byte(0xFF00 + offset as u16, memory)
     }
     fn set_byte(&mut self, address: u16, value: u8, memory: &mut Memory) {
         self.clock += 1;
+        memory.gpu.cycle();
         memory[address] = value;
     }
 
@@ -73,7 +73,7 @@ impl CPU {
         }
     }
 
-    fn load(&mut self, into: &Location, from: &Location, memory: &mut Memory) -> CpuResult {
+    fn load(&mut self, into: &Location, from: &Location, memory: &mut Memory) -> CpuResult<()> {
         let from_value = self.read_location(from, memory);
         match into {
             Location::Immediate(_) => return Err(String::from("Tried to write into ROM?")),
@@ -130,7 +130,7 @@ impl CPU {
         self.registers.pc += 1;
     }
 
-    fn read_instruction(&mut self, memory: &mut Memory) -> CpuResult {
+    fn read_instruction(&mut self, memory: &mut Memory) -> CpuResult<()> {
         if memory.in_bios && self.registers.pc == 0x100 {
             memory.in_bios = false;
         }
@@ -166,6 +166,7 @@ impl CPU {
                 })?;
                 self.dec(&Register::HL);
                 self.clock += 1; // TODO
+                memory.gpu.cycle();
                 Ok(())
             }
             Instr::LDI(into, from) => {
@@ -180,6 +181,7 @@ impl CPU {
                 })?;
                 self.inc(&Register::HL);
                 self.clock += 1; // TODO
+                memory.gpu.cycle();
                 Ok(())
             }
             Instr::NOOP => Ok(()),
@@ -263,11 +265,11 @@ impl CPU {
         }
     }
 
-    fn jump(&mut self, address: u16) -> CpuResult {
+    fn jump(&mut self, address: u16) -> CpuResult<()> {
         self.registers = self.registers.jump(address)?;
         Ok(())
     }
-    fn handle_jump(&mut self, address: u16, jt: &JumpType) -> CpuResult {
+    fn handle_jump(&mut self, address: u16, jt: &JumpType) -> CpuResult<()> {
         match jt {
             JumpType::If(flag) => {
                 if self.check_flag(flag) {
@@ -283,7 +285,7 @@ impl CPU {
         }
         Ok(())
     }
-    fn handle_cb(&mut self, memory: &mut Memory) -> CpuResult {
+    fn handle_cb(&mut self, memory: &mut Memory) -> CpuResult<()> {
         let opcode = self.next_u8(memory);
         match opcode {
             0x37 => self.registers = self.registers.swap_nibbles(&Register::A)?,
@@ -320,11 +322,9 @@ impl CPU {
         }
         Ok(())
     }
-    pub fn cycle(&mut self, memory: &mut Memory) -> usize {
+    pub fn cycle<'a>(&mut self, memory: &mut Memory) -> CpuResult<usize> {
         let prev = self.clock;
-        if let Err(e) = self.read_instruction(memory) {
-            panic!(e);
-        }
-        self.clock - prev
+        self.read_instruction(memory);
+        Ok(self.clock - prev)
     }
 }
