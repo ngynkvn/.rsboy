@@ -42,8 +42,8 @@ const ZERO: Duration = Duration::from_secs(0);
 // #[cfg(not(sdl))]
 fn main() {
     println!("Just cpu");
-    // just_cpu();
-    sdl_main().unwrap();
+    just_cpu();
+    // sdl_main().unwrap();
     // decompiler();
 }
 
@@ -75,7 +75,7 @@ fn init() -> Result<Emu, std::io::Error> {
 fn just_cpu() {
     let mut emu = init().unwrap();
     loop {
-        let cpu_cycles = emu.cycle();
+        let cpu_cycles = emu.cycle().unwrap();
     }
 }
 

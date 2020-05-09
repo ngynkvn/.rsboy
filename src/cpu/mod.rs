@@ -22,7 +22,7 @@ impl CPU {
     }
     fn next_u8(&mut self, memory: &mut Memory) -> u8 {
         self.clock += 1;
-        memory.gpu.cycle();
+        memory.gpu.cycle().unwrap();
         let val = memory[(self.registers.pc)];
         self.registers.pc += 1;
         val
@@ -30,23 +30,28 @@ impl CPU {
     fn next_u16(&mut self, memory: &mut Memory) -> u16 {
         // Little endianess means LSB comes first.
         self.clock += 1;
-        memory.gpu.cycle();
+        memory.gpu.cycle().unwrap();
         let val = (memory[self.registers.pc + 1] as u16) << 8 | (memory[self.registers.pc] as u16);
         self.registers.pc += 2;
         val
     }
     fn read_byte(&mut self, address: u16, memory: &mut Memory) -> u8 {
         self.clock += 1;
-        memory.gpu.cycle();
+        memory.gpu.cycle().unwrap();
         memory[address]
     }
     fn read_io(&mut self, offset: u8, memory: &mut Memory) -> u8 {
         self.read_byte(0xFF00 + offset as u16, memory)
     }
-    fn set_byte(&mut self, address: u16, value: u8, memory: &mut Memory) {
+    fn set_byte(&mut self, address: u16, value: u8, memory: &mut Memory) -> CpuResult<()> {
         self.clock += 1;
-        memory.gpu.cycle();
+        memory.gpu.cycle().unwrap();
+        if address == 0xff47 {
+            println!("{}", self.registers);
+            return Err(String::from(""));
+        }
         memory[address] = value;
+        Ok(())
     }
 
     fn read_location(&mut self, location: &Location, memory: &mut Memory) -> u16 {
@@ -81,12 +86,12 @@ impl CPU {
                 self.registers = self.registers.put(from_value, r)?;
             }
             Location::Memory(r) => match self.registers.get_dual_reg(r) {
-                Some(address) => self.set_byte(address, from_value.try_into().unwrap(), memory),
+                Some(address) => self.set_byte(address, from_value.try_into().unwrap(), memory)?,
                 None => return Err(String::from("I tried to access a u8 as a memory address.")),
             },
             Location::MemOffsetImm => {
                 let next = self.next_u8(memory);
-                self.set_byte(0xFF00 + next as u16, from_value.try_into().unwrap(), memory);
+                self.set_byte(0xFF00 + next as u16, from_value.try_into().unwrap(), memory)?;
             }
             Location::MemOffsetRegister(r) => {
                 let offset = self.registers.fetch_u8(r)?;
@@ -94,28 +99,29 @@ impl CPU {
                     0xFF00 + offset as u16,
                     from_value.try_into().unwrap(),
                     memory,
-                );
+                )?;
             }
             Location::MemoryImmediate => {
                 let addr = self.next_u16(memory);
-                self.set_byte(addr, from_value.try_into().unwrap(), memory);
+                self.set_byte(addr, from_value.try_into().unwrap(), memory)?;
             }
         };
         Ok(())
     }
 
-    fn push_stack(&mut self, value: u16, memory: &mut Memory) {
+    fn push_stack(&mut self, value: u16, memory: &mut Memory) -> CpuResult<()> {
         let bytes = value.to_be_bytes();
-        self.set_byte(self.registers.sp - 1, bytes[0], memory);
-        self.set_byte(self.registers.sp, bytes[1], memory);
+        self.set_byte(self.registers.sp - 1, bytes[0], memory)?;
+        self.set_byte(self.registers.sp, bytes[1], memory)?;
         self.registers.sp -= 2;
+        Ok(())
     }
 
-    fn pop_stack(&mut self, memory: &mut Memory) -> u16 {
+    fn pop_stack(&mut self, memory: &mut Memory) -> CpuResult<u16> {
         let b1 = self.read_byte(self.registers.sp + 1, memory);
         let b2 = self.read_byte(self.registers.sp + 2, memory);
         self.registers.sp += 2;
-        ((b1 as u16) << 8) | b2 as u16
+        Ok(((b1 as u16) << 8) | b2 as u16)
     }
 
     fn dec(&mut self, r: &Register) {
@@ -186,7 +192,7 @@ impl CPU {
             }
             Instr::NOOP => Ok(()),
             Instr::RST(size) => {
-                self.push_stack(self.registers.pc, memory);
+                self.push_stack(self.registers.pc, memory)?;
                 self.registers.pc = *size as u16;
                 Ok(())
             }
@@ -219,7 +225,7 @@ impl CPU {
             }
             Instr::CALL(jump_type) => {
                 let address = self.next_u16(memory);
-                self.push_stack(self.registers.pc, memory);
+                self.push_stack(self.registers.pc, memory)?;
                 self.handle_jump(address, jump_type)
             }
             Instr::DEC(Location::Register(r)) => {
@@ -232,16 +238,16 @@ impl CPU {
             }
             Instr::PUSH(Location::Register(r)) => {
                 let addr = self.registers.fetch_u16(r);
-                self.push_stack(addr, memory);
+                self.push_stack(addr, memory)?;
                 Ok(())
             }
             Instr::POP(Location::Register(r)) => {
-                let addr = self.pop_stack(memory);
+                let addr = self.pop_stack(memory)?;
                 self.registers = self.registers.put(addr, r)?;
                 Ok(())
             }
             Instr::RET(jump_type) => {
-                let addr = self.pop_stack(memory);
+                let addr = self.pop_stack(memory)?;
                 self.handle_jump(addr, jump_type)
             }
             Instr::RotThruCarry(Direction::LEFT, Location::Register(r)) => {
@@ -300,7 +306,7 @@ impl CPU {
                 let byte = self.read_byte(address, memory);
                 let [hi, lo] = [byte >> 4, byte & 0xF];
                 let new_byte = (lo << 4) | byte;
-                self.set_byte(address, new_byte, memory);
+                self.set_byte(address, new_byte, memory)?;
             }
             0x78 => self.registers = self.registers.test_bit(&Register::B, 7)?,
             0x79 => self.registers = self.registers.test_bit(&Register::C, 7)?,
@@ -324,7 +330,7 @@ impl CPU {
     }
     pub fn cycle<'a>(&mut self, memory: &mut Memory) -> CpuResult<usize> {
         let prev = self.clock;
-        self.read_instruction(memory);
+        self.read_instruction(memory)?;
         Ok(self.clock - prev)
     }
 }
