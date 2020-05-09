@@ -245,6 +245,10 @@ impl CPU {
                 self.registers = self.registers.rot_thru_carry(r)?;
                 Ok(())
             }
+            // y => {
+            //     println!("Unknown OP: 0x{:04X}: {:?}", self.registers.pc - instr_len, y);
+            //     Ok(())
+            // }
             x => Err(format!(
                 "read_instruction: 0x{:04X}: 0x{:02X} {:?}",
                 self.registers.pc - instr_len,
