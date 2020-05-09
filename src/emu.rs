@@ -1,4 +1,3 @@
-use crate::controller::Controller;
 use crate::cpu::CPU;
 use crate::gpu::GPU;
 use crate::memory::Memory;

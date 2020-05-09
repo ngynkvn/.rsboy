@@ -287,7 +287,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RET(If(FlagNZ)),                       //0xC0
     POP(Register(BC)),                     //0xC1
     JP(If(FlagNZ)),                        //0xC2
-    JP(To(Immediate(2))),                  //0xC3
+    JP(Always),                  //0xC3
     CALL(If(FlagNZ)),                      //0xC4
     PUSH(Register(BC)),                    //0xC5
     ADD(Immediate(2)),                     //0xC6

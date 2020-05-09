@@ -1,4 +1,3 @@
-use crate::controller::Controller;
 use crate::instructions::*;
 use crate::memory::Memory;
 use crate::registers::RegisterState;
@@ -137,9 +136,6 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, memory: &mut Memory) -> CpuResult<()> {
-        if memory.in_bios && self.registers.pc == 0x100 {
-            memory.in_bios = false;
-        }
         let curr_byte = self.next_u8(memory);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
@@ -197,8 +193,8 @@ impl CPU {
                 Ok(())
             }
             Instr::CP(location) => {
-                let value = self.read_location(location, memory);
-                self.registers = self.registers.cmp(value.try_into().unwrap())?;
+                let value = self.read_location(location, memory).try_into().unwrap();
+                self.registers = self.registers.cmp(value)?;
                 Ok(())
             }
             Instr::ADD(Location::Register(r)) => {
@@ -219,6 +215,10 @@ impl CPU {
                 Ok(())
             }
             Instr::CB => self.handle_cb(memory),
+            Instr::JP(jump_type) => {
+                let address = self.next_u16(memory);
+                self.handle_jump(address, jump_type)
+            }
             Instr::JR(jump_type) => {
                 let offset = self.next_u8(memory) as i8;
                 self.handle_jump(self.registers.pc.wrapping_add(offset as u16), jump_type)
