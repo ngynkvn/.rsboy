@@ -246,15 +246,15 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch_u8(&self, reg: &Register) -> u8 {
+    pub fn fetch_u8(&self, reg: &Register) -> Result<u8, String> {
         match reg {
-            A => self.a,
-            B => self.b,
-            C => self.c,
-            D => self.d,
-            E => self.e,
-            F => self.f,
-            _ => panic!("{:?}", reg),
+            A => Ok(self.a),
+            B => Ok(self.b),
+            C => Ok(self.c),
+            D => Ok(self.d),
+            E => Ok(self.e),
+            F => Ok(self.f),
+            _ => Err(format!("fetchu8 {:?}", reg)),
         }
     }
 

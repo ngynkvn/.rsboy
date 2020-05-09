@@ -111,7 +111,7 @@ fn sdl_main() -> std::io::Result<()> {
         if f.is_err() {
             break;
         }
-        delay_min(FRAME_TIME, &timer);
+        // delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
         count_loop += 1;
     }

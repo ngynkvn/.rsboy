@@ -89,7 +89,7 @@ impl CPU {
                 self.set_byte(0xFF00 + next as u16, from_value.try_into().unwrap(), memory);
             }
             Location::MemOffsetRegister(r) => {
-                let offset = self.registers.fetch_u8(r);
+                let offset = self.registers.fetch_u8(r)?;
                 self.set_byte(
                     0xFF00 + offset as u16,
                     from_value.try_into().unwrap(),
@@ -166,7 +166,7 @@ impl CPU {
                 })?;
                 self.dec(&Register::HL);
                 self.clock += 1; // TODO
-                memory.gpu.cycle();
+                memory.gpu.cycle()?;
                 Ok(())
             }
             Instr::LDI(into, from) => {
@@ -181,7 +181,7 @@ impl CPU {
                 })?;
                 self.inc(&Register::HL);
                 self.clock += 1; // TODO
-                memory.gpu.cycle();
+                memory.gpu.cycle()?;
                 Ok(())
             }
             Instr::NOOP => Ok(()),
@@ -196,19 +196,19 @@ impl CPU {
                 Ok(())
             }
             Instr::ADD(Location::Register(r)) => {
-                let value = self.registers.fetch_u8(r);
+                let value = self.registers.fetch_u8(r)?;
                 self.registers.a = self.registers.a.wrapping_add(value as u8);
                 Ok(())
             }
             Instr::XOR(Location::Register(r)) => {
-                let value = self.registers.fetch_u8(r);
+                let value = self.registers.fetch_u8(r)?;
                 self.registers.a = self.registers.a ^ (value as u8);
                 self.registers.f =
                     crate::registers::flags(self.registers.a == 0, false, false, false);
                 Ok(())
             }
             Instr::SUB(Location::Register(r)) => {
-                let value = self.registers.fetch_u8(r);
+                let value = self.registers.fetch_u8(r)?;
                 self.registers.a = self.registers.a.wrapping_sub(value);
                 Ok(())
             }

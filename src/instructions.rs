@@ -6,7 +6,7 @@ use self::Location::*;
 use self::Register::*;
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Register {
     A,
     B,
@@ -226,7 +226,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     ADD(Register(E)),                      //0x83
     ADD(Register(H)),                      //0x84
     ADD(Register(L)),                      //0x85
-    ADD(Register(HL)),                     //0x86
+    ADD(Memory(HL)),                     //0x86
     ADD(Register(A)),                      //0x87
     ADC(Register(B)),                      //0x88
     ADC(Register(C)),                      //0x89
