@@ -8,12 +8,12 @@ pub enum Color {
 }
 
 impl Color {
-    pub fn value(self) -> [u8; 3] {
+    pub fn value(self) -> &'static [u8; 3] {
         match self {
-            Color::White => [224, 248, 208],
-            Color::LightGrey => [136, 192, 112],
-            Color::DarkGrey => [52, 104, 86],
-            Color::Black => [8, 24, 32],
+            Color::White => &[224, 248, 208],
+            Color::LightGrey => &[136, 192, 112],
+            Color::DarkGrey => &[52, 104, 86],
+            Color::Black => &[8, 24, 32],
         }
     }
     pub fn bit2color(value: u8) -> Self {
@@ -65,7 +65,7 @@ impl Tile {
         let mut buffer = [255; 192];
         let mut p = 0;
         for i in self.data.iter() {
-            buffer[p..(p + 3)].clone_from_slice(&i.value());
+            buffer[p..(p + 3)].clone_from_slice(i.value());
             p += 3;
         }
         buffer

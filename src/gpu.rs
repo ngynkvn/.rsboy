@@ -79,12 +79,10 @@ impl GPU {
     }
 
     pub fn tiles(&self) -> Vec<Tile> {
-        // 0x8000-0x87ff
-        let mut tiles: Vec<Tile> = vec![];
-        for i in (0..0x7ff).step_by(16) {
-            let tile_data = &self.vram[i..(i + 16)];
-            tiles.push(Tile::construct(self.bg_palette, tile_data));
-        }
+        let iter = (&self.vram[0..0x800]).chunks_exact(16);
+        let tiles = iter.map(|x| {
+            Tile::construct(self.bg_palette, x)
+        }).collect();
         tiles
     }
 
