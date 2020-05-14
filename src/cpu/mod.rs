@@ -13,9 +13,9 @@ pub struct CPU {
 type CpuResult<T> = Result<T, String>;
 
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(skip_bios: bool) -> Self { // TODO
         Self {
-            registers: RegisterState::new(),
+            registers: RegisterState::new(skip_bios),
             clock: 0,
         }
     }
@@ -49,7 +49,7 @@ impl CPU {
         Ok(())
     }
 
-    fn read_location(&mut self, location: &Location, bus: &mut Bus) -> u16 {
+    fn read_location(&mut self, location: Location, bus: &mut Bus) -> u16 {
         match location {
             Location::Immediate(1) => self.next_u8(bus).into(),
             Location::Immediate(2) => self.next_u16(bus),
@@ -73,7 +73,7 @@ impl CPU {
         }
     }
 
-    fn load(&mut self, into: &Location, from: &Location, bus: &mut Bus) -> CpuResult<()> {
+    fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
         let from_value = self.read_location(from, bus);
         match into {
             Location::Immediate(_) => return Err(String::from("Tried to write into ROM?")),
@@ -119,11 +119,11 @@ impl CPU {
         Ok(((b1 as u16) << 8) | b2 as u16)
     }
 
-    fn dec(&mut self, r: &Register) {
+    fn dec(&mut self, r: Register) {
         self.registers = self.registers.dec(r);
     }
 
-    fn inc(&mut self, r: &Register) {
+    fn inc(&mut self, r: Register) {
         self.registers = self.registers.inc(r);
     }
 
@@ -131,12 +131,7 @@ impl CPU {
         self.registers.pc += 1;
     }
     
-
-    fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
-        let curr_byte = self.next_u8(bus);
-        let instruction = &INSTR_TABLE[curr_byte as usize];
-        let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
-        let instr_len = size as u16 + 1;
+    fn perform_instruction(&mut self, instruction: Instr, instr_len: u16, curr_byte: u8, bus: &mut Bus) -> CpuResult<()> {
         match instruction {
             Instr::LD(into, from) => self.load(into, from, bus).or_else(|e| {
                 Err(format!(
@@ -157,7 +152,7 @@ impl CPU {
                         e
                     ))
                 })?;
-                self.dec(&Register::HL);
+                self.dec(Register::HL);
                 self.clock += 1; // TODO
                 bus.gpu.cycle()?;
                 Ok(())
@@ -172,7 +167,7 @@ impl CPU {
                         e
                     ))
                 })?;
-                self.inc(&Register::HL);
+                self.inc(Register::HL);
                 self.clock += 1; // TODO
                 bus.gpu.cycle()?;
                 Ok(())
@@ -180,7 +175,7 @@ impl CPU {
             Instr::NOOP => Ok(()),
             Instr::RST(size) => {
                 self.push_stack(self.registers.pc, bus)?;
-                self.registers.pc = *size as u16;
+                self.registers.pc = size as u16;
                 Ok(())
             }
             Instr::CP(location) => {
@@ -245,6 +240,9 @@ impl CPU {
                 self.registers = self.registers.rot_thru_carry(r)?;
                 Ok(())
             }
+            Instr::RETI => {
+                Ok(())
+            }
             // y => {
             //     println!("Unknown OP: 0x{:04X}: {:?}", self.registers.pc - instr_len, y);
             //     Ok(())
@@ -257,7 +255,15 @@ impl CPU {
             )),
         }
     }
-    fn check_flag(&mut self, flag: &Flag) -> bool {
+
+    fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
+        let curr_byte = self.next_u8(bus);
+        let instruction = &INSTR_TABLE[curr_byte as usize];
+        let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
+        let instr_len = size as u16 + 1;
+        self.perform_instruction(*instruction, instr_len, curr_byte, bus)
+    }
+    fn check_flag(&mut self, flag: Flag) -> bool {
         match flag {
             Flag::FlagC => self.registers.flg_c(),
             Flag::FlagNC => self.registers.flg_nc(),
@@ -270,7 +276,7 @@ impl CPU {
         self.registers = self.registers.jump(address)?;
         Ok(())
     }
-    fn handle_jump(&mut self, address: u16, jt: &JumpType) -> CpuResult<()> {
+    fn handle_jump(&mut self, address: u16, jt: JumpType) -> CpuResult<()> {
         match jt {
             JumpType::If(flag) => {
                 if self.check_flag(flag) {
@@ -289,33 +295,33 @@ impl CPU {
     fn handle_cb(&mut self, bus: &mut Bus) -> CpuResult<()> {
         let opcode = self.next_u8(bus);
         match opcode {
-            0x37 => self.registers = self.registers.swap_nibbles(&Register::A)?,
-            0x30 => self.registers = self.registers.swap_nibbles(&Register::B)?,
-            0x31 => self.registers = self.registers.swap_nibbles(&Register::C)?,
-            0x32 => self.registers = self.registers.swap_nibbles(&Register::D)?,
-            0x33 => self.registers = self.registers.swap_nibbles(&Register::E)?,
-            0x34 => self.registers = self.registers.swap_nibbles(&Register::H)?,
-            0x35 => self.registers = self.registers.swap_nibbles(&Register::L)?,
+            0x37 => self.registers = self.registers.swap_nibbles(Register::A)?,
+            0x30 => self.registers = self.registers.swap_nibbles(Register::B)?,
+            0x31 => self.registers = self.registers.swap_nibbles(Register::C)?,
+            0x32 => self.registers = self.registers.swap_nibbles(Register::D)?,
+            0x33 => self.registers = self.registers.swap_nibbles(Register::E)?,
+            0x34 => self.registers = self.registers.swap_nibbles(Register::H)?,
+            0x35 => self.registers = self.registers.swap_nibbles(Register::L)?,
             0x36 => {
-                let address = self.registers.fetch_u16(&Register::HL);
+                let address = self.registers.fetch_u16(Register::HL);
                 let byte = self.read_byte(address, bus);
                 let [hi, lo] = [byte >> 4, byte & 0xF];
                 let new_byte = (lo << 4) | byte;
                 self.set_byte(address, new_byte, bus)?;
             }
-            0x78 => self.registers = self.registers.test_bit(&Register::B, 7)?,
-            0x79 => self.registers = self.registers.test_bit(&Register::C, 7)?,
-            0x7A => self.registers = self.registers.test_bit(&Register::D, 7)?,
-            0x7B => self.registers = self.registers.test_bit(&Register::E, 7)?,
-            0x7C => self.registers = self.registers.test_bit(&Register::H, 7)?,
-            0x7D => self.registers = self.registers.test_bit(&Register::L, 7)?,
-            0x17 => self.registers = self.registers.rot_thru_carry(&Register::A)?,
-            0x10 => self.registers = self.registers.rot_thru_carry(&Register::B)?,
-            0x11 => self.registers = self.registers.rot_thru_carry(&Register::C)?,
-            0x12 => self.registers = self.registers.rot_thru_carry(&Register::D)?,
-            0x13 => self.registers = self.registers.rot_thru_carry(&Register::E)?,
-            0x14 => self.registers = self.registers.rot_thru_carry(&Register::H)?,
-            0x15 => self.registers = self.registers.rot_thru_carry(&Register::L)?,
+            0x78 => self.registers = self.registers.test_bit(Register::B, 7)?,
+            0x79 => self.registers = self.registers.test_bit(Register::C, 7)?,
+            0x7A => self.registers = self.registers.test_bit(Register::D, 7)?,
+            0x7B => self.registers = self.registers.test_bit(Register::E, 7)?,
+            0x7C => self.registers = self.registers.test_bit(Register::H, 7)?,
+            0x7D => self.registers = self.registers.test_bit(Register::L, 7)?,
+            0x17 => self.registers = self.registers.rot_thru_carry(Register::A)?,
+            0x10 => self.registers = self.registers.rot_thru_carry(Register::B)?,
+            0x11 => self.registers = self.registers.rot_thru_carry(Register::C)?,
+            0x12 => self.registers = self.registers.rot_thru_carry(Register::D)?,
+            0x13 => self.registers = self.registers.rot_thru_carry(Register::E)?,
+            0x14 => self.registers = self.registers.rot_thru_carry(Register::H)?,
+            0x15 => self.registers = self.registers.rot_thru_carry(Register::L)?,
             // 0x16 => {
             //     //rot_thru_carry (hl)
             // }

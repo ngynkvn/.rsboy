@@ -106,7 +106,13 @@ fn swapped_nibbles(byte: u8) -> u8 {
 }
 
 impl RegisterState {
-    pub fn new() -> Self {
+    pub fn new(skip_bios: bool) -> Self {
+        if skip_bios {
+            return Self {
+                pc: 100,
+                ..Default::default()
+            }
+        }
         Self {
             ..Default::default()
         }
@@ -119,7 +125,7 @@ impl RegisterState {
         })
     }
 
-    pub fn test_bit(&self, reg: &Register, bit: usize) -> Result<Self, String> {
+    pub fn test_bit(&self, reg: Register, bit: usize) -> Result<Self, String> {
         match reg {
             A => TEST_BIT!(self, a, bit),
             B => TEST_BIT!(self, b, bit),
@@ -143,7 +149,7 @@ impl RegisterState {
         })
     }
 
-    pub fn rot_thru_carry(&self, reg: &Register) -> Result<Self, String> {
+    pub fn rot_thru_carry(&self, reg: Register) -> Result<Self, String> {
         match reg {
             A => RL!(self, a),
             B => RL!(self, b),
@@ -156,7 +162,7 @@ impl RegisterState {
         }
     }
 
-    pub fn swap_nibbles(&self, reg: &Register) -> Result<Self, String> {
+    pub fn swap_nibbles(&self, reg: Register) -> Result<Self, String> {
         match reg {
             A => SWAP_NIBBLE!(self, a),
             B => SWAP_NIBBLE!(self, b),
@@ -169,7 +175,7 @@ impl RegisterState {
         }
     }
 
-    pub fn put(&self, value: u16, reg: &Register) -> Result<Self, String> {
+    pub fn put(&self, value: u16, reg: Register) -> Result<Self, String> {
         match reg {
             A => Ok(Self { a: value.try_into().unwrap(), ..(*self) }),
             B => Ok(Self { b: value.try_into().unwrap(), ..(*self) }),
@@ -191,11 +197,16 @@ impl RegisterState {
                 let [b, c] = value.to_be_bytes();
                 Ok(Self { b, c, ..(*self) })
             }
+            AF => {
+                let [a, f] = value.to_be_bytes();
+                Ok(Self { a, f, ..(*self) })
+
+            }
             _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),
         }
     }
 
-    pub fn inc(&self, reg: &Register) -> Self {
+    pub fn inc(&self, reg: Register) -> Self {
         match reg {
             HL => {
                 let n = self.hl();
@@ -223,7 +234,7 @@ impl RegisterState {
         }
     }
 
-    pub fn dec(&self, reg: &Register) -> Self {
+    pub fn dec(&self, reg: Register) -> Self {
         match reg {
             HL => {
                 let n = self.hl();
@@ -246,7 +257,7 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch_u8(&self, reg: &Register) -> Result<u8, String> {
+    pub fn fetch_u8(&self, reg: Register) -> Result<u8, String> {
         match reg {
             A => Ok(self.a),
             B => Ok(self.b),
@@ -258,7 +269,7 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch_u16(&self, reg: &Register) -> u16 {
+    pub fn fetch_u16(&self, reg: Register) -> u16 {
         match reg {
             SP => self.sp(),
             PC => self.pc(),
@@ -270,7 +281,7 @@ impl RegisterState {
         }
     }
 
-    pub fn get_dual_reg(&self, reg: &Register) -> Option<u16> {
+    pub fn get_dual_reg(&self, reg: Register) -> Option<u16> {
         match reg {
             SP => Some(self.sp()),
             PC => Some(self.pc()),
@@ -282,7 +293,7 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch(&self, reg: &Register) -> u16 {
+    pub fn fetch(&self, reg: Register) -> u16 {
         match reg {
             A => self.a.into(),
             B => self.b.into(),

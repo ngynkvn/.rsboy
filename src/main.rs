@@ -27,6 +27,7 @@ mod bus;
 mod registers;
 mod texture;
 use crate::emu::Emu;
+use crate::cpu::CPU;
 use crate::texture::{Map, Tile};
 
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
@@ -58,6 +59,8 @@ fn decompiler() -> std::io::Result<()> {
 
 fn init() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
+    let skip_bios = Option::from(args.len() >= 3);
+    println!("{:?}", args);
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
         panic!();
@@ -67,7 +70,7 @@ fn init() -> Result<Emu, std::io::Error> {
     let mut file = File::open(args[1].to_string())?;
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
-    let emu = Emu::new(rom);
+    let emu = Emu::new(skip_bios, rom);
     Ok(emu)
 }
 
@@ -80,17 +83,7 @@ fn just_cpu() {
 
 fn sdl_main() -> std::io::Result<()> {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        println!("Usage: ./gboy [rom]");
-        panic!();
-    }
-    info!("{:?}", args);
-    info!("Attempting to load {:?}", args[1]);
-    let mut file = File::open(args[1].to_string())?;
-    let mut rom = Vec::new();
-    file.read_to_end(&mut rom)?;
-    let mut emu = Emu::new(rom);
+    let mut emu = init().unwrap();
     let context = sdl2::init().unwrap();
     let window = create_window(&context);
     let mut canvas = window.into_canvas().build().unwrap();

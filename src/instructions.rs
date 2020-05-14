@@ -6,7 +6,7 @@ use self::Location::*;
 use self::Register::*;
 use std::fmt;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Register {
     A,
     B,
@@ -24,7 +24,7 @@ pub enum Register {
     AF,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Flag {
     FlagNZ,
     FlagZ,
@@ -32,7 +32,7 @@ pub enum Flag {
     FlagNC,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Location {
     Memory(Register),
     Immediate(usize), // Bytes
@@ -42,20 +42,20 @@ pub enum Location {
     MemOffsetRegister(Register),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Direction {
     LEFT,
     RIGHT,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum JumpType {
     Always,
     If(Flag),
     To(Location),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Instr {
     NOOP,
     UNIMPLEMENTED,
@@ -88,7 +88,6 @@ pub enum Instr {
     CALL(JumpType),
     RotThruCarry(Direction, Location),
     RST(usize),
-    Composite(Box<Instr>, Box<Instr>),
 }
 
 pub const INSTR_TABLE: [Instr; 256] = [
@@ -350,7 +349,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RST(38), //0xFF
 ];
 // (InstrLen, ASM String)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy, Clone)]
 pub struct Instruction(pub usize, pub &'static str);
 
 impl fmt::Display for Instruction {
