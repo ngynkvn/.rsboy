@@ -29,6 +29,7 @@ impl Color {
 
 pub struct Tile {
     pub data: [Color; 64], //8 x 8
+    pub texture: [u8; 192],
     pub raw_data: [u8; 16],
 }
 
@@ -47,22 +48,22 @@ impl Tile {
         }
         raw_data[..].clone_from_slice(tile_data);
 
-        Self { data, raw_data }
+        let mut texture  = [255; 192];
+        let mut p = 0;
+        for i in data.iter() {
+            texture[p..(p + 3)].clone_from_slice(i.value());
+            p += 3;
+        }
+
+        Self { data, texture, raw_data }
     }
 
     pub fn coord(i: usize) -> (usize, usize) {
         ((i / 8) as usize, (i % 8) as usize)
     }
 
-    pub fn texture(&self) -> [u8; 192] {
-        //64 * 3
-        let mut buffer = [255; 192];
-        let mut p = 0;
-        for i in self.data.iter() {
-            buffer[p..(p + 3)].clone_from_slice(i.value());
-            p += 3;
-        }
-        buffer
+    pub fn texture(&self) -> &[u8; 192] {
+        &self.texture
     }
 }
 
