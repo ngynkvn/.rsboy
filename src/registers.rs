@@ -109,13 +109,26 @@ impl RegisterState {
     pub fn new(skip_bios: bool) -> Self {
         if skip_bios {
             return Self {
-                pc: 100,
+                pc: 0x100,
                 ..Default::default()
             }
         }
         Self {
             ..Default::default()
         }
+    }
+
+    pub fn set_cf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 4)) | ((b as u8) << 4);
+    }
+    pub fn set_hf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 5)) | ((b as u8) << 5);
+    }
+    pub fn set_nf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 6)) | ((b as u8) << 6);
+    }
+    pub fn set_zf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 7)) | ((b as u8) << 7);
     }
 
     pub fn jump(&self, address: u16) -> Result<Self, String> {

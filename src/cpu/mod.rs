@@ -7,6 +7,7 @@ const HISTORY_SIZE: usize = 10;
 
 pub struct CPU {
     registers: RegisterState,
+    debug: bool,
     pub clock: usize,
 }
 
@@ -16,13 +17,14 @@ impl CPU {
     pub fn new(skip_bios: bool) -> Self { // TODO
         Self {
             registers: RegisterState::new(skip_bios),
+            debug: true,
             clock: 0,
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
         self.clock += 1;
         bus.gpu.cycle().unwrap();
-        let val = bus[(self.registers.pc)];
+        let val = bus[self.registers.pc];
         self.registers.pc += 1;
         val
     }
@@ -130,6 +132,38 @@ impl CPU {
     fn inc_pc(&mut self) {
         self.registers.pc += 1;
     }
+// if (!n_flag) {  // after an addition, adjust if (half-)carry occurred or if result is out of bounds
+//   if (c_flag || a > 0x99) { a += 0x60; c_flag = 1; }
+//   if (h_flag || (a & 0x0f) > 0x09) { a += 0x6; }
+// } else {  // after a subtraction, only adjust if (half-)carry occurred
+//   if (c_flag) { a -= 0x60; }
+//   if (h_flag) { a -= 0x6; }
+// }
+// // these flags are always updated
+// z_flag = (a == 0); // the usual z flag
+// h_flag = 0; // h flag is always cleared
+    fn bcd_adjust(&mut self, value: u8) -> u8 {
+        let mut value = value;
+        if self.registers.flg_nn() {
+            if self.registers.flg_c() || value > 0x99 {
+                value = value.wrapping_add(0x60);
+                self.registers.set_cf(true);
+            }
+            if self.registers.flg_h() || (value & 0x0F) > 0x09 {
+                value = value.wrapping_add(0x6);
+            }
+        } else {
+            if self.registers.flg_c() || value > 0x99 {
+                value = value.wrapping_sub(0x60);
+            }
+            if self.registers.flg_h() || (value & 0x0F) > 0x09 {
+                value = value.wrapping_sub(0x6);
+            }
+        }
+        self.registers.set_zf(value == 0);
+        self.registers.set_hf(false);
+        value
+    }
     
     fn perform_instruction(&mut self, instruction: Instr, instr_len: u16, curr_byte: u8, bus: &mut Bus) -> CpuResult<()> {
         match instruction {
@@ -180,24 +214,75 @@ impl CPU {
             }
             Instr::CP(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
-                self.registers = self.registers.cmp(value)?;
+                self.registers.set_zf(self.registers.a == value);
+                self.registers.set_nf(true);
+                //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu.rs#L156
+                self.registers.set_hf((self.registers.a & 0xf)
+                                        .wrapping_sub(value & 0xf)
+                                        & (0xf + 1)
+                                        != 0); 
+                self.registers.set_cf(self.registers.a < value);
                 Ok(())
             }
             Instr::ADD(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a.wrapping_add(value);
+                let (result, carry) = self.registers.a.overflowing_add(value);
+                self.registers.a = result;
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(false);
+                // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
+                self.registers.set_hf(((self.registers.a & 0xf) + (value & 0xf)) & 0x10 == 0x10);
+                self.registers.set_cf(carry);
+                Ok(())
+            }
+            Instr::ADDHL(location) => {
+                let hl = [self.registers.h, self.registers.l];
+                let old = u16::from_be_bytes(hl);
+                let value = self.read_location(location, bus);
+                let [h, l] = old.wrapping_add(value).to_be_bytes();
+                self.registers.h = h;
+                self.registers.l = l;
+                //TODO FLAGS
+                Ok(())
+            }
+            Instr::AND(location) => {
+                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                self.registers.a = self.registers.a & value;
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(true);
+                self.registers.set_cf(false);
                 Ok(())
             }
             Instr::XOR(location) => {
-                let value :u8 = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a ^ (value);
-                self.registers.f =
-                    crate::registers::flags(self.registers.a == 0, false, false, false);
+                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                self.registers.a = self.registers.a ^ value;
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(false);
                 Ok(())
+            }
+            Instr::OR(location) => {
+                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                self.registers.a = self.registers.a | value;
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(false);
+                Ok(())
+
             }
             Instr::SUB(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
                 self.registers.a = self.registers.a.wrapping_sub(value);
+                Ok(())
+            }
+            Instr::NOT(location) => {
+                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                self.registers.a = !value;
+                self.registers.set_nf(true);
+                self.registers.set_hf(true);
                 Ok(())
             }
             Instr::CB => self.handle_cb(bus),
@@ -240,7 +325,20 @@ impl CPU {
                 self.registers = self.registers.rot_thru_carry(r)?;
                 Ok(())
             }
-            Instr::RETI => {
+            // Instr::RETI => {
+            //     // self.bus.enable
+            //     Ok(())
+            // }
+            Instr::DAA => {
+                self.registers.a = self.bcd_adjust(self.registers.a);
+                Ok(())
+            }
+            Instr::EnableInterrupts => {
+                bus.enable_interrupts();
+                Ok(())
+            }
+            Instr::DisableInterrupts => {
+                bus.disable_interrupts();
                 Ok(())
             }
             // y => {
@@ -261,6 +359,9 @@ impl CPU {
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
+        if self.debug {
+            // println!("0x{:04x?}: {} {:?}", self.registers.pc - 1, curr_byte, instruction);
+        }
         self.perform_instruction(*instruction, instr_len, curr_byte, bus)
     }
     fn check_flag(&mut self, flag: Flag) -> bool {

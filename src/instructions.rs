@@ -65,7 +65,7 @@ pub enum Instr {
     INC(Location),
     DEC(Location),
     ADD(Location),
-    ADD2(Location, Location),
+    ADDHL(Location),
     ADC(Location),
     SUB(Location),
     AND(Location),
@@ -100,7 +100,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Register(B), Immediate(1)),         //0x06
     RotThruCarry(LEFT, Register(A)),       //0x07
     LD(Register(SP), Immediate(2)),        //0x08
-    ADD2(Register(HL), Register(BC)),      //0x09
+    ADDHL( Register(BC)),      //0x09
     LD(Memory(BC), Register(A)),           //0x0A
     DEC(Register(BC)),                     //0x0B
     INC(Register(C)),                      //0x0C
@@ -116,7 +116,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Register(D), Immediate(1)),         //0x16
     RotThruCarry(LEFT, Register(A)),       //0x17
     JR(Always),                            //0x18
-    ADD2(Register(DE), Register(HL)),      //0x19
+    ADDHL( Register(DE)),      //0x19
     LD(Register(A), Memory(DE)),           //0x1A
     UNIMPLEMENTED,                         //0x1B
     INC(Register(E)),                      //0x1C
@@ -132,7 +132,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Register(H), Immediate(1)),         //0x26
     DAA,                                   //0x27
     JR(If(FlagZ)),                         //0x28
-    ADD2(Register(HL), Register(HL)),      //0x29
+    ADDHL( Register(HL)),      //0x29
     NOOP,                                  //0x2A
     UNIMPLEMENTED,                         //0x2B
     INC(Register(L)),                      //0x2C
@@ -148,7 +148,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     NOOP,                                  //0x36
     UNIMPLEMENTED,                         //0x37
     JR(If(FlagC)),                         //0x38
-    ADD2(Register(HL), Register(SP)),      //0x39
+    ADDHL( Register(SP)),      //0x39
     LDD(Register(A), Memory(HL)),          //0x3A
     DEC(Register(SP)),                     //0x3B
     INC(Register(A)),                      //0x3C
@@ -298,7 +298,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CALL(If(FlagZ)),                       //0xCC
     CALL(Always),                          //0xCD
     ADC(Immediate(1)),                     //0xCE
-    RST(8),                                //0xCF
+    RST(0x8),                                //0xCF
     UNIMPLEMENTED,                         //0xD0
     POP(Register(DE)),                     //0xD1
     UNIMPLEMENTED,                         //0xD2
@@ -306,7 +306,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CALL(If(FlagNC)),                      //0xD4
     PUSH(Register(DE)),                    //0xD5
     UNIMPLEMENTED,                         //0xD6
-    RST(10),                               //0xD7
+    RST(0x10),                               //0xD7
     UNIMPLEMENTED,                         //0xD8
     RETI,                                  //0xD9
     UNIMPLEMENTED,                         //0xDA
@@ -314,7 +314,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     UNIMPLEMENTED,                         //0xDC
     UNIMPLEMENTED,                         //0xDD
     SBC(Immediate(1)),                     //0xDE
-    RST(18), //0xDF Push present address onto stack. Jump to address $0000 + n.
+    RST(0x18), //0xDF Push present address onto stack. Jump to address $0000 + n.
     LD(MemOffsetImm, Register(A)), //0xE0
     POP(Register(HL)), //0xE1
     LD(MemOffsetRegister(C), Register(A)), //0xE2
@@ -322,7 +322,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     UNIMPLEMENTED, //0xE4
     PUSH(Register(HL)), //0xE5
     AND(Immediate(1)), //0xE6
-    RST(20), //0xE7
+    RST(0x20), //0xE7
     JP(To(Register(HL))), //0xE8
     RET(If(FlagC)), //0xE9
     LD(MemoryImmediate, Register(A)), //0xEA
@@ -330,7 +330,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CALL(If(FlagZ)), //0xEC
     PUSH(Register(DE)), //0xED
     SUB(Immediate(2)), //0xEE
-    RST(28), //0xEF
+    RST(0x28), //0xEF
     LD(Register(A), MemOffsetImm), //0xF0
     POP(Register(AF)), //0xF1
     LD(Register(A), MemOffsetRegister(C)), //0xF2
@@ -338,7 +338,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(MemOffsetImm, Register(A)), //0xF4
     POP(Register(HL)), //0xF5
     UNIMPLEMENTED, //0xF6
-    RST(30), //0xF7
+    RST(0x30), //0xF7
     PUSH(Register(HL)), //0xF8
     AND(Immediate(2)), //0xF9
     LD(Register(A), Immediate(2)), //0xFA
@@ -346,7 +346,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     UNIMPLEMENTED, //0xFC
     UNIMPLEMENTED, //0xFD
     CP(Immediate(1)), //0xFE
-    RST(38), //0xFF
+    RST(0x38), //0xFF
 ];
 // (InstrLen, ASM String)
 #[derive(Debug, Copy, Clone)]
