@@ -23,7 +23,7 @@ mod disassembly;
 mod emu;
 mod gpu;
 mod instructions;
-mod memory;
+mod bus;
 mod registers;
 mod texture;
 use crate::emu::Emu;
@@ -128,15 +128,15 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     while i < 17476 {
         i += emu.cycle().unwrap();
     }
-    let bg = emu.memory.gpu.background();
+    let bg = emu.bus.gpu.background();
     texture
         .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            if emu.memory.gpu.is_on() {
+            if emu.bus.gpu.is_on() {
                 buffer[..].copy_from_slice(&bg.texture());
             }
         })
         .unwrap();
-    let (h, v) = emu.memory.gpu.scroll();
+    let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(
             &texture,

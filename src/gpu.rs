@@ -1,5 +1,3 @@
-use crate::emu::Emu;
-use crate::memory::Memory;
 use crate::texture::*;
 use std::ops::Index;
 
