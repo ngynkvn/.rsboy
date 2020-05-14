@@ -106,16 +106,16 @@ impl CPU {
 
     fn push_stack(&mut self, value: u16, bus: &mut Bus) -> CpuResult<()> {
         let bytes = value.to_be_bytes();
-        self.set_byte(self.registers.sp - 1, bytes[0], bus)?;
+        self.set_byte(self.registers.sp.wrapping_sub(1), bytes[0], bus)?;
         self.set_byte(self.registers.sp, bytes[1], bus)?;
-        self.registers.sp -= 2;
+        self.registers.sp = self.registers.sp.wrapping_sub(2);
         Ok(())
     }
 
     fn pop_stack(&mut self, bus: &mut Bus) -> CpuResult<u16> {
-        let b1 = self.read_byte(self.registers.sp + 1, bus);
-        let b2 = self.read_byte(self.registers.sp + 2, bus);
-        self.registers.sp += 2;
+        let b1 = self.read_byte(self.registers.sp.wrapping_add(1), bus);
+        let b2 = self.read_byte(self.registers.sp.wrapping_add(2), bus);
+        self.registers.sp = self.registers.sp.wrapping_add(2);
         Ok(((b1 as u16) << 8) | b2 as u16)
     }
 
