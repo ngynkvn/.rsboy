@@ -6,7 +6,7 @@ use std::convert::TryInto;
 const HISTORY_SIZE: usize = 10;
 
 pub struct CPU {
-    registers: RegisterState,
+    pub registers: RegisterState,
     debug: bool,
     pub clock: usize,
 }
@@ -56,6 +56,10 @@ impl CPU {
             Location::Immediate(1) => self.next_u8(bus).into(),
             Location::Immediate(2) => self.next_u16(bus),
             Location::Immediate(_) => panic!(),
+            Location::MemoryImmediate => {
+                let address = self.next_u16(bus);
+                self.read_byte(address, bus).into()
+            }
             Location::Register(r) => self.registers.fetch(r),
             Location::Memory(r) => self.read_byte(self.registers.fetch(r), bus).into(),
             Location::MemOffsetImm => {
@@ -71,14 +75,16 @@ impl CPU {
                     bus,
                 )
                 .into(),
-            _ => panic!()
         }
     }
 
     fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
         let from_value = self.read_location(from, bus);
         match into {
-            Location::Immediate(_) => return Err(String::from("Tried to write into ROM?")),
+            Location::Immediate(2) => {
+                let address = self.next_u16(bus);
+                self.set_byte(address, from_value.try_into().unwrap(), bus)?;
+            },
             Location::Register(r) => {
                 self.registers = self.registers.put(from_value, r)?;
             }
@@ -102,6 +108,7 @@ impl CPU {
                 let addr = self.next_u16(bus);
                 self.set_byte(addr, from_value.try_into().unwrap(), bus)?;
             }
+            _ => unimplemented!()
         };
         Ok(())
     }
@@ -287,19 +294,31 @@ impl CPU {
                 self.registers.set_hf(true);
                 Ok(())
             }
+            Instr::CCF => {
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(!self.registers.flg_c());
+                Ok(())
+            }
+            Instr::SCF => {
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(true);
+                Ok(())
+            }
             Instr::CB => self.handle_cb(bus),
             Instr::JP(jump_type) => {
                 let address = self.next_u16(bus);
-                self.handle_jump(address, jump_type)
+                self.handle_jump(address, jump_type, bus)
             }
             Instr::JR(jump_type) => {
                 let offset = self.next_u8(bus) as i8;
-                self.handle_jump(self.registers.pc.wrapping_add(offset as u16), jump_type)
+                self.handle_jump(self.registers.pc.wrapping_add(offset as u16), jump_type, bus)
             }
             Instr::CALL(jump_type) => {
                 let address = self.next_u16(bus);
                 self.push_stack(self.registers.pc, bus)?;
-                self.handle_jump(address, jump_type)
+                self.handle_jump(address, jump_type, bus)
             }
             Instr::DEC(Location::Register(r)) => {
                 self.dec(r);
@@ -321,10 +340,27 @@ impl CPU {
             }
             Instr::RET(jump_type) => {
                 let addr = self.pop_stack(bus)?;
-                self.handle_jump(addr, jump_type)
+                self.handle_jump(addr, jump_type, bus)
             }
-            Instr::RotThruCarry(Direction::LEFT, Location::Register(r)) => {
-                self.registers = self.registers.rot_thru_carry(r)?;
+            Instr::RLA => {
+                let (result, overflow) = self.registers.a.overflowing_shl(1);
+                self.registers.a = result | (self.registers.flg_c() as u8);
+                self.registers.set_cf(overflow);
+                Ok(())
+            }
+            Instr::RLCA => {
+                let (result, overflow) = self.registers.a.overflowing_shl(1);
+                self.registers.a = result | (overflow as u8);
+                self.registers.set_cf(overflow);
+                Ok(())
+            }
+            Instr::ADDSP => {
+                let offset = self.next_u8(bus) as u16;
+                let (result, overflow) = self.registers.sp.overflowing_add(offset);
+                let half_carry = (((result & 0xf) + (offset & 0xf)) & 0x10) == 0x10;
+                self.registers.sp = result;
+                self.registers.set_hf(half_carry);
+                self.registers.set_cf(overflow);
                 Ok(())
             }
             // Instr::RETI => {
@@ -357,8 +393,9 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
-        if self.registers.pc == 0x0272 {
-            self.debug = true;
+        if self.registers.pc == 0x0281 {
+            // self.debug = true;
+            // println!("{}", self.registers);
         }
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
@@ -382,7 +419,7 @@ impl CPU {
         self.registers = self.registers.jump(address)?;
         Ok(())
     }
-    fn handle_jump(&mut self, address: u16, jt: JumpType) -> CpuResult<()> {
+    fn handle_jump(&mut self, address: u16, jt: JumpType, bus: &mut Bus) -> CpuResult<()> {
         match jt {
             JumpType::If(flag) => {
                 if self.check_flag(flag) {
@@ -392,8 +429,9 @@ impl CPU {
             JumpType::Always => {
                 self.registers = self.registers.jump(address)?;
             }
-            JumpType::To(x) => {
-                return Err(format!("{:?}", x));
+            JumpType::To(location) => {
+                let address = self.read_location(location, bus);
+                self.registers = self.registers.jump(address)?;
             }
         }
         Ok(())

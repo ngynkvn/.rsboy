@@ -116,10 +116,9 @@ fn sdl_main() -> std::io::Result<()> {
         if f.is_err() {
             break;
         }
+        println!("{}", emu.cpu.registers);
         delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
-        count_loop += 1;
-        // The rest of the game loop goes here...
     }
     std::mem::drop(event_pump);
     println!(
