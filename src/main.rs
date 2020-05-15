@@ -98,7 +98,20 @@ fn sdl_main() -> std::io::Result<()> {
     let mut timer = Instant::now();
     let mut count_loop = 0;
 
-    loop {
+    let mut event_pump = context.event_pump().unwrap();
+
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
+                _ => {}
+            }
+        }
+
         let f = frame(&mut emu, &mut texture, &mut canvas);
         if f.is_err() {
             break;
@@ -106,13 +119,15 @@ fn sdl_main() -> std::io::Result<()> {
         delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
         count_loop += 1;
+        // The rest of the game loop goes here...
     }
+    std::mem::drop(event_pump);
     println!(
         "It took {:?} seconds.",
         Instant::now().duration_since(boot_timer)
     );
-    // vram_viewer(&context, emu.memory.gpu.vram).unwrap();
-    // map_viewer(&context, emu.memory.gpu).unwrap();
+    vram_viewer(&context, emu.bus.gpu.vram).unwrap();
+    map_viewer(&context, emu.bus.gpu).unwrap();
     Ok(())
 }
 
@@ -183,7 +198,6 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
 
-    println!("{}", background.texture().len());
     // Pitch = n_bytes(3) * map_w * tile_w
     texture
         .update(None, &(background.texture()), background.pitch())

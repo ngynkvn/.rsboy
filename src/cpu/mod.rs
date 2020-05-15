@@ -17,7 +17,7 @@ impl CPU {
     pub fn new(skip_bios: bool) -> Self { // TODO
         Self {
             registers: RegisterState::new(skip_bios),
-            debug: true,
+            debug: false,
             clock: 0,
         }
     }
@@ -167,15 +167,17 @@ impl CPU {
     
     fn perform_instruction(&mut self, instruction: Instr, instr_len: u16, curr_byte: u8, bus: &mut Bus) -> CpuResult<()> {
         match instruction {
-            Instr::LD(into, from) => self.load(into, from, bus).or_else(|e| {
-                Err(format!(
-                    "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
-                    self.registers.pc - instr_len,
-                    curr_byte,
-                    instruction,
-                    e
-                ))
-            }),
+            Instr::LD(into, from) => {
+                self.load(into, from, bus).or_else(|e| {
+                    Err(format!(
+                        "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
+                        self.registers.pc - instr_len,
+                        curr_byte,
+                        instruction,
+                        e
+                    ))
+                })
+            },
             Instr::LDD(into, from) => {
                 self.load(into, from, bus).or_else(|e| {
                     Err(format!(
@@ -355,12 +357,15 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
+        if self.registers.pc == 0x0272 {
+            self.debug = true;
+        }
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
         if self.debug {
-            // println!("0x{:04x?}: {} {:?}", self.registers.pc - 1, curr_byte, instruction);
+            println!("0x{:04x?}: {} {:?}", self.registers.pc - 1, curr_byte, instruction);
         }
         self.perform_instruction(*instruction, instr_len, curr_byte, bus)
     }
