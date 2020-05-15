@@ -1,5 +1,5 @@
-use crate::cpu::CPU;
 use crate::bus::Bus;
+use crate::cpu::CPU;
 
 // Global emu struct.
 pub struct Emu {
@@ -15,9 +15,6 @@ impl Emu {
     pub fn new(skip_bios: Option<bool>, rom: Vec<u8>) -> Emu {
         let cpu = CPU::new(skip_bios.unwrap_or(false));
         let bus = Bus::new(skip_bios.unwrap_or(false), rom);
-        Emu {
-            cpu,
-            bus,
-        }
+        Emu { cpu, bus }
     }
 }

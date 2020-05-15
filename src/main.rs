@@ -18,16 +18,16 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
+mod bus;
 mod cpu;
 mod disassembly;
 mod emu;
 mod gpu;
 mod instructions;
-mod bus;
 mod registers;
 mod texture;
-use crate::emu::Emu;
 use crate::cpu::CPU;
+use crate::emu::Emu;
 use crate::texture::{Map, Tile};
 
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
@@ -116,7 +116,7 @@ fn sdl_main() -> std::io::Result<()> {
         if f.is_err() {
             break;
         }
-        println!("{}", emu.cpu.registers);
+        // println!("{}", emu.cpu.registers);
         delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
     }
@@ -236,11 +236,17 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let video_subsystem = sdl_context.video()?;
 
     let scale = 8;
-    let mut map = Map::new(16, 10, tiles);
-    for i in 0..map.tile_set.len() {
+    let mut map = vec![0; tiles.len()];
+    for i in 0..tiles.len() {
         let (x, y) = (i % 16, i / 16);
-        map.set(x, y, i);
+        map[x + y * 16] = i as u8;
     }
+    let map = Map {
+        width: 16,
+        height: 10,
+        tile_set: tiles,
+        map: map.as_slice(),
+    };
     let (w, h) = map.pixel_dims();
     let window = video_subsystem
         .window("VRAM Viewer", (scale * w) as u32, (scale * h) as u32)

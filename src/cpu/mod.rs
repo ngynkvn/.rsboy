@@ -1,5 +1,5 @@
-use crate::instructions::*;
 use crate::bus::Bus;
+use crate::instructions::*;
 use crate::registers::RegisterState;
 use std::convert::TryInto;
 
@@ -14,7 +14,8 @@ pub struct CPU {
 type CpuResult<T> = Result<T, String>;
 
 impl CPU {
-    pub fn new(skip_bios: bool) -> Self { // TODO
+    pub fn new(skip_bios: bool) -> Self {
+        // TODO
         Self {
             registers: RegisterState::new(skip_bios),
             debug: false,
@@ -25,7 +26,7 @@ impl CPU {
         self.clock += 1;
         bus.gpu.cycle().unwrap();
         let val = bus[self.registers.pc];
-        self.registers.pc += 1;
+        self.registers.pc = self.registers.pc.wrapping_add(1);
         val
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
@@ -33,7 +34,7 @@ impl CPU {
         self.clock += 1;
         bus.gpu.cycle().unwrap();
         let val = (bus[self.registers.pc + 1] as u16) << 8 | (bus[self.registers.pc] as u16);
-        self.registers.pc += 2;
+        self.registers.pc = self.registers.pc.wrapping_add(2);
         val
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
@@ -84,7 +85,7 @@ impl CPU {
             Location::Immediate(2) => {
                 let address = self.next_u16(bus);
                 self.set_byte(address, from_value.try_into().unwrap(), bus)?;
-            },
+            }
             Location::Register(r) => {
                 self.registers = self.registers.put(from_value, r)?;
             }
@@ -98,17 +99,13 @@ impl CPU {
             }
             Location::MemOffsetRegister(r) => {
                 let offset = self.registers.fetch_u8(r)?;
-                self.set_byte(
-                    0xFF00 + offset as u16,
-                    from_value.try_into().unwrap(),
-                    bus,
-                )?;
+                self.set_byte(0xFF00 + offset as u16, from_value.try_into().unwrap(), bus)?;
             }
             Location::MemoryImmediate => {
                 let addr = self.next_u16(bus);
                 self.set_byte(addr, from_value.try_into().unwrap(), bus)?;
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         };
         Ok(())
     }
@@ -139,16 +136,16 @@ impl CPU {
     fn inc_pc(&mut self) {
         self.registers.pc += 1;
     }
-// if (!n_flag) {  // after an addition, adjust if (half-)carry occurred or if result is out of bounds
-//   if (c_flag || a > 0x99) { a += 0x60; c_flag = 1; }
-//   if (h_flag || (a & 0x0f) > 0x09) { a += 0x6; }
-// } else {  // after a subtraction, only adjust if (half-)carry occurred
-//   if (c_flag) { a -= 0x60; }
-//   if (h_flag) { a -= 0x6; }
-// }
-// // these flags are always updated
-// z_flag = (a == 0); // the usual z flag
-// h_flag = 0; // h flag is always cleared
+    // if (!n_flag) {  // after an addition, adjust if (half-)carry occurred or if result is out of bounds
+    //   if (c_flag || a > 0x99) { a += 0x60; c_flag = 1; }
+    //   if (h_flag || (a & 0x0f) > 0x09) { a += 0x6; }
+    // } else {  // after a subtraction, only adjust if (half-)carry occurred
+    //   if (c_flag) { a -= 0x60; }
+    //   if (h_flag) { a -= 0x6; }
+    // }
+    // // these flags are always updated
+    // z_flag = (a == 0); // the usual z flag
+    // h_flag = 0; // h flag is always cleared
     fn bcd_adjust(&mut self, value: u8) -> u8 {
         let mut value = value;
         if self.registers.flg_nn() {
@@ -171,20 +168,24 @@ impl CPU {
         self.registers.set_hf(false);
         value
     }
-    
-    fn perform_instruction(&mut self, instruction: Instr, instr_len: u16, curr_byte: u8, bus: &mut Bus) -> CpuResult<()> {
+
+    fn perform_instruction(
+        &mut self,
+        instruction: Instr,
+        instr_len: u16,
+        curr_byte: u8,
+        bus: &mut Bus,
+    ) -> CpuResult<()> {
         match instruction {
-            Instr::LD(into, from) => {
-                self.load(into, from, bus).or_else(|e| {
-                    Err(format!(
-                        "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
-                        self.registers.pc - instr_len,
-                        curr_byte,
-                        instruction,
-                        e
-                    ))
-                })
-            },
+            Instr::LD(into, from) => self.load(into, from, bus).or_else(|e| {
+                Err(format!(
+                    "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
+                    self.registers.pc - instr_len,
+                    curr_byte,
+                    instruction,
+                    e
+                ))
+            }),
             Instr::LDD(into, from) => {
                 self.load(into, from, bus).or_else(|e| {
                     Err(format!(
@@ -226,10 +227,8 @@ impl CPU {
                 self.registers.set_zf(self.registers.a == value);
                 self.registers.set_nf(true);
                 //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu.rs#L156
-                self.registers.set_hf((self.registers.a & 0xf)
-                                        .wrapping_sub(value & 0xf)
-                                        & (0xf + 1)
-                                        != 0); 
+                self.registers
+                    .set_hf((self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0);
                 self.registers.set_cf(self.registers.a < value);
                 Ok(())
             }
@@ -240,7 +239,8 @@ impl CPU {
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
                 // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
-                self.registers.set_hf(((self.registers.a & 0xf) + (value & 0xf)) & 0x10 == 0x10);
+                self.registers
+                    .set_hf(((self.registers.a & 0xf) + (value & 0xf)) & 0x10 == 0x10);
                 self.registers.set_cf(carry);
                 Ok(())
             }
@@ -280,7 +280,6 @@ impl CPU {
                 self.registers.set_hf(false);
                 self.registers.set_cf(false);
                 Ok(())
-
             }
             Instr::SUB(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
@@ -313,7 +312,11 @@ impl CPU {
             }
             Instr::JR(jump_type) => {
                 let offset = self.next_u8(bus) as i8;
-                self.handle_jump(self.registers.pc.wrapping_add(offset as u16), jump_type, bus)
+                self.handle_jump(
+                    self.registers.pc.wrapping_add(offset as u16),
+                    jump_type,
+                    bus,
+                )
             }
             Instr::CALL(jump_type) => {
                 let address = self.next_u16(bus);
@@ -402,7 +405,12 @@ impl CPU {
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
         if self.debug {
-            println!("0x{:04x?}: {} {:?}", self.registers.pc - 1, curr_byte, instruction);
+            println!(
+                "0x{:04x?}: {} {:?}",
+                self.registers.pc - 1,
+                curr_byte,
+                instruction
+            );
         }
         self.perform_instruction(*instruction, instr_len, curr_byte, bus)
     }

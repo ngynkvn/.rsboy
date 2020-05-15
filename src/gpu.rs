@@ -55,7 +55,7 @@ impl GPU {
     }
     pub fn cycle(&mut self) -> Result<(), String> {
         if !self.is_on() {
-            return Ok(())
+            return Ok(());
         }
         self.clock += 1;
         self.step();
@@ -71,19 +71,17 @@ impl GPU {
             width: 32,
             height: 32,
             tile_set: self.tiles(),
-            map: self.vram[0x1800..0x1C00]
-                .iter()
-                .map(|x| *x as usize)
-                .collect(),
+            map: &self.vram[0x1800..0x1C00],
         }
     }
 
     pub fn tiles(&self) -> Vec<Tile> {
-        let iter = (&self.vram[0..0x800]).chunks_exact(16);
-        let tiles = iter.map(|x| {
-            Tile::construct(self.bg_palette, x)
-        }).collect();
-        tiles
+        self.vram[..0x1800]
+                    .chunks_exact(16) // Tile
+                    .map(|tile| {
+                        Tile::construct(self.bg_palette, tile)
+                    })
+                    .collect()
     }
 
     pub fn step(&mut self) {
@@ -124,6 +122,7 @@ impl GPU {
         }
     }
 }
+
 impl Index<u16> for GPU {
     type Output = u8;
     fn index(&self, i: u16) -> &Self::Output {

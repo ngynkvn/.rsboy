@@ -29,13 +29,12 @@ impl Color {
 
 pub struct Tile {
     pub data: [Color; 64], //8 x 8
+    // pub data: Vec<Color>,
     pub texture: [u8; 192],
-    pub raw_data: [u8; 16],
 }
 
 impl Tile {
-    pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
-        let mut raw_data = [0; 16];
+     pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
         let mut data = [Color::White; 64];
         for row in 0..8 {
             for col in 0..8 {
@@ -46,7 +45,6 @@ impl Tile {
                 data[row * 8 + col] = Color::bit2color(color);
             }
         }
-        raw_data[..].clone_from_slice(tile_data);
 
         let mut texture  = [255; 192];
         let mut p = 0;
@@ -55,7 +53,7 @@ impl Tile {
             p += 3;
         }
 
-        Self { data, texture, raw_data }
+        Self { data, texture }
     }
 
     pub fn coord(i: usize) -> (usize, usize) {
@@ -67,55 +65,34 @@ impl Tile {
     }
 }
 
-pub struct Map {
+pub struct Map<'a> {
     pub width: usize,
     pub height: usize,
     pub tile_set: Vec<Tile>,
-    pub map: Vec<usize>,
+    pub map: &'a [u8],
 }
 
-impl Map {
-    pub fn new(width: usize, height: usize, tile_set: Vec<Tile>) -> Self {
-        Self {
-            width,
-            height,
-            tile_set,
-            map: vec![0; width * height],
-        }
-    }
-    pub fn set(&mut self, x: usize, y: usize, i: usize) {
-        self.map[x + y * self.width] = i;
-    }
-
+impl<'a> Map<'a> {
     pub fn pitch(&self) -> usize {
         self.width * TILE_WIDTH * 3
     }
 
-    /**
-     * Mapping is like this in memory right now:
-     *  for a 4x4 tile size
-     * [1, 1, 1, 1] [1, 1, 1, 1]
-     * [2, 2, 2, 2] [2, 2, 2, 2]
-     * [3, 3, 3, 3] [3, 3, 3, 3]
-     * [4, 4, 4, 4] [4, 4, 4, 4]
-     *
-     * Fine and dandy, but we need the 2d repre to be:
-     *        (ROW 1)      (ROW 2)
-     * [1, 1, 1, 1, 1, 1, 1, 1,   2, 2, 2, 2, 2, 2, 2, 2, ...]
-     *
-     * This should definitely be revisited for optimization down the line.
-     */
     pub fn texture(&self) -> Vec<u8> {
         let mut byte_row = vec![vec![]; TILE_WIDTH * self.height];
         for (i, row) in self.map.chunks_exact(self.width).enumerate() {
             for &index in row {
                 // Tile index
-                for (j, tile_row) in self.tile_set[index].texture().chunks_exact(24).enumerate() {
+                for (j, tile_row) in self.tile_set[index as usize]
+                    .texture()
+                    .chunks_exact(24)
+                    .enumerate()
+                {
                     byte_row[i * TILE_WIDTH + j].extend_from_slice(&tile_row);
                 }
             }
         }
-        byte_row.iter().cloned().flatten().collect()
+        let ret: Vec<u8> = byte_row.iter().cloned().flatten().collect();
+        ret
     }
 
     pub fn dimensions(&self) -> (usize, usize) {

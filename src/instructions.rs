@@ -104,15 +104,15 @@ pub const INSTR_TABLE: [Instr; 256] = [
     INC(Register(B)),                      //0x04
     DEC(Register(B)),                      //0x05
     LD(Register(B), Immediate(1)),         //0x06
-    RLCA,       //0x07
+    RLCA,                                  //0x07
     LD(Immediate(2), Register(SP)),        //0x08
-    ADDHL( Register(BC)),      //0x09
+    ADDHL(Register(BC)),                   //0x09
     LD(Register(A), Memory(BC)),           //0x0A
     DEC(Register(BC)),                     //0x0B
     INC(Register(C)),                      //0x0C
     DEC(Register(C)),                      //0x0D
     LD(Register(C), Immediate(1)),         //0x0E
-    RRCA,                         //0x0F
+    RRCA,                                  //0x0F
     STOP,                                  //0x10
     LD(Register(DE), Immediate(2)),        //0x11
     LD(Memory(DE), Register(A)),           //0x12
@@ -120,15 +120,15 @@ pub const INSTR_TABLE: [Instr; 256] = [
     INC(Register(D)),                      //0x14
     DEC(Register(D)),                      //0x15
     LD(Register(D), Immediate(1)),         //0x16
-    RLA,       //0x17
+    RLA,                                   //0x17
     JR(Always),                            //0x18
-    ADDHL( Register(DE)),      //0x19
+    ADDHL(Register(DE)),                   //0x19
     LD(Register(A), Memory(DE)),           //0x1A
-    DEC(Register(DE)),                         //0x1B
+    DEC(Register(DE)),                     //0x1B
     INC(Register(E)),                      //0x1C
     DEC(Register(E)),                      //0x1D
     LD(Register(E), Immediate(1)),         //0x1E
-    RRA,      //0x1F
+    RRA,                                   //0x1F
     JR(If(FlagNZ)),                        //0x20
     LD(Register(HL), Immediate(2)),        //0x21
     LDI(Memory(HL), Register(A)),          //0x22
@@ -138,9 +138,9 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Register(H), Immediate(1)),         //0x26
     DAA,                                   //0x27
     JR(If(FlagZ)),                         //0x28
-    ADDHL( Register(HL)),      //0x29
-    LDI(Register(A), Memory(HL)),                                  //0x2A
-    DEC(Register(HL)),                         //0x2B
+    ADDHL(Register(HL)),                   //0x29
+    LDI(Register(A), Memory(HL)),          //0x2A
+    DEC(Register(HL)),                     //0x2B
     INC(Register(L)),                      //0x2C
     DEC(Register(L)),                      //0x2D
     LD(Register(L), Immediate(1)),         //0x2E
@@ -149,18 +149,18 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Register(SP), Immediate(2)),        //0x31
     LDD(Memory(HL), Register(A)),          //0x32
     INC(Register(SP)),                     //0x33
-    INC(Memory(HL)),                     //0x34
-    DEC(Memory(HL)),                     //0x35
-    LD(Memory(HL), Immediate(1)),                                  //0x36
-    SCF,                         //0x37
+    INC(Memory(HL)),                       //0x34
+    DEC(Memory(HL)),                       //0x35
+    LD(Memory(HL), Immediate(1)),          //0x36
+    SCF,                                   //0x37
     JR(If(FlagC)),                         //0x38
-    ADDHL( Register(SP)),      //0x39
+    ADDHL(Register(SP)),                   //0x39
     LDD(Register(A), Memory(HL)),          //0x3A
     DEC(Register(SP)),                     //0x3B
     INC(Register(A)),                      //0x3C
     DEC(Register(A)),                      //0x3D
     LD(Register(A), Immediate(1)),         //0x3E
-    CCF,                         //0x3F
+    CCF,                                   //0x3F
     LD(Register(B), Register(B)),          //0x40
     LD(Register(B), Register(C)),          //0x41
     LD(Register(B), Register(D)),          //0x42
@@ -231,7 +231,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     ADD(Register(E)),                      //0x83
     ADD(Register(H)),                      //0x84
     ADD(Register(L)),                      //0x85
-    ADD(Memory(HL)),                     //0x86
+    ADD(Memory(HL)),                       //0x86
     ADD(Register(A)),                      //0x87
     ADC(Register(B)),                      //0x88
     ADC(Register(C)),                      //0x89
@@ -249,13 +249,13 @@ pub const INSTR_TABLE: [Instr; 256] = [
     SUB(Register(L)),                      //0x95
     SUB(Memory(HL)),                       //0x96
     SUB(Register(A)),                      //0x97
-    SBC(Register(B)),                         //0x98
+    SBC(Register(B)),                      //0x98
     SBC(Register(C)),                      //0x99
     SBC(Register(D)),                      //0x92
     SBC(Register(E)),                      //0x93
     SBC(Register(H)),                      //0x94
     SBC(Register(L)),                      //0x9D
-    SBC(Memory(HL)),                         //0x9E
+    SBC(Memory(HL)),                       //0x9E
     SBC(Register(A)),                      //0x9F
     AND(Register(B)),                      //0xA0
     AND(Register(C)),                      //0xA1
@@ -292,11 +292,11 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RET(If(FlagNZ)),                       //0xC0
     POP(Register(BC)),                     //0xC1
     JP(If(FlagNZ)),                        //0xC2
-    JP(Always),                  //0xC3
+    JP(Always),                            //0xC3
     CALL(If(FlagNZ)),                      //0xC4
     PUSH(Register(BC)),                    //0xC5
     ADD(Immediate(1)),                     //0xC6
-    RST(0x0),                         //0xC7
+    RST(0x0),                              //0xC7
     RET(If(FlagZ)),                        //0xC8
     RET(Always),                           //0xC9
     JP(If(FlagZ)),                         //0xCA
@@ -304,20 +304,20 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CALL(If(FlagZ)),                       //0xCC
     CALL(Always),                          //0xCD
     ADC(Immediate(1)),                     //0xCE
-    RST(0x8),                                //0xCF
-    RET(If(FlagNC)),                         //0xD0
+    RST(0x8),                              //0xCF
+    RET(If(FlagNC)),                       //0xD0
     POP(Register(DE)),                     //0xD1
-    JP(If(FlagNC)),                         //0xD2
+    JP(If(FlagNC)),                        //0xD2
     UNIMPLEMENTED,                         //0xD3
     CALL(If(FlagNC)),                      //0xD4
     PUSH(Register(DE)),                    //0xD5
-    SUB(Immediate(1)),                         //0xD6
-    RST(0x10),                               //0xD7
-    RET(If(FlagC)),                         //0xD8
+    SUB(Immediate(1)),                     //0xD6
+    RST(0x10),                             //0xD7
+    RET(If(FlagC)),                        //0xD8
     RETI,                                  //0xD9
     JP(If(FlagC)),                         //0xDA
     UNIMPLEMENTED,                         //0xDB
-    CALL(If(FlagC)),                         //0xDC
+    CALL(If(FlagC)),                       //0xDC
     UNIMPLEMENTED,                         //0xDD
     SBC(Immediate(1)),                     //0xDE
     RST(0x18), //0xDF Push present address onto stack. Jump to address $0000 + n.
@@ -329,7 +329,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     PUSH(Register(HL)), //0xE5
     AND(Immediate(1)), //0xE6
     RST(0x20), //0xE7
-    ADDSP, //0xE8
+    ADDSP,     //0xE8
     JP(To(Memory(HL))), //0xE9
     LD(MemoryImmediate, Register(A)), //0xEA
     UNIMPLEMENTED, //0xEB

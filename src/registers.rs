@@ -111,7 +111,7 @@ impl RegisterState {
             return Self {
                 pc: 0x100,
                 ..Default::default()
-            }
+            };
         }
         Self {
             ..Default::default()
@@ -154,7 +154,12 @@ impl RegisterState {
     pub fn cmp(&self, value: u8) -> Result<Self, String> {
         let half_carry = (value & 0x0f) == 0x0f;
         if half_carry && self.a < value {
-            panic!("{:08b} - {:08b} = {:08b}", self.a, value, self.a.wrapping_sub(value));
+            panic!(
+                "{:08b} - {:08b} = {:08b}",
+                self.a,
+                value,
+                self.a.wrapping_sub(value)
+            );
         }
         Ok(Self {
             f: flags(value == self.a, true, half_carry, self.a < value),
@@ -190,14 +195,38 @@ impl RegisterState {
 
     pub fn put(&self, value: u16, reg: Register) -> Result<Self, String> {
         match reg {
-            A => Ok(Self { a: value.try_into().unwrap(), ..(*self) }),
-            B => Ok(Self { b: value.try_into().unwrap(), ..(*self) }),
-            C => Ok(Self { c: value.try_into().unwrap(), ..(*self) }),
-            D => Ok(Self { d: value.try_into().unwrap(), ..(*self) }),
-            E => Ok(Self { e: value.try_into().unwrap(), ..(*self) }),
-            H => Ok(Self { h: value.try_into().unwrap(), ..(*self) }),
-            L => Ok(Self { l: value.try_into().unwrap(), ..(*self) }),
-            SP => Ok(Self { sp: value, ..(*self) }),
+            A => Ok(Self {
+                a: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            B => Ok(Self {
+                b: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            C => Ok(Self {
+                c: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            D => Ok(Self {
+                d: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            E => Ok(Self {
+                e: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            H => Ok(Self {
+                h: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            L => Ok(Self {
+                l: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            SP => Ok(Self {
+                sp: value,
+                ..(*self)
+            }),
             HL => {
                 let [h, l] = value.to_be_bytes();
                 Ok(Self { h, l, ..(*self) })
@@ -213,7 +242,6 @@ impl RegisterState {
             AF => {
                 let [a, f] = value.to_be_bytes();
                 Ok(Self { a, f, ..(*self) })
-
             }
             _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),
         }
