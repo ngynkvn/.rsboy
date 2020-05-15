@@ -81,31 +81,44 @@ impl CPU {
 
     fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
         let from_value = self.read_location(from, bus);
+        let get_u8 = || -> Result<u8, String> {
+                from_value.try_into().or_else(|_|{
+                Err(format!("into: {:?}, from: {:?}, value: {}", into, from, from_value))
+            })
+        };
         match into {
             Location::Immediate(2) => {
                 let address = self.next_u16(bus);
-                self.set_byte(address, from_value.try_into().unwrap(), bus)?;
-            }
+                let value= get_u8()? ;
+                self.set_byte(address, value, bus)?;
+            }             
             Location::Register(r) => {
                 self.registers = self.registers.put(from_value, r)?;
             }
             Location::Memory(r) => match self.registers.get_dual_reg(r) {
-                Some(address) => self.set_byte(address, from_value.try_into().unwrap(), bus)?,
+                Some(address) => {
+                    let value = get_u8()?;
+                    self.set_byte(address, value, bus)?
+                },
                 None => return Err(String::from("I tried to access a u8 as a bus address.")),
             },
             Location::MemOffsetImm => {
                 let next = self.next_u8(bus);
-                self.set_byte(0xFF00 + next as u16, from_value.try_into().unwrap(), bus)?;
+                let value = get_u8()?;
+                self.set_byte(0xFF00 + next as u16, value, bus)?;
             }
             Location::MemOffsetRegister(r) => {
                 let offset = self.registers.fetch_u8(r)?;
-                self.set_byte(0xFF00 + offset as u16, from_value.try_into().unwrap(), bus)?;
+                let value = get_u8()?;
+                self.set_byte(0xFF00 + offset as u16, value, bus)?;
             }
             Location::MemoryImmediate => {
-                let addr = self.next_u16(bus);
-                self.set_byte(addr, from_value.try_into().unwrap(), bus)?;
+                let address = self.next_u16(bus);
+                let [lo, hi] = from_value.to_be_bytes();
+                self.set_byte(address, lo, bus)?;
+                self.set_byte(address + 1, hi, bus)?;
             }
-            _ => unimplemented!(),
+            _ => unimplemented!("{:?}", into),
         };
         Ok(())
     }
@@ -396,10 +409,6 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
-        if self.registers.pc == 0x0281 {
-            // self.debug = true;
-            // println!("{}", self.registers);
-        }
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
@@ -446,6 +455,7 @@ impl CPU {
     }
     fn handle_cb(&mut self, bus: &mut Bus) -> CpuResult<()> {
         let opcode = self.next_u8(bus);
+        bus.gpu.cycle()?;
         match opcode {
             0x37 => self.registers = self.registers.swap_nibbles(Register::A)?,
             0x30 => self.registers = self.registers.swap_nibbles(Register::B)?,
