@@ -18,13 +18,16 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
+mod bus;
 mod cpu;
+mod disassembly;
+mod emu;
 mod gpu;
 mod instructions;
-mod memory;
 mod registers;
 mod texture;
 use crate::cpu::CPU;
+use crate::emu::Emu;
 use crate::texture::{Map, Tile};
 
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
@@ -34,17 +37,30 @@ const ZERO: Duration = Duration::from_secs(0);
 // fn main() {
 // 	println!("Started sdl context");
 // 	sdl_main().unwrap();
-// } 
+// }
 
 // #[cfg(not(sdl))]
-fn main () {
+fn main() {
     println!("Just cpu");
-    just_cpu();
-//    sdl_main().unwrap();
+    // just_cpu();
+    sdl_main().unwrap();
+    // decompiler();
 }
 
-fn init_cpu() -> Result<CPU, std::io::Error> {
+fn decompiler() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
+
+    let mut file = File::open(args[1].to_string())?;
+    let mut rom = Vec::new();
+    file.read_to_end(&mut rom)?;
+    disassembly::print_all(&rom);
+    Ok(())
+}
+
+fn init() -> Result<Emu, std::io::Error> {
+    let args: Vec<String> = env::args().collect();
+    let skip_bios = Option::from(args.len() >= 3);
+    println!("{:?}", args);
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
         panic!();
@@ -54,32 +70,20 @@ fn init_cpu() -> Result<CPU, std::io::Error> {
     let mut file = File::open(args[1].to_string())?;
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
-    let cpu = CPU::new(rom);
-	Ok(cpu)
+    let emu = Emu::new(skip_bios, rom);
+    Ok(emu)
 }
 
-fn just_cpu()  {
-	let mut cpu = init_cpu().unwrap();
-	loop {
-        let cpu_cycles = cpu.cycle();
-        cpu.memory.gpu.cycle(cpu_cycles);
-	}
+fn just_cpu() {
+    let mut emu = init().unwrap();
+    loop {
+        let cpu_cycles = emu.cycle().unwrap();
+    }
 }
-
 
 fn sdl_main() -> std::io::Result<()> {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        println!("Usage: ./gboy [rom]");
-        panic!();
-    }
-    info!("{:?}", args);
-    info!("Attempting to load {:?}", args[1]);
-    let mut file = File::open(args[1].to_string())?;
-    let mut rom = Vec::new();
-    file.read_to_end(&mut rom)?;
-    let mut cpu = CPU::new(rom);
+    let mut emu = init().unwrap();
     let context = sdl2::init().unwrap();
     let window = create_window(&context);
     let mut canvas = window.into_canvas().build().unwrap();
@@ -94,44 +98,52 @@ fn sdl_main() -> std::io::Result<()> {
     let mut timer = Instant::now();
     let mut count_loop = 0;
 
-    loop {
-        let f = frame(&mut cpu, &mut texture, &mut canvas);
+    let mut event_pump = context.event_pump().unwrap();
+
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
+                _ => {}
+            }
+        }
+
+        let f = frame(&mut emu, &mut texture, &mut canvas);
         if f.is_err() {
             break;
         }
+        // println!("{}", emu.cpu.registers);
         delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
-        count_loop += 1;
     }
+    std::mem::drop(event_pump);
     println!(
         "It took {:?} seconds.",
         Instant::now().duration_since(boot_timer)
     );
-    vram_viewer(&context, cpu.memory.gpu.vram).unwrap();
-    map_viewer(&context, cpu.memory.gpu).unwrap();
+    vram_viewer(&context, emu.bus.gpu.vram).unwrap();
+    map_viewer(&context, emu.bus.gpu).unwrap();
     Ok(())
 }
 
-fn frame(cpu: &mut CPU, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
+fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
-    while i < 17556 {
-        let cpu_cycles = cpu.cycle();
-        i += cpu_cycles;
-
-        if cpu_cycles == 0 {
-            ()
-        }
-        cpu.memory.gpu.cycle(cpu_cycles);
+    while i < 17476 {
+        i += emu.cycle().unwrap();
     }
-    let bg = cpu.memory.gpu.background();
+    let bg = emu.bus.gpu.background();
     texture
         .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            if cpu.memory.gpu.is_on() {
+            if emu.bus.gpu.is_on() {
                 buffer[..].copy_from_slice(&bg.texture());
             }
         })
         .unwrap();
-    let (h, v) = cpu.memory.gpu.scroll();
+    let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(
             &texture,
@@ -185,7 +197,6 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
 
-    println!("{}", background.texture().len());
     // Pitch = n_bytes(3) * map_w * tile_w
     texture
         .update(None, &(background.texture()), background.pitch())
@@ -225,11 +236,17 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let video_subsystem = sdl_context.video()?;
 
     let scale = 8;
-    let mut map = Map::new(16, 10, tiles);
-    for i in 0..map.tile_set.len() {
+    let mut map = vec![0; tiles.len()];
+    for i in 0..tiles.len() {
         let (x, y) = (i % 16, i / 16);
-        map.set(x, y, i);
+        map[x + y * 16] = i as u8;
     }
+    let map = Map {
+        width: 16,
+        height: 10,
+        tile_set: tiles,
+        map: map.as_slice(),
+    };
     let (w, h) = map.pixel_dims();
     let window = video_subsystem
         .window("VRAM Viewer", (scale * w) as u32, (scale * h) as u32)

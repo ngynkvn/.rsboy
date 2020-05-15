@@ -53,12 +53,13 @@ impl GPU {
     pub fn is_on(&self) -> bool {
         self.lcdc & 0b1000_0000 == 0b1000_0000
     }
-    pub fn cycle(&mut self, clock: usize) {
+    pub fn cycle(&mut self) -> Result<(), String> {
         if !self.is_on() {
-            return;
+            return Ok(());
         }
-        self.clock += clock;
+        self.clock += 1;
         self.step();
+        Ok(())
     }
 
     pub fn scroll(&self) -> (u32, u32) {
@@ -70,21 +71,17 @@ impl GPU {
             width: 32,
             height: 32,
             tile_set: self.tiles(),
-            map: self.vram[0x1800..0x1C00]
-                .iter()
-                .map(|x| *x as usize)
-                .collect(),
+            map: &self.vram[0x1800..0x1C00],
         }
     }
 
     pub fn tiles(&self) -> Vec<Tile> {
-        // 0x8000-0x87ff
-        let mut tiles: Vec<Tile> = vec![];
-        for i in (0..0x7ff).step_by(16) {
-            let tile_data = &self.vram[i..(i + 16)];
-            tiles.push(Tile::construct(self.bg_palette, tile_data));
-        }
-        tiles
+        self.vram[..0x1800]
+                    .chunks_exact(16) // Tile
+                    .map(|tile| {
+                        Tile::construct(self.bg_palette, tile)
+                    })
+                    .collect()
     }
 
     pub fn step(&mut self) {
@@ -125,6 +122,7 @@ impl GPU {
         }
     }
 }
+
 impl Index<u16> for GPU {
     type Output = u8;
     fn index(&self, i: u16) -> &Self::Output {

@@ -8,12 +8,12 @@ pub enum Color {
 }
 
 impl Color {
-    pub fn value(self) -> [u8; 3] {
+    pub fn value(self) -> &'static [u8; 3] {
         match self {
-            Color::White => [224, 248, 208],
-            Color::LightGrey => [136, 192, 112],
-            Color::DarkGrey => [52, 104, 86],
-            Color::Black => [8, 24, 32],
+            Color::White => &[224, 248, 208],
+            Color::LightGrey => &[136, 192, 112],
+            Color::DarkGrey => &[52, 104, 86],
+            Color::Black => &[8, 24, 32],
         }
     }
     pub fn bit2color(value: u8) -> Self {
@@ -29,98 +29,70 @@ impl Color {
 
 pub struct Tile {
     pub data: [Color; 64], //8 x 8
-    pub raw_data: [u8; 16],
+    // pub data: Vec<Color>,
+    pub texture: [u8; 192],
 }
 
 impl Tile {
-    pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
-        let mut raw_data = [0; 16];
+     pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
         let mut data = [Color::White; 64];
         for row in 0..8 {
             for col in 0..8 {
                 let hi = tile_data[(row * 2) + 1] >> (7 - col) & 1;
                 let lo = tile_data[(row * 2)] >> (7 - col) & 1;
                 let index = (hi << 1) | lo;
-                let color = match index {
-                    0b00 => palette & 0b11,
-                    0b01 => (palette & 0b1100) >> 2,
-                    0b10 => (palette & 0b110000) >> 4,
-                    0b11 => (palette & 0b11000000) >> 6,
-                    _ => unreachable!("Are you sure you're reading bit data?"),
-                };
+                let color = (palette >> (index << 1)) & 0b11;
                 data[row * 8 + col] = Color::bit2color(color);
             }
         }
-        raw_data[..].clone_from_slice(tile_data);
 
-        Self { data, raw_data }
+        let mut texture  = [255; 192];
+        let mut p = 0;
+        for i in data.iter() {
+            texture[p..(p + 3)].clone_from_slice(i.value());
+            p += 3;
+        }
+
+        Self { data, texture }
     }
 
     pub fn coord(i: usize) -> (usize, usize) {
         ((i / 8) as usize, (i % 8) as usize)
     }
 
-    pub fn texture(&self) -> [u8; 192] {
-        //64 * 3
-        let mut buffer = [255; 192];
-        let mut p = 0;
-        for i in self.data.iter() {
-            buffer[p..(p + 3)].clone_from_slice(&i.value());
-            p += 3;
-        }
-        buffer
+    pub fn texture(&self) -> &[u8; 192] {
+        &self.texture
     }
 }
 
-pub struct Map {
+pub struct Map<'a> {
     pub width: usize,
     pub height: usize,
     pub tile_set: Vec<Tile>,
-    pub map: Vec<usize>,
+    pub map: &'a [u8],
 }
 
-impl Map {
-    pub fn new(width: usize, height: usize, tile_set: Vec<Tile>) -> Self {
-        Self {
-            width,
-            height,
-            tile_set,
-            map: vec![0; width * height],
-        }
-    }
-    pub fn set(&mut self, x: usize, y: usize, i: usize) {
-        self.map[x + y * self.width] = i;
-    }
-
+impl<'a> Map<'a> {
     pub fn pitch(&self) -> usize {
         self.width * TILE_WIDTH * 3
     }
 
-    /**
-     * Mapping is like this in memory right now:
-     *  for a 4x4 tile size
-     * [1, 1, 1, 1] [1, 1, 1, 1]
-     * [2, 2, 2, 2] [2, 2, 2, 2]
-     * [3, 3, 3, 3] [3, 3, 3, 3]
-     * [4, 4, 4, 4] [4, 4, 4, 4]
-     *
-     * Fine and dandy, but we need the 2d repre to be:
-     *        (ROW 1)      (ROW 2)
-     * [1, 1, 1, 1, 1, 1, 1, 1,   2, 2, 2, 2, 2, 2, 2, 2, ...]
-     *
-     * This should definitely be revisited for optimization down the line.
-     */
     pub fn texture(&self) -> Vec<u8> {
         let mut byte_row = vec![vec![]; TILE_WIDTH * self.height];
         for (i, row) in self.map.chunks_exact(self.width).enumerate() {
             for &index in row {
                 // Tile index
-                for (j, tile_row) in self.tile_set[index].texture().chunks_exact(24).enumerate() {
+                for (j, tile_row) in self.tile_set[index as usize]
+                    .texture()
+                    .chunks_exact(24)
+                    .enumerate()
+                {
                     byte_row[i * TILE_WIDTH + j].extend_from_slice(&tile_row);
                 }
             }
         }
-        byte_row.iter().cloned().flatten().collect()
+        let ret: Vec<u8> = byte_row.iter().cloned().flatten().collect();
+        ret
     }
 
     pub fn dimensions(&self) -> (usize, usize) {

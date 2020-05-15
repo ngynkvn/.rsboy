@@ -1,3 +1,6 @@
+use crate::instructions::Register;
+use crate::instructions::Register::*;
+use std::convert::TryInto;
 use std::fmt;
 
 #[derive(Default, Debug)]
@@ -12,10 +15,6 @@ pub struct RegisterState {
     pub l: u8,
     pub sp: u16,
     pub pc: u16,
-}
-
-pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
-    ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
 }
 
 /**
@@ -43,10 +42,316 @@ macro_rules! u8_reg {
     };
 }
 
+macro_rules! TEST_BIT {
+    ($self: ident, $reg: ident, $bit: expr) => {{
+        let r = $self.$reg & (1 << ($bit)) == 0;
+        Ok(RegisterState {
+            f: flags(r, false, true, $self.flg_c()),
+            ..(*$self)
+        })
+    }};
+}
+
+macro_rules! SWAP_NIBBLE {
+    ($self: ident, $reg: ident) => {
+        Ok(RegisterState {
+            $reg: swapped_nibbles($self.$reg),
+            ..(*$self)
+        })
+    };
+}
+
+macro_rules! INC {
+    ($self: ident, $r1: ident) => {{
+        let n = $self.$r1;
+        let half_carry = (n & 0x0f) == 0x0f;
+        let n = n.wrapping_add(1);
+        RegisterState {
+            $r1: n,
+            f: flags(n == 0, true, half_carry, $self.flg_c()),
+            ..(*$self)
+        }
+    }};
+}
+
+macro_rules! DEC {
+    ($self: ident, $r1: ident) => {{
+        let n = $self.$r1;
+        let half_carry = (n & 0x0f) == 0x0f;
+        let n = n.wrapping_sub(1);
+        RegisterState {
+            $r1: n,
+            f: flags(n == 0, true, half_carry, $self.flg_c()),
+            ..(*$self)
+        }
+    }};
+}
+
+macro_rules! RL {
+    ($self: ident, $r1: ident) => {{
+        let leftmost = $self.$r1 & 0b1000_0000 != 0;
+        let carry = $self.flg_c() as u8;
+        let n = ($self.$r1 << 1) + carry;
+        Ok(RegisterState {
+            $r1: n,
+            f: flags(n == 0, false, false, leftmost),
+            ..(*$self)
+        })
+    }};
+}
+
+fn swapped_nibbles(byte: u8) -> u8 {
+    let [hi, lo] = [byte >> 4, byte & 0xF];
+    (lo << 4) | byte
+}
+
 impl RegisterState {
-    pub fn new() -> Self {
+    pub fn new(skip_bios: bool) -> Self {
+        if skip_bios {
+            return Self {
+                pc: 0x100,
+                ..Default::default()
+            };
+        }
         Self {
             ..Default::default()
+        }
+    }
+
+    pub fn set_cf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 4)) | ((b as u8) << 4);
+    }
+    pub fn set_hf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 5)) | ((b as u8) << 5);
+    }
+    pub fn set_nf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 6)) | ((b as u8) << 6);
+    }
+    pub fn set_zf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 7)) | ((b as u8) << 7);
+    }
+
+    pub fn jump(&self, address: u16) -> Result<Self, String> {
+        Ok(Self {
+            pc: address,
+            ..(*self)
+        })
+    }
+
+    pub fn test_bit(&self, reg: Register, bit: usize) -> Result<Self, String> {
+        match reg {
+            A => TEST_BIT!(self, a, bit),
+            B => TEST_BIT!(self, b, bit),
+            C => TEST_BIT!(self, c, bit),
+            D => TEST_BIT!(self, d, bit),
+            E => TEST_BIT!(self, e, bit),
+            H => TEST_BIT!(self, h, bit),
+            L => TEST_BIT!(self, l, bit),
+            _ => Err(format!("swap_nibble: {:?}", reg)),
+        }
+    }
+
+    pub fn cmp(&self, value: u8) -> Result<Self, String> {
+        let half_carry = (value & 0x0f) == 0x0f;
+        if half_carry && self.a < value {
+            panic!(
+                "{:08b} - {:08b} = {:08b}",
+                self.a,
+                value,
+                self.a.wrapping_sub(value)
+            );
+        }
+        Ok(Self {
+            f: flags(value == self.a, true, half_carry, self.a < value),
+            ..(*self)
+        })
+    }
+
+    pub fn rot_thru_carry(&self, reg: Register) -> Result<Self, String> {
+        match reg {
+            A => RL!(self, a),
+            B => RL!(self, b),
+            C => RL!(self, c),
+            D => RL!(self, d),
+            E => RL!(self, e),
+            H => RL!(self, h),
+            L => RL!(self, l),
+            _ => Err(format!("swap_nibble: {:?}", reg)),
+        }
+    }
+
+    pub fn swap_nibbles(&self, reg: Register) -> Result<Self, String> {
+        match reg {
+            A => SWAP_NIBBLE!(self, a),
+            B => SWAP_NIBBLE!(self, b),
+            C => SWAP_NIBBLE!(self, c),
+            D => SWAP_NIBBLE!(self, d),
+            E => SWAP_NIBBLE!(self, e),
+            H => SWAP_NIBBLE!(self, h),
+            L => SWAP_NIBBLE!(self, l),
+            _ => Err(format!("swap_nibble: {:?}", reg)),
+        }
+    }
+
+    pub fn put(&self, value: u16, reg: Register) -> Result<Self, String> {
+        match reg {
+            A => Ok(Self {
+                a: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            B => Ok(Self {
+                b: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            C => Ok(Self {
+                c: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            D => Ok(Self {
+                d: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            E => Ok(Self {
+                e: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            H => Ok(Self {
+                h: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            L => Ok(Self {
+                l: value.try_into().unwrap(),
+                ..(*self)
+            }),
+            SP => Ok(Self {
+                sp: value,
+                ..(*self)
+            }),
+            HL => {
+                let [h, l] = value.to_be_bytes();
+                Ok(Self { h, l, ..(*self) })
+            }
+            DE => {
+                let [d, e] = value.to_be_bytes();
+                Ok(Self { d, e, ..(*self) })
+            }
+            BC => {
+                let [b, c] = value.to_be_bytes();
+                Ok(Self { b, c, ..(*self) })
+            }
+            AF => {
+                let [a, f] = value.to_be_bytes();
+                Ok(Self { a, f, ..(*self) })
+            }
+            _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),
+        }
+    }
+
+    pub fn inc(&self, reg: Register) -> Self {
+        match reg {
+            HL => {
+                let n = self.hl().wrapping_add(1);
+                let [h, l] = n.to_be_bytes();
+                Self { h, l, ..(*self) }
+            }
+            BC => {
+                let n = self.bc().wrapping_add(1);
+                let [b, c] = n.to_be_bytes();
+                Self { b, c, ..(*self) }
+            }
+            DE => {
+                let n = self.de().wrapping_add(1);
+                let [d, e] = n.to_be_bytes();
+                Self { d, e, ..(*self) }
+            }
+            A => INC!(self, a),
+            B => INC!(self, b),
+            C => INC!(self, c),
+            D => INC!(self, d),
+            E => INC!(self, e),
+            H => INC!(self, h),
+            L => INC!(self, l),
+            _ => panic!("inc not impl for {:?}", reg),
+        }
+    }
+
+    pub fn dec(&self, reg: Register) -> Self {
+        match reg {
+            HL => {
+                let n = self.hl().wrapping_sub(1);
+                let [h, l] = n.to_be_bytes();
+                let f = flags(n == 0, true, false, self.flg_c()); //TOODO HalfCarry
+                Self { h, l, f, ..(*self) }
+            }
+            BC => {
+                let n = self.bc().wrapping_sub(1);
+                let [b, c] = n.to_be_bytes();
+                let f = flags(n == 0, true, false, self.flg_c());// TODO HalfCarry
+                Self { b, c, f, ..(*self) }
+            }
+            A => DEC!(self, a),
+            B => DEC!(self, b),
+            C => DEC!(self, c),
+            D => DEC!(self, d),
+            E => DEC!(self, e),
+            H => DEC!(self, h),
+            L => DEC!(self, l),
+            _ => panic!("dec not impl for {:?}", reg),
+        }
+    }
+
+    pub fn fetch_u8(&self, reg: Register) -> Result<u8, String> {
+        match reg {
+            A => Ok(self.a),
+            B => Ok(self.b),
+            C => Ok(self.c),
+            D => Ok(self.d),
+            E => Ok(self.e),
+            F => Ok(self.f),
+            _ => Err(format!("fetchu8 {:?}", reg)),
+        }
+    }
+
+    pub fn fetch_u16(&self, reg: Register) -> u16 {
+        match reg {
+            SP => self.sp(),
+            PC => self.pc(),
+            BC => self.bc(),
+            DE => self.de(),
+            HL => self.hl(),
+            AF => self.af(),
+            _ => panic!(),
+        }
+    }
+
+    pub fn get_dual_reg(&self, reg: Register) -> Option<u16> {
+        match reg {
+            SP => Some(self.sp()),
+            PC => Some(self.pc()),
+            BC => Some(self.bc()),
+            DE => Some(self.de()),
+            HL => Some(self.hl()),
+            AF => Some(self.af()),
+            _ => None,
+        }
+    }
+
+    pub fn fetch(&self, reg: Register) -> u16 {
+        match reg {
+            A => self.a.into(),
+            B => self.b.into(),
+            C => self.c.into(),
+            D => self.d.into(),
+            E => self.e.into(),
+            F => self.f.into(),
+            H => self.h.into(),
+            L => self.l.into(),
+            BC => self.bc(),
+            DE => self.de(),
+            HL => self.hl(),
+            AF => self.af(),
+            SP => self.sp,
+            PC => self.pc,
         }
     }
 
@@ -91,6 +396,10 @@ impl RegisterState {
     u16_reg!(bc, b, c);
     u16_reg!(de, d, e);
     u16_reg!(hl, h, l);
+}
+
+pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
+    ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
 }
 
 impl fmt::Display for RegisterState {

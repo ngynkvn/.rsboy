@@ -7,10 +7,11 @@ use std::ops::IndexMut;
 const VRAM_START: usize = 0x8000;
 const VRAM_END: usize = 0x9FFF;
 
-pub struct Memory {
+pub struct Bus {
     pub memory: [u8; 0x10000],
     pub bootrom: [u8; 0x100],
-    pub in_bios: bool,
+    pub in_bios: u8,
+    pub interrupts_enabled: bool,
     pub gpu: GPU,
 }
 
@@ -22,19 +23,28 @@ fn load_bootrom() -> Vec<u8> {
     bootrom
 }
 
-impl Memory {
-    pub fn new(rom_vec: Vec<u8>) -> Self {
+impl Bus {
+    pub fn new(skip_bios: bool, rom_vec: Vec<u8>) -> Self {
         let mut memory = [0; 0x10000];
         let mut bootrom = [0; 0x100];
         let bootrom_vec = load_bootrom();
         bootrom[..].clone_from_slice(&bootrom_vec[..]);
         memory[..rom_vec.len()].clone_from_slice(&rom_vec[..]);
-        Memory {
+        Bus {
             memory,
             bootrom,
-            in_bios: true,
+            interrupts_enabled: false,
+            in_bios: skip_bios as u8,
             gpu: GPU::new(),
         }
+    }
+
+    pub fn enable_interrupts(&mut self) {
+        self.interrupts_enabled = true;
+    }
+
+    pub fn disable_interrupts(&mut self) {
+        self.interrupts_enabled = false;
     }
 
     // Compare to
@@ -73,11 +83,11 @@ impl Memory {
         println!("{:04X} = {:02X}; {}", 0xFFFF, self[0xFFFF], "IE");
     }
 }
-impl Index<u16> for Memory {
+impl Index<u16> for Bus {
     type Output = u8;
     fn index(&self, i: u16) -> &Self::Output {
         match i as usize {
-            0x0000..=0x0100 if self.in_bios => &self.bootrom[i as usize],
+            0x0000..=0x0100 if self.in_bios == 0 => &self.bootrom[i as usize],
             0xFF40 => &self.gpu.lcdc,
             0xFF41 => &self.gpu.lcdstat,
             0xFF42 => &self.gpu.vscroll,
@@ -95,10 +105,10 @@ impl Index<u16> for Memory {
     }
 }
 
-impl IndexMut<u16> for Memory {
+impl IndexMut<u16> for Bus {
     fn index_mut(&mut self, i: u16) -> &mut Self::Output {
         match i as usize {
-            0x0000..=0x0100 if self.in_bios => {
+            0x0000..=0x0100 if self.in_bios == 0 => {
                 panic!("We tried to mutate bootrom while in bios mode.")
             }
             0xFF40 => &mut self.gpu.lcdc,
@@ -109,6 +119,7 @@ impl IndexMut<u16> for Memory {
             0xFF47 => &mut self.gpu.bg_palette,
             0xFF4A => &mut self.gpu.windowy,
             0xFF4B => &mut self.gpu.windowx,
+            0xFF50 => &mut self.in_bios,
             // 0xFF01 => {println!("W: ACC SERIAL TRANSFER DATA"); &mut self.memory[i as usize]},
             // 0xFF02 => {println!("W: ACC SERIAL TRANSFER DATA FLGS"); &mut self.memory[i as usize]},
             VRAM_START..=VRAM_END => &mut self.gpu.vram[i as usize - VRAM_START],
