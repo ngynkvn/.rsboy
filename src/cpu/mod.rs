@@ -114,9 +114,13 @@ impl CPU {
             }
             Location::MemoryImmediate => {
                 let address = self.next_u16(bus);
-                let [lo, hi] = from_value.to_be_bytes();
-                self.set_byte(address, lo, bus)?;
-                self.set_byte(address + 1, hi, bus)?;
+                if let Ok(value) = get_u8() {
+                    self.set_byte(address, value, bus)?;
+                } else {
+                    let [lo, hi] = from_value.to_be_bytes();
+                    self.set_byte(address, lo, bus)?;
+                    self.set_byte(address + 1, hi, bus)?;
+                }
             }
             _ => unimplemented!("{:?}", into),
         };
@@ -415,10 +419,11 @@ impl CPU {
         let instr_len = size as u16 + 1;
         if self.debug {
             println!(
-                "0x{:04x?}: {} {:?}",
+                "0x{:04x?}: {} {:?}\n{}",
                 self.registers.pc - 1,
                 curr_byte,
-                instruction
+                instruction,
+                self.registers
             );
         }
         self.perform_instruction(*instruction, instr_len, curr_byte, bus)

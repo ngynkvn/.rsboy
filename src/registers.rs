@@ -250,18 +250,18 @@ impl RegisterState {
     pub fn inc(&self, reg: Register) -> Self {
         match reg {
             HL => {
-                let n = self.hl();
-                let [h, l] = (n.wrapping_add(1)).to_be_bytes();
+                let n = self.hl().wrapping_add(1);
+                let [h, l] = n.to_be_bytes();
                 Self { h, l, ..(*self) }
             }
             BC => {
-                let n = self.bc();
-                let [b, c] = (n.wrapping_add(1)).to_be_bytes();
+                let n = self.bc().wrapping_add(1);
+                let [b, c] = n.to_be_bytes();
                 Self { b, c, ..(*self) }
             }
             DE => {
-                let n = self.de();
-                let [d, e] = (n.wrapping_add(1)).to_be_bytes();
+                let n = self.de().wrapping_add(1);
+                let [d, e] = n.to_be_bytes();
                 Self { d, e, ..(*self) }
             }
             A => INC!(self, a),
@@ -278,14 +278,16 @@ impl RegisterState {
     pub fn dec(&self, reg: Register) -> Self {
         match reg {
             HL => {
-                let n = self.hl();
-                let [h, l] = (n.wrapping_sub(1)).to_be_bytes();
-                Self { h, l, ..(*self) }
+                let n = self.hl().wrapping_sub(1);
+                let [h, l] = n.to_be_bytes();
+                let f = flags(n == 0, true, false, self.flg_c()); //TOODO HalfCarry
+                Self { h, l, f, ..(*self) }
             }
             BC => {
-                let n = self.bc();
-                let [b, c] = (n.wrapping_sub(1)).to_be_bytes();
-                Self { b, c, ..(*self) }
+                let n = self.bc().wrapping_sub(1);
+                let [b, c] = n.to_be_bytes();
+                let f = flags(n == 0, true, false, self.flg_c());// TODO HalfCarry
+                Self { b, c, f, ..(*self) }
             }
             A => DEC!(self, a),
             B => DEC!(self, b),
