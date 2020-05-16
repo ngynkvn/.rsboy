@@ -42,8 +42,8 @@ impl CPU {
         bus.gpu.cycle().unwrap();
         bus[address]
     }
-    fn read_io(&mut self, offset: u8, bus: &mut Bus) -> u8 {
-        self.read_byte(0xFF00 + offset as u16, bus)
+    fn read_io(&mut self, offset: u16, bus: &mut Bus) -> u8 {
+        self.read_byte(0xFF00 + offset, bus)
     }
     fn set_byte(&mut self, address: u16, value: u8, bus: &mut Bus) -> CpuResult<()> {
         self.clock += 1;
@@ -65,14 +65,11 @@ impl CPU {
             Location::Memory(r) => self.read_byte(self.registers.fetch(r), bus).into(),
             Location::MemOffsetImm => {
                 let next = self.next_u8(bus);
-                self.read_io(next, bus).into()
+                self.read_io(next as u16, bus).into()
             }
             Location::MemOffsetRegister(r) => self
                 .read_io(
-                    self.registers
-                        .fetch(r)
-                        .try_into()
-                        .expect("Offset was too large."),
+                    self.registers.fetch(r),
                     bus,
                 )
                 .into(),

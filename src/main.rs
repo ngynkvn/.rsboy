@@ -26,7 +26,6 @@ mod gpu;
 mod instructions;
 mod registers;
 mod texture;
-use crate::cpu::CPU;
 use crate::emu::Emu;
 use crate::texture::{Map, Tile};
 
@@ -96,8 +95,6 @@ fn sdl_main() -> std::io::Result<()> {
 
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
-    let mut count_loop = 0;
-
     let mut event_pump = context.event_pump().unwrap();
 
     'running: loop {
