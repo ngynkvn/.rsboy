@@ -87,6 +87,20 @@ macro_rules! DEC {
     }};
 }
 
+macro_rules! RR {
+    ($self: ident, $r1: ident) => {{
+        let mut n = ($self.$r1 >> 1);
+        if $self.flg_c() {
+            n |= 0b1000_0000
+        }
+        Ok(RegisterState {
+            $r1: n,
+            f: flags(n == 0, false, false, $self.$r1 & 1 != 0),
+            ..(*$self)
+        })
+    }};
+}
+
 macro_rules! SRL {
     ($self: ident, $r1: ident) => {{
         let n = ($self.$r1 >> 1);
@@ -172,6 +186,18 @@ impl RegisterState {
             H => SRL!(self, h),
             L => SRL!(self, l),
             _ => Err(format!("srl: {:?}", reg)),
+        }
+    }
+    pub fn rr(&self, reg: Register) -> Result<Self, String> {
+        match reg {
+            A => RR!(self, a),
+            B => RR!(self, b),
+            C => RR!(self, c),
+            D => RR!(self, d),
+            E => RR!(self, e),
+            H => RR!(self, h),
+            L => RR!(self, l),
+            _ => Err(format!("rr: {:?}", reg)),
         }
     }
 

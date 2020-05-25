@@ -59,7 +59,7 @@ fn decompiler() -> std::io::Result<()> {
 
 fn init() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
-    let skip_bios = Option::from(args.len() >= 3);
+    let skip_bios = args.len() >= 3;
     println!("{:?}", args);
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
@@ -70,7 +70,7 @@ fn init() -> Result<Emu, std::io::Error> {
     let mut file = File::open(args[1].to_string())?;
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
-    let emu = Emu::new(skip_bios, rom);
+    let emu = Emu::new(true, rom);
     Ok(emu)
 }
 
@@ -159,7 +159,7 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     if timer.elapsed() < min_dur {
         ::std::thread::sleep(min_dur - timer.elapsed());
     }
-    println!("Frame time: {}", timer.elapsed().as_secs_f64());
+    // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> Window {

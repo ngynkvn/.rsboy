@@ -1,4 +1,5 @@
 use crate::bus::Bus;
+use crate::bus::Memory;
 use crate::instructions::*;
 use crate::registers::RegisterState;
 use std::convert::TryInto;
@@ -36,14 +37,14 @@ impl CPU {
         // TODO
         Self {
             registers: RegisterState::new(skip_bios),
-            debug: false,
+            debug: true,
             clock: 0,
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
         self.clock += 1;
         bus.gpu.cycle().unwrap();
-        let val = bus[self.registers.pc];
+        let val = bus.read(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         val
     }
@@ -51,14 +52,15 @@ impl CPU {
         // Little endianess means LSB comes first.
         self.clock += 1;
         bus.gpu.cycle().unwrap();
-        let val = (bus[self.registers.pc + 1] as u16) << 8 | (bus[self.registers.pc] as u16);
+        let val =
+            (bus.read(self.registers.pc + 1) as u16) << 8 | (bus.read(self.registers.pc) as u16);
         self.registers.pc = self.registers.pc.wrapping_add(2);
         val
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
         self.clock += 1;
         bus.gpu.cycle().unwrap();
-        bus[address]
+        bus.read(address)
     }
     fn read_io(&mut self, offset: u8, bus: &mut Bus) -> u8 {
         self.read_byte(0xFF00 + offset as u16, bus)
@@ -66,7 +68,7 @@ impl CPU {
     fn set_byte(&mut self, address: u16, value: u8, bus: &mut Bus) -> CpuResult<()> {
         self.clock += 1;
         bus.gpu.cycle().unwrap();
-        bus[address] = value;
+        bus.write(address, value);
         Ok(())
     }
 
@@ -100,8 +102,11 @@ impl CPU {
     fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
         let from_value = self.read_location(from, bus);
         let get_u8 = || -> Result<u8, String> {
-                from_value.try_into().or_else(|_|{
-                Err(format!("into: {:?}, from: {:?}, value: {}", into, from, from_value))
+            from_value.try_into().or_else(|_| {
+                Err(format!(
+                    "into: {:?}, from: {:?}, value: {}",
+                    into, from, from_value
+                ))
             })
         };
         match into {
@@ -206,20 +211,16 @@ impl CPU {
 
     fn perform_instruction(&mut self, instruction: Instr, bus: &mut Bus) -> CpuResult<()> {
         match instruction {
-            Instr::LD(into, from) => self
-                .load(into, from, bus)
-                .or_else(source_error),
+            Instr::LD(into, from) => self.load(into, from, bus).or_else(source_error),
             Instr::LDD(into, from) => {
-                self.load(into, from, bus)
-                    .or_else(source_error)?;
+                self.load(into, from, bus).or_else(source_error)?;
                 self.dec(Register::HL);
                 self.clock += 1; // TODO
                 bus.gpu.cycle()?;
                 Ok(())
             }
             Instr::LDI(into, from) => {
-                self.load(into, from, bus)
-                    .or_else(source_error)?;
+                self.load(into, from, bus).or_else(source_error)?;
                 self.inc(Register::HL);
                 self.clock += 1; // TODO
                 bus.gpu.cycle()?;
@@ -254,6 +255,19 @@ impl CPU {
                 self.registers
                     .set_hf(((self.registers.a & 0xf) + (value & 0xf)) & 0x10 == 0x10);
                 self.registers.set_cf(carry);
+                Ok(())
+            }
+            Instr::ADC(location) => {
+                let value = self.read_location(location, bus).try_into().unwrap();
+                let carry = self.registers.flg_c() as u8;
+                let result = self.registers.a.wrapping_add(value).wrapping_add(carry);
+                self.registers.a = result;
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(false);
+                // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
+                self.registers
+                    .set_hf((self.registers.a & 0xf) + (value & 0xf) + carry > 0xf);
+                self.registers.set_cf(self.registers.a as u16 + value as u16 + carry as u16 > 0xff);
                 Ok(())
             }
             Instr::ADDHL(location) => {
@@ -296,6 +310,15 @@ impl CPU {
             Instr::SUB(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
                 self.registers.a = self.registers.a.wrapping_sub(value);
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(true);
+                self.registers.set_hf( // Mooneye  
+                    (self.registers.a & 0xf)
+                        .wrapping_sub(value & 0xf)
+                        & (0xf + 1)
+                        != 0,
+                );
+                self.registers.set_cf((self.registers.a as u16) < (value as u16));
                 Ok(())
             }
             Instr::NOT(location) => {
@@ -317,6 +340,10 @@ impl CPU {
                 self.registers.set_cf(true);
                 Ok(())
             }
+            Instr::HALT => {
+                //TODO
+                Ok(())
+            }
             Instr::CB => self.handle_cb(bus),
             Instr::JP(jump_type) => {
                 let address = self.next_u16(bus);
@@ -334,6 +361,16 @@ impl CPU {
                 let address = self.next_u16(bus);
                 self.push_stack(self.registers.pc, bus)?;
                 self.handle_jump(address, jump_type, bus)
+            }
+            Instr::DEC(Location::Memory(r)) => {
+                let address = self.registers.fetch_u16(r);
+                let value = self.read_byte(address, bus);
+                let result = value.wrapping_sub(1);
+                self.set_byte(address, result, bus)?;
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(true);
+                self.registers.set_hf(value & 0xf == 0);
+                Ok(())
             }
             Instr::DEC(Location::Register(r)) => {
                 self.dec(r);
@@ -356,6 +393,15 @@ impl CPU {
             Instr::RET(jump_type) => {
                 let addr = self.pop_stack(bus)?;
                 self.handle_jump(addr, jump_type, bus)
+            }
+            Instr::RRA => {
+                let carry = self.registers.a & 1 != 0;
+                self.registers.a = self.registers.a >> 1;
+                if self.registers.flg_c() {
+                    self.registers.a |= 0b1000_0000;
+                }
+                self.registers.set_cf(carry);
+                Ok(())
             }
             Instr::RLA => {
                 let (result, overflow) = self.registers.a.overflowing_shl(1);
@@ -394,11 +440,7 @@ impl CPU {
                 bus.disable_interrupts();
                 Ok(())
             }
-            // y => {
-            //     println!("Unknown OP: 0x{:04X}: {:?}", self.registers.pc - instr_len, y);
-            //     Ok(())
-            // }
-            x => Err(format!("read_instruction: {:?}", x)),
+            x => Err(format!("{} read_instruction: {:?}", source_error!(), x)),
         }
     }
 
@@ -409,11 +451,10 @@ impl CPU {
         let instr_len = size as u16 + 1;
         if self.debug {
             println!(
-                "0x{:04x?}: {} {:?}\n{}",
+                "0x{:04x?}: {:02x} {:?}",
                 self.registers.pc - 1,
                 curr_byte,
                 instruction,
-                self.registers
             );
         }
         self.perform_instruction(*instruction, bus)
@@ -482,6 +523,13 @@ impl CPU {
             // 0x16 => {
             //     //rot_thru_carry (hl)
             // }
+            0x18 => self.registers = self.registers.rr(Register::B)?,
+            0x19 => self.registers = self.registers.rr(Register::C)?,
+            0x1A => self.registers = self.registers.rr(Register::D)?,
+            0x1B => self.registers = self.registers.rr(Register::E)?,
+            0x1C => self.registers = self.registers.rr(Register::H)?,
+            0x1D => self.registers = self.registers.rr(Register::L)?,
+            // 0x1E => self.registers = self.registers.rr(Register::B),
             0x38 => self.registers = self.registers.srl(Register::B)?,
             0x39 => self.registers = self.registers.srl(Register::C)?,
             0x3A => self.registers = self.registers.srl(Register::D)?,
@@ -501,9 +549,8 @@ impl CPU {
             0x3F => self.registers = self.registers.srl(Register::A)?,
             _ => {
                 let s = source_error!();
-                return Err(format!("{} CB: {:02X}", s, opcode))
-            }
-            // _ => return Err(format!("CB: {:02X}", opcode)),
+                return Err(format!("{} CB: {:02X}", s, opcode));
+            } // _ => return Err(format!("CB: {:02X}", opcode)),
         }
         Ok(())
     }
