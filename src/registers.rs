@@ -87,6 +87,17 @@ macro_rules! DEC {
     }};
 }
 
+macro_rules! SRL {
+    ($self: ident, $r1: ident) => {{
+        let n = ($self.$r1 >> 1);
+        Ok(RegisterState {
+            $r1: n,
+            f: flags(n == 0, false, false, $self.$r1 & 1 != 0),
+            ..(*$self)
+        })
+    }};
+}
+
 macro_rules! RL {
     ($self: ident, $r1: ident) => {{
         let leftmost = $self.$r1 & 0b1000_0000 != 0;
@@ -148,6 +159,19 @@ impl RegisterState {
             H => TEST_BIT!(self, h, bit),
             L => TEST_BIT!(self, l, bit),
             _ => Err(format!("swap_nibble: {:?}", reg)),
+        }
+    }
+
+    pub fn srl(&self, reg: Register) -> Result<Self, String> {
+        match reg {
+            A => SRL!(self, a),
+            B => SRL!(self, b),
+            C => SRL!(self, c),
+            D => SRL!(self, d),
+            E => SRL!(self, e),
+            H => SRL!(self, h),
+            L => SRL!(self, l),
+            _ => Err(format!("srl: {:?}", reg)),
         }
     }
 

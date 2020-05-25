@@ -13,6 +13,24 @@ pub struct CPU {
 
 type CpuResult<T> = Result<T, String>;
 
+fn propagate_error(f: String) -> CpuResult<()> {
+    Err(f)
+}
+
+fn prefix(prefix: String) -> impl FnOnce(String) -> Result<(), String> {
+    move |e| Err(format!("{:?}: {:?}", prefix, e))
+}
+
+fn source_error<T>(e: String) -> Result<T, String> {
+    Err(format!("{}:{}:{}: {:?}", file!(), line!(), column!(), e))
+}
+
+macro_rules! source_error {
+    () => {
+        format!("{}:{}:{}", file!(), line!(), column!())
+    };
+}
+
 impl CPU {
     pub fn new(skip_bios: bool) -> Self {
         // TODO
@@ -89,9 +107,9 @@ impl CPU {
         match into {
             Location::Immediate(2) => {
                 let address = self.next_u16(bus);
-                let value= get_u8()? ;
+                let value = get_u8()?;
                 self.set_byte(address, value, bus)?;
-            }             
+            }
             Location::Register(r) => {
                 self.registers = self.registers.put(from_value, r)?;
             }
@@ -99,7 +117,7 @@ impl CPU {
                 Some(address) => {
                     let value = get_u8()?;
                     self.set_byte(address, value, bus)?
-                },
+                }
                 None => return Err(String::from("I tried to access a u8 as a bus address.")),
             },
             Location::MemOffsetImm => {
@@ -186,40 +204,22 @@ impl CPU {
         value
     }
 
-    fn perform_instruction(
-        &mut self,
-        instruction: Instr,
-        bus: &mut Bus,
-    ) -> CpuResult<()> {
+    fn perform_instruction(&mut self, instruction: Instr, bus: &mut Bus) -> CpuResult<()> {
         match instruction {
-            Instr::LD(into, from) => self.load(into, from, bus).or_else(|e| {
-                Err(format!(
-                    "LoadError: {:?}, {:?}",
-                    instruction,
-                    e
-                ))
-            }),
+            Instr::LD(into, from) => self
+                .load(into, from, bus)
+                .or_else(source_error),
             Instr::LDD(into, from) => {
-                self.load(into, from, bus).or_else(|e| {
-                    Err(format!(
-                        "LoadError: {:?}, {:?}",
-                        instruction,
-                        e
-                    ))
-                })?;
+                self.load(into, from, bus)
+                    .or_else(source_error)?;
                 self.dec(Register::HL);
                 self.clock += 1; // TODO
                 bus.gpu.cycle()?;
                 Ok(())
             }
             Instr::LDI(into, from) => {
-                self.load(into, from, bus).or_else(|e| {
-                    Err(format!(
-                        "LoadError: {:?}, {:?}",
-                        instruction,
-                        e
-                    ))
-                })?;
+                self.load(into, from, bus)
+                    .or_else(source_error)?;
                 self.inc(Register::HL);
                 self.clock += 1; // TODO
                 bus.gpu.cycle()?;
@@ -227,6 +227,9 @@ impl CPU {
             }
             Instr::NOOP => Ok(()),
             Instr::RST(size) => {
+                if size == 0x38 {
+                    panic!("0xFF hit")
+                }
                 self.push_stack(self.registers.pc, bus)?;
                 self.registers.pc = size as u16;
                 Ok(())
@@ -395,10 +398,7 @@ impl CPU {
             //     println!("Unknown OP: 0x{:04X}: {:?}", self.registers.pc - instr_len, y);
             //     Ok(())
             // }
-            x => Err(format!(
-                "read_instruction: {:?}",
-                x
-            )),
+            x => Err(format!("read_instruction: {:?}", x)),
         }
     }
 
@@ -482,7 +482,28 @@ impl CPU {
             // 0x16 => {
             //     //rot_thru_carry (hl)
             // }
-            _ => return Err(format!("CB: {:02X}", opcode)),
+            0x38 => self.registers = self.registers.srl(Register::B)?,
+            0x39 => self.registers = self.registers.srl(Register::C)?,
+            0x3A => self.registers = self.registers.srl(Register::D)?,
+            0x3B => self.registers = self.registers.srl(Register::E)?,
+            0x3C => self.registers = self.registers.srl(Register::H)?,
+            0x3D => self.registers = self.registers.srl(Register::L)?,
+            0x3E => {
+                let address = self.registers.fetch_u16(Register::HL);
+                let byte = self.read_byte(address, bus);
+                let shifted = byte >> 1;
+                self.set_byte(address, shifted, bus)?;
+                self.registers.set_zf(shifted == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(byte & 1 != 0);
+            }
+            0x3F => self.registers = self.registers.srl(Register::A)?,
+            _ => {
+                let s = source_error!();
+                return Err(format!("{} CB: {:02X}", s, opcode))
+            }
+            // _ => return Err(format!("CB: {:02X}", opcode)),
         }
         Ok(())
     }
@@ -492,7 +513,6 @@ impl CPU {
         Ok(self.clock - prev)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -519,7 +539,7 @@ mod tests {
         cpu.registers.c = 0x21;
         assert_eq!(cpu.registers.bc(), 0x2121);
         let mut bus = Bus::new(false, vec![]); // LD BC, d16
-        // TODO, make Bus a trait that I can inherit from so I can mock it.
+                                               // TODO, make Bus a trait that I can inherit from so I can mock it.
         bus.bootrom[0] = 0x01;
         bus.bootrom[1] = 0x22;
         bus.bootrom[2] = 0x11;
