@@ -7,6 +7,11 @@ use std::ops::IndexMut;
 const VRAM_START: usize = 0x8000;
 const VRAM_END: usize = 0x9FFF;
 
+trait Memory {
+    fn read(&self, address: u16) -> u8;
+    fn write(&mut self, address: u16, value: u8);
+}
+
 pub struct Bus {
     pub memory: [u8; 0x10000],
     pub bootrom: [u8; 0x100],
@@ -83,22 +88,61 @@ impl Bus {
         println!("{:04X} = {:02X}; {}", 0xFFFF, self[0xFFFF], "IE");
     }
 }
+
+impl Memory for Bus {
+    fn read(&self, address: u16) -> u8 {
+        match address as usize {
+            0x0000..=0x0100 if self.in_bios == 0 => self.bootrom[address as usize],
+            0xFF40 => self.gpu.lcdc,
+            0xFF41 => self.gpu.lcdstat,
+            0xFF42 => self.gpu.vscroll,
+            0xFF43 => self.gpu.hscroll,
+            0xFF44 => self.gpu.scanline,
+            0xFF47 => panic!("0xFF47 (bg_palette) is WRITE ONLY"),
+            0xFF4A => self.gpu.windowy,
+            0xFF4B => self.gpu.windowx,
+            // 0xFFFF => &self.gpu.,
+            // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[i as usize]},
+            // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
+            VRAM_START..=VRAM_END => self.gpu[address - VRAM_START as u16],
+            _ => self.memory[address as usize],
+        }
+    }
+    fn write(&mut self, address: u16, value: u8) {
+        match address as usize {
+            0x0000..=0x0100 if self.in_bios == 0 => self.bootrom[address as usize] = value,
+            0xff40 => self.gpu.lcdc = value,
+            0xff41 => self.gpu.lcdstat = value,
+            0xff42 => self.gpu.vscroll = value,
+            0xff43 => self.gpu.hscroll = value,
+            0xff44 => self.gpu.scanline = value,
+            0xff47 => panic!("0xff47 (bg_palette) is write only"),
+            0xff4a => self.gpu.windowy = value,
+            0xff4b => self.gpu.windowx = value,
+            // 0xffff => &self.gpu.,
+            // 0xff01 => {println!("r: acc serial transfer data"); &self.memory[i as usize]},
+            // 0xff02 => {println!("r: acc serial transfer data flgs"); &self.memory[i as usize]},
+            VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
+            _ => self.memory[address as usize] = value,
+        }
+    }
+}
 impl Index<u16> for Bus {
     type Output = u8;
     fn index(&self, i: u16) -> &Self::Output {
         match i as usize {
             0x0000..=0x0100 if self.in_bios == 0 => &self.bootrom[i as usize],
-            0xFF40 => &self.gpu.lcdc,
-            0xFF41 => &self.gpu.lcdstat,
-            0xFF42 => &self.gpu.vscroll,
-            0xFF43 => &self.gpu.hscroll,
-            0xFF44 => &self.gpu.scanline,
-            0xFF47 => panic!("0xFF47 (bg_palette) is WRITE ONLY"),
-            0xFF4A => &self.gpu.windowy,
-            0xFF4B => &self.gpu.windowx,
-            // 0xFFFF => &self.gpu.,
-            // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[i as usize]},
-            // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
+            0xff40 => &self.gpu.lcdc,
+            0xff41 => &self.gpu.lcdstat,
+            0xff42 => &self.gpu.vscroll,
+            0xff43 => &self.gpu.hscroll,
+            0xff44 => &self.gpu.scanline,
+            0xff47 => panic!("0xff47 (bg_palette) is write only"),
+            0xff4a => &self.gpu.windowy,
+            0xff4b => &self.gpu.windowx,
+            // 0xffff => &self.gpu.,
+            // 0xff01 => {println!("r: acc serial transfer data"); &self.memory[i as usize]},
+            // 0xff02 => {println!("r: acc serial transfer data flgs"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => &self.gpu[i - VRAM_START as u16],
             _ => &self.memory[i as usize],
         }

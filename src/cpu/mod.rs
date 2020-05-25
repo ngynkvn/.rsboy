@@ -189,16 +189,12 @@ impl CPU {
     fn perform_instruction(
         &mut self,
         instruction: Instr,
-        instr_len: u16,
-        curr_byte: u8,
         bus: &mut Bus,
     ) -> CpuResult<()> {
         match instruction {
             Instr::LD(into, from) => self.load(into, from, bus).or_else(|e| {
                 Err(format!(
-                    "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
-                    self.registers.pc - instr_len,
-                    curr_byte,
+                    "LoadError: {:?}, {:?}",
                     instruction,
                     e
                 ))
@@ -206,9 +202,7 @@ impl CPU {
             Instr::LDD(into, from) => {
                 self.load(into, from, bus).or_else(|e| {
                     Err(format!(
-                        "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
-                        self.registers.pc - instr_len,
-                        curr_byte,
+                        "LoadError: {:?}, {:?}",
                         instruction,
                         e
                     ))
@@ -221,9 +215,7 @@ impl CPU {
             Instr::LDI(into, from) => {
                 self.load(into, from, bus).or_else(|e| {
                     Err(format!(
-                        "LoadError: 0x{:04X}: 0x{:02X} {:?}, {:?}",
-                        self.registers.pc - instr_len,
-                        curr_byte,
+                        "LoadError: {:?}, {:?}",
                         instruction,
                         e
                     ))
@@ -404,9 +396,7 @@ impl CPU {
             //     Ok(())
             // }
             x => Err(format!(
-                "read_instruction: 0x{:04X}: 0x{:02X} {:?}",
-                self.registers.pc - instr_len,
-                curr_byte,
+                "read_instruction: {:?}",
                 x
             )),
         }
@@ -426,7 +416,7 @@ impl CPU {
                 self.registers
             );
         }
-        self.perform_instruction(*instruction, instr_len, curr_byte, bus)
+        self.perform_instruction(*instruction, bus)
     }
     fn check_flag(&mut self, flag: Flag) -> bool {
         match flag {
@@ -496,9 +486,46 @@ impl CPU {
         }
         Ok(())
     }
-    pub fn cycle<'a>(&mut self, bus: &mut Bus) -> CpuResult<usize> {
+    pub fn cycle(&mut self, bus: &mut Bus) -> CpuResult<usize> {
         let prev = self.clock;
         self.read_instruction(bus)?;
         Ok(self.clock - prev)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::instructions::Location::*;
+    use crate::instructions::Register::*;
+
+    #[test]
+    fn ld() -> Result<(), String> {
+        let mut cpu = CPU::new(false);
+        cpu.registers.a = 5;
+        cpu.registers.b = 8;
+        let mut bus = Bus::new(false, vec![]);
+        assert_eq!(cpu.registers.a, 0x5);
+        cpu.perform_instruction(Instr::LD(Register(A), Register(B)), &mut bus)?;
+        assert_eq!(cpu.registers.a, 0x8);
+        Ok(())
+    }
+
+    #[test]
+    fn ldbc() -> Result<(), String> {
+        let mut cpu = CPU::new(false);
+        cpu.registers.b = 0x21;
+        cpu.registers.c = 0x21;
+        assert_eq!(cpu.registers.bc(), 0x2121);
+        let mut bus = Bus::new(false, vec![]); // LD BC, d16
+        // TODO, make Bus a trait that I can inherit from so I can mock it.
+        bus.bootrom[0] = 0x01;
+        bus.bootrom[1] = 0x22;
+        bus.bootrom[2] = 0x11;
+
+        cpu.read_instruction(&mut bus)?;
+        assert_eq!(cpu.registers.bc(), 0x1122);
+        Ok(())
     }
 }

@@ -151,22 +151,6 @@ impl RegisterState {
         }
     }
 
-    pub fn cmp(&self, value: u8) -> Result<Self, String> {
-        let half_carry = (value & 0x0f) == 0x0f;
-        if half_carry && self.a < value {
-            panic!(
-                "{:08b} - {:08b} = {:08b}",
-                self.a,
-                value,
-                self.a.wrapping_sub(value)
-            );
-        }
-        Ok(Self {
-            f: flags(value == self.a, true, half_carry, self.a < value),
-            ..(*self)
-        })
-    }
-
     pub fn rot_thru_carry(&self, reg: Register) -> Result<Self, String> {
         match reg {
             A => RL!(self, a),
@@ -429,14 +413,14 @@ mod tests {
     use super::*;
     #[test]
     fn it_initalizes() {
-        let reg = RegisterState::new();
+        let reg = RegisterState::new(false);
     }
 
     #[test]
     fn flag_function() {
         let z_only = flags(true, false, false, false);
         assert_eq!(z_only, 0b1000_0000);
-        let zn = flags(true, false, false, false);
+        let zn = flags(true, false, true, false);
         assert_eq!(zn, 0b1010_0000);
     }
 
