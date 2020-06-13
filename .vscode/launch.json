@@ -21,6 +21,7 @@
             "args": [
                 "./roms/Tetris.gb"
             ],
+            "requireExactSource": false,
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

@@ -418,9 +418,9 @@ impl CPU {
                 Ok(())
             }
             Instr::ADDSP => {
-                let offset = self.next_u8(bus) as u16;
-                let (result, overflow) = self.registers.sp.overflowing_add(offset);
-                let half_carry = (((result & 0xf) + (offset & 0xf)) & 0x10) == 0x10;
+                let offset = self.next_u8(bus) as i8;
+                let (result, overflow) = self.registers.sp.overflowing_add(offset as u16);
+                let half_carry = (((result & 0xf) + (offset as u16 & 0xf)) & 0x10) == 0x10;
                 self.registers.sp = result;
                 self.registers.set_hf(half_carry);
                 self.registers.set_cf(overflow);
