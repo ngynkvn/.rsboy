@@ -10,6 +10,7 @@ const HISTORY_SIZE: usize = 10;
 pub struct CPU {
     pub registers: RegisterState,
     debug: bool,
+    pub running: bool,
     pub clock: usize,
     encounter: HashMap<u16, usize>
 }
@@ -41,6 +42,7 @@ impl CPU {
             registers: RegisterState::new(skip_bios),
             debug: false,
             clock: 0,
+            running: true,
             encounter: HashMap::new()
         }
     }
@@ -451,7 +453,7 @@ impl CPU {
         let curr_address = self.registers.pc;
         if curr_address == 0x02d3 {
             dbg!(&self.registers);
-            panic!()
+            return Err(String::from("Stopped running"));
         }
         self.encounter.entry(self.registers.pc).and_modify(|x| {
             *x += 1;

@@ -96,7 +96,6 @@ fn sdl_main() -> std::io::Result<()> {
 
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
-    let mut count_loop = 0;
 
     let mut event_pump = context.event_pump().unwrap();
 
@@ -133,7 +132,10 @@ fn sdl_main() -> std::io::Result<()> {
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
     while i < 17476 {
-        i += emu.cycle().unwrap();
+        match emu.cycle() {
+            Ok(c) => i += c,
+            Err(s) => return Err(())
+        }
     }
     emu.bus.gpu.render_map(texture);
     let (h, v) = emu.bus.gpu.scroll();
@@ -172,7 +174,6 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
     let window = video_subsystem
         .window("Map Viewer", (scale * w) as u32, (scale * h) as u32)
         .position_centered()
-        .opengl()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
@@ -191,7 +192,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
 
     // Pitch = n_bytes(3) * map_w * tile_w
     texture
-        .update(None, &(background.texture()), background.pitch())
+        .update(None, &(background.texture()), 256 * 2)
         .map_err(|e| e.to_string())?;
     canvas
         .copy(&texture, None, None)

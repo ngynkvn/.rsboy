@@ -61,10 +61,6 @@ impl Tile {
         Self { texture }
     }
 
-    pub fn coord(i: usize) -> (usize, usize) {
-        ((i / 8) as usize, (i % 8) as usize)
-    }
-
     pub fn texture(&self) -> &[u8; 128] {
         &self.texture
     }
@@ -79,7 +75,7 @@ pub struct Map<'a> {
 
 impl<'a> Map<'a> {
     pub fn pitch(&self) -> usize {
-        self.width * TILE_WIDTH * 3
+        self.width * TILE_WIDTH * 2
     }
 
     pub fn texture(&self) -> Vec<u8> {
@@ -89,7 +85,7 @@ impl<'a> Map<'a> {
                 // Tile index
                 for (j, tile_row) in self.tile_set[index as usize]
                     .texture()
-                    .chunks_exact(8)
+                    .chunks_exact(16)
                     .enumerate()
                 {
                     byte_row[i * TILE_WIDTH + j].extend_from_slice(&tile_row);
