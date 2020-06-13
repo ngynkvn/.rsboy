@@ -135,15 +135,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     while i < 17476 {
         i += emu.cycle().unwrap();
     }
-    let bg = emu.bus.gpu.background();
     emu.bus.gpu.render_map(texture);
-    // texture
-    //     .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-    //         if emu.bus.gpu.is_on() {
-    //             buffer[..].copy_from_slice(&bg.texture())
-    //         }
-    //     })
-    //     .unwrap();
     let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(

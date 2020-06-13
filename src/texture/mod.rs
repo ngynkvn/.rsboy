@@ -16,6 +16,7 @@ impl Color {
             Color::Black => &[8, 24, 32],
         }
     }
+    // TODO color 2 u16
     pub fn pixel(value: u8) -> u16 {
         match value {
             0b00 => 0xE7DA,
@@ -37,22 +38,26 @@ impl Color {
 }
 
 pub struct Tile {
-    pub texture: [u16; 64],
+    pub texture: [u8; 128],
 }
 
 impl Tile {
      pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
-        let mut texture  = [255; 64];
-        for row in 0..8 {
-            for col in 0..8 {
-                let hi = tile_data[(row * 2) + 1] >> (7 - col) & 1;
-                let lo = tile_data[(row * 2)] >> (7 - col) & 1;
+        let mut texture  = [255; 128];
+        // We receive in order of
+        // low byte, then high byte
+        for (y, d) in tile_data.chunks_exact(2).enumerate() { //Each row in tile is pair of 2 bytes.
+            for x in 0..8 {
+                let lo = d[0] >> (7 - x) & 1;
+                let hi = d[1] >> (7 - x) & 1;
                 let index = (hi << 1) | lo;
                 let color = (palette >> (index << 1)) & 0b11;
-                texture[row * 8 + col] = Color::pixel(color);
+                let [p1, p2] = Color::pixel(color).to_le_bytes();
+                let location = x * 2 + y * 16;
+                texture[location] = p1;
+                texture[location + 1] = p2;
             }
         }
-
         Self { texture }
     }
 
@@ -60,7 +65,7 @@ impl Tile {
         ((i / 8) as usize, (i % 8) as usize)
     }
 
-    pub fn texture(&self) -> &[u16; 64] {
+    pub fn texture(&self) -> &[u8; 128] {
         &self.texture
     }
 }

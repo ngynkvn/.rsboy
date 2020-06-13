@@ -84,7 +84,7 @@ impl GPU {
             .collect()
     }
 
-    pub fn render_tile(&self, pixels: &mut PixelData, x: i32, y: i32, tile_data: &[u8]) {
+    pub fn render_tile(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile_data: &[u8]) {
         for row in 0..8 {
             for col in 0..8 {
                 let hi = tile_data[(row * 2) + 1] >> (7 - col) & 1;
@@ -93,11 +93,10 @@ impl GPU {
                 let color = (self.bg_palette >> (index << 1)) & 0b11;
                 let [p1, p2] = Color::pixel(color).to_le_bytes();
 
-                //Find offset from x and y
-                let location = ((x + col) * 2 + (y + row as i32) * 2 * 32 * 8) as usize;
-
+                //Find offset from map x and y
+                let location = mapx * 16 + col * 2 + mapy * 8 * 512 + row * 512;
                 pixels[location] = p1;
-                pixels[location] = p2;
+                pixels[location + 1] = p2;
             }
         }
     }
@@ -105,14 +104,18 @@ impl GPU {
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
         let mut i = 0;
         let mut pixels: PixelData = [0; 131072];
-        for chunk in self.vram[..0x1800].chunks_exact(16) {
-            //Tile Position on Map
+        let tile_set = self.tiles();
+        let map = &self.vram[0x1800..0x1C00];
+
+        for tile in map {
+            let t = &tile_set[*tile as usize];
             let x = i % 32;
             let y = i / 32;
-            self.render_tile(&mut pixels, x, y, chunk);
+            self.render_tile(&mut pixels, x, y, t.texture());
             i += 1;
         }
-        texture.update(None, &pixels, 2).unwrap();
+        dbg!(i);
+        texture.update(None, &pixels, 256*2).unwrap();
     }
 
     pub fn step(&mut self) {

@@ -108,7 +108,7 @@ impl Memory for Bus {
     }
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
-            0x0000..=0x0100 if self.in_bios == 0 => self.bootrom[address as usize] = value,
+            0x0000..=0x0100 if self.in_bios == 0 => panic!(),
             0xff40 => self.gpu.lcdc = value,
             0xff41 => self.gpu.lcdstat = value,
             0xff42 => self.gpu.vscroll = value,
@@ -118,6 +118,7 @@ impl Memory for Bus {
             0xff4a => self.gpu.windowy = value,
             0xff4b => self.gpu.windowx = value,
             // 0xffff => &self.gpu.,
+            0xff50 => self.in_bios = value,
             0xff01 => {
                 self.memory[address as usize] = value;
             },
