@@ -119,7 +119,7 @@ impl Memory for Bus {
             0xff4b => self.gpu.windowx = value,
             // 0xffff => &self.gpu.,
             0xff01 => {
-                println!("[{}]", char::from(value)); self.memory[address as usize] = value;
+                self.memory[address as usize] = value;
             },
             // 0xff02 => {println!("r: acc serial transfer data flgs"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,

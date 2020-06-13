@@ -93,7 +93,7 @@ impl GPU {
                 let index = (hi << 1) | lo;
                 let color = (self.bg_palette >> (index << 1)) & 0b11;
                 data[row * 8 + col] = Color::bit2color(color);
-                texture.
+                // texture.
             }
         }
     }

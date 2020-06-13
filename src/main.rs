@@ -70,7 +70,7 @@ fn init() -> Result<Emu, std::io::Error> {
     let mut file = File::open(args[1].to_string())?;
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
-    let emu = Emu::new(true, rom);
+    let emu = Emu::new(false, rom);
     Ok(emu)
 }
 
@@ -136,14 +136,14 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
         i += emu.cycle().unwrap();
     }
     let bg = emu.bus.gpu.background();
-    emu.bus.gpu.render_map(texture);
-    // texture
-    //     .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-    //         if emu.bus.gpu.is_on() {
-    //             buffer[..].copy_from_slice(&bg.texture());
-    //         }
-    //     })
-    //     .unwrap();
+    // emu.bus.gpu.render_map(texture);
+    texture
+        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+            if emu.bus.gpu.is_on() {
+                buffer[..].copy_from_slice(&bg.texture());
+            }
+        })
+        .unwrap();
     let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(
@@ -268,7 +268,6 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
         )
         .map_err(|e| e.to_string())?;
 
-    println!("{}", map.texture().len());
     // Pitch = n_bytes(3) * map_w * tile_w
     texture
         .update(None, &(map.texture()), map.pitch())

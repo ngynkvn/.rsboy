@@ -1,4 +1,3 @@
-use self::Direction::*;
 use self::Flag::*;
 use self::Instr::*;
 use self::JumpType::*;

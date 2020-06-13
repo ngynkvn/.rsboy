@@ -3,6 +3,7 @@ use crate::bus::Memory;
 use crate::instructions::*;
 use crate::registers::RegisterState;
 use std::convert::TryInto;
+use std::collections::HashMap;
 
 const HISTORY_SIZE: usize = 10;
 
@@ -10,6 +11,7 @@ pub struct CPU {
     pub registers: RegisterState,
     debug: bool,
     pub clock: usize,
+    encounter: HashMap<u16, usize>
 }
 
 type CpuResult<T> = Result<T, String>;
@@ -37,8 +39,9 @@ impl CPU {
         // TODO
         Self {
             registers: RegisterState::new(skip_bios),
-            debug: true,
+            debug: false,
             clock: 0,
+            encounter: HashMap::new()
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
@@ -445,17 +448,31 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
+        let curr_address = self.registers.pc;
+        if curr_address == 0x02d3 {
+            dbg!(&self.registers);
+            panic!()
+        }
+        self.encounter.entry(self.registers.pc).and_modify(|x| {
+            *x += 1;
+        }).or_insert_with(|| {
+            println!(
+                "First encounter: 0x{:04x?}",
+                curr_address,
+            );
+            0
+        });
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
-        if self.debug {
-            println!(
-                "0x{:04x?}: {:02x} {:?}",
-                self.registers.pc - 1,
-                curr_byte,
-                instruction,
-            );
+        if true || self.debug {
+            // println!(
+            //     "0x{:04x?}: {:02x} {:?}",
+            //     self.registers.pc - 1,
+            //     curr_byte,
+            //     instruction,
+            // );
         }
         self.perform_instruction(*instruction, bus)
     }
