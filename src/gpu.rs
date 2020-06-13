@@ -77,11 +77,34 @@ impl GPU {
 
     pub fn tiles(&self) -> Vec<Tile> {
         self.vram[..0x1800]
-                    .chunks_exact(16) // Tile
-                    .map(|tile| {
-                        Tile::construct(self.bg_palette, tile)
-                    })
-                    .collect()
+            .chunks_exact(16) // Tile
+            .map(|tile| Tile::construct(self.bg_palette, tile))
+            .collect()
+    }
+
+    pub fn render_tile(&self, texture: &mut sdl2::render::Texture, tile_data: &[u8], i: usize) {
+        let x = i % 32;
+        let y = i / 32;
+        let mut data = [Color::White; 64];
+        for row in 0..8 {
+            for col in 0..8 {
+                let hi = tile_data[(row * 2) + 1] >> (7 - col) & 1;
+                let lo = tile_data[(row * 2)] >> (7 - col) & 1;
+                let index = (hi << 1) | lo;
+                let color = (self.bg_palette >> (index << 1)) & 0b11;
+                data[row * 8 + col] = Color::bit2color(color);
+                texture.
+            }
+        }
+    }
+
+    pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
+        let mut i = 0;
+        for chunk in self.vram[..0x1800].chunks_exact(16) {
+            //Draw tile
+            self.render_tile(texture, chunk, i);
+            i += 1;
+        }
     }
 
     pub fn step(&mut self) {

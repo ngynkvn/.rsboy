@@ -136,13 +136,14 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
         i += emu.cycle().unwrap();
     }
     let bg = emu.bus.gpu.background();
-    texture
-        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            if emu.bus.gpu.is_on() {
-                buffer[..].copy_from_slice(&bg.texture());
-            }
-        })
-        .unwrap();
+    emu.bus.gpu.render_map(texture);
+    // texture
+    //     .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+    //         if emu.bus.gpu.is_on() {
+    //             buffer[..].copy_from_slice(&bg.texture());
+    //         }
+    //     })
+    //     .unwrap();
     let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(
@@ -167,7 +168,6 @@ fn create_window(context: &sdl2::Sdl) -> Window {
     video
         .window("Window", 500, 500)
         .position_centered()
-        .opengl()
         .build()
         .unwrap()
 }
