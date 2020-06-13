@@ -87,16 +87,12 @@ impl GPU {
     pub fn render_tile(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile_data: &[u8]) {
         for row in 0..8 {
             for col in 0..8 {
-                let hi = tile_data[(row * 2) + 1] >> (7 - col) & 1;
-                let lo = tile_data[(row * 2)] >> (7 - col) & 1;
-                let index = (hi << 1) | lo;
-                let color = (self.bg_palette >> (index << 1)) & 0b11;
-                let [p1, p2] = Color::pixel(color).to_le_bytes();
+                let t = row * 16 + col * 2;
 
                 //Find offset from map x and y
                 let location = mapx * 16 + col * 2 + mapy * 8 * 512 + row * 512;
-                pixels[location] = p1;
-                pixels[location + 1] = p2;
+                pixels[location] = tile_data[t];
+                pixels[location + 1] = tile_data[t + 1];
             }
         }
     }
@@ -115,7 +111,7 @@ impl GPU {
             i += 1;
         }
         dbg!(i);
-        texture.update(None, &pixels, 256*2).unwrap();
+        texture.update(None, &pixels, 256 * 2).unwrap();
     }
 
     pub fn step(&mut self) {

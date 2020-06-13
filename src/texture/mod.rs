@@ -53,6 +53,7 @@ impl Tile {
                 let index = (hi << 1) | lo;
                 let color = (palette >> (index << 1)) & 0b11;
                 let [p1, p2] = Color::pixel(color).to_le_bytes();
+                // dbg!((p1, p2));
                 let location = x * 2 + y * 16;
                 texture[location] = p1;
                 texture[location + 1] = p2;

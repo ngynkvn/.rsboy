@@ -184,7 +184,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
     let tile_w = 8;
     let mut texture = texture_creator
         .create_texture_static(
-            PixelFormatEnum::RGB24,
+            PixelFormatEnum::RGB565,
             (map_w * tile_w) as u32,
             (map_h * tile_w) as u32,
         )
@@ -244,7 +244,6 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let window = video_subsystem
         .window("VRAM Viewer", (scale * w) as u32, (scale * h) as u32)
         .position_centered()
-        .opengl()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
@@ -255,7 +254,7 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let tile_w = 8;
     let mut texture = texture_creator
         .create_texture_static(
-            PixelFormatEnum::RGB24,
+            PixelFormatEnum::RGB565,
             (map_w * tile_w) as u32,
             (map_h * tile_w) as u32,
         )
