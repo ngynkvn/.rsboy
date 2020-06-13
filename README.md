@@ -16,6 +16,7 @@ Cause that hasnt been done before.
 - SOUND
 - GFX - WIP
 - OTHER STUFF
+- WebAssembly Port
 
 ## References
 - _Writing a Game Boy emulator, Cinoop_, CTurt: https://cturt.github.io/cinoop.html
