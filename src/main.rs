@@ -58,7 +58,7 @@ fn decompiler() -> std::io::Result<()> {
 
 fn init() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
-    let skip_bios = Option::from(args.len() >= 3);
+    let skip_bios = args.len() >= 3;
     println!("{:?}", args);
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
@@ -69,7 +69,7 @@ fn init() -> Result<Emu, std::io::Error> {
     let mut file = File::open(args[1].to_string())?;
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
-    let emu = Emu::new(skip_bios, rom);
+    let emu = Emu::new(false, rom);
     Ok(emu)
 }
 
@@ -88,7 +88,7 @@ fn sdl_main() -> std::io::Result<()> {
     let mut canvas = window.into_canvas().build().unwrap();
     let tex_creator = canvas.texture_creator();
     let mut texture = tex_creator
-        .create_texture_streaming(PixelFormatEnum::RGB24, 256, 256)
+        .create_texture_streaming(PixelFormatEnum::RGB565, 256, 256)
         .unwrap();
 
     // let mut event_pump = context.event_pump().unwrap();
@@ -130,16 +130,12 @@ fn sdl_main() -> std::io::Result<()> {
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
     while i < 17476 {
-        i += emu.cycle().unwrap();
+        match emu.cycle() {
+            Ok(c) => i += c,
+            Err(s) => return Err(())
+        }
     }
-    let bg = emu.bus.gpu.background();
-    texture
-        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            if emu.bus.gpu.is_on() {
-                buffer[..].copy_from_slice(&bg.texture());
-            }
-        })
-        .unwrap();
+    emu.bus.gpu.render_map(texture);
     let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(
@@ -164,7 +160,6 @@ fn create_window(context: &sdl2::Sdl) -> Window {
     video
         .window("Window", 500, 500)
         .position_centered()
-        .opengl()
         .build()
         .unwrap()
 }
@@ -177,7 +172,6 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
     let window = video_subsystem
         .window("Map Viewer", (scale * w) as u32, (scale * h) as u32)
         .position_centered()
-        .opengl()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
@@ -188,7 +182,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
     let tile_w = 8;
     let mut texture = texture_creator
         .create_texture_static(
-            PixelFormatEnum::RGB24,
+            PixelFormatEnum::RGB565,
             (map_w * tile_w) as u32,
             (map_h * tile_w) as u32,
         )
@@ -196,7 +190,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
 
     // Pitch = n_bytes(3) * map_w * tile_w
     texture
-        .update(None, &(background.texture()), background.pitch())
+        .update(None, &(background.texture()), 256 * 2)
         .map_err(|e| e.to_string())?;
     canvas
         .copy(&texture, None, None)
@@ -248,7 +242,6 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let window = video_subsystem
         .window("VRAM Viewer", (scale * w) as u32, (scale * h) as u32)
         .position_centered()
-        .opengl()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
@@ -259,13 +252,12 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
     let tile_w = 8;
     let mut texture = texture_creator
         .create_texture_static(
-            PixelFormatEnum::RGB24,
+            PixelFormatEnum::RGB565,
             (map_w * tile_w) as u32,
             (map_h * tile_w) as u32,
         )
         .map_err(|e| e.to_string())?;
 
-    println!("{}", map.texture().len());
     // Pitch = n_bytes(3) * map_w * tile_w
     texture
         .update(None, &(map.texture()), map.pitch())
