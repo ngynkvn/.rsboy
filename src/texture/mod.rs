@@ -16,51 +16,51 @@ impl Color {
             Color::Black => &[8, 24, 32],
         }
     }
-    pub fn bit2color(value: u8) -> Self {
+    pub fn pixel(value: u8) -> u16 {
+        match value {
+            0b00 => 0xE7DA,
+            0b01 => 0x8E0E,
+            0b10 => 0x360A,
+            0b11 => 0x08C4,
+            _ => unreachable!("Are you sure you're reading byte data?"),
+        }    
+    }
+    pub fn byte2color(value: u8) -> Self {
         match value {
             0b00 => Color::White,
             0b01 => Color::LightGrey,
             0b10 => Color::DarkGrey,
             0b11 => Color::Black,
-            _ => unreachable!("Are you sure you're reading bit data?"),
+            _ => unreachable!("Are you sure you're reading byte data?"),
         }
     }
 }
 
 pub struct Tile {
-    pub data: [Color; 64], //8 x 8
-    // pub data: Vec<Color>,
-    pub texture: [u8; 192],
+    pub texture: [u16; 64],
 }
 
 impl Tile {
      pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
-        let mut data = [Color::White; 64];
+        let mut texture  = [255; 64];
         for row in 0..8 {
             for col in 0..8 {
                 let hi = tile_data[(row * 2) + 1] >> (7 - col) & 1;
                 let lo = tile_data[(row * 2)] >> (7 - col) & 1;
                 let index = (hi << 1) | lo;
                 let color = (palette >> (index << 1)) & 0b11;
-                data[row * 8 + col] = Color::bit2color(color);
+                texture[row * 8 + col] = Color::pixel(color);
             }
         }
 
-        let mut texture  = [255; 192];
-        let mut p = 0;
-        for i in data.iter() {
-            texture[p..(p + 3)].clone_from_slice(i.value());
-            p += 3;
-        }
-
-        Self { data, texture }
+        Self { texture }
     }
 
     pub fn coord(i: usize) -> (usize, usize) {
         ((i / 8) as usize, (i % 8) as usize)
     }
 
-    pub fn texture(&self) -> &[u8; 192] {
+    pub fn texture(&self) -> &[u16; 64] {
         &self.texture
     }
 }
@@ -84,14 +84,14 @@ impl<'a> Map<'a> {
                 // Tile index
                 for (j, tile_row) in self.tile_set[index as usize]
                     .texture()
-                    .chunks_exact(24)
+                    .chunks_exact(8)
                     .enumerate()
                 {
                     byte_row[i * TILE_WIDTH + j].extend_from_slice(&tile_row);
                 }
             }
         }
-        let ret: Vec<u8> = byte_row.iter().cloned().flatten().collect();
+        let ret = byte_row.iter().flatten().flat_map(|x| x.to_le_bytes().to_vec()).collect();
         ret
     }
 

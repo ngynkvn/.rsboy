@@ -89,7 +89,7 @@ fn sdl_main() -> std::io::Result<()> {
     let mut canvas = window.into_canvas().build().unwrap();
     let tex_creator = canvas.texture_creator();
     let mut texture = tex_creator
-        .create_texture_streaming(PixelFormatEnum::RGB24, 256, 256)
+        .create_texture_streaming(PixelFormatEnum::RGB565, 256, 256)
         .unwrap();
 
     // let mut event_pump = context.event_pump().unwrap();
@@ -136,14 +136,14 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
         i += emu.cycle().unwrap();
     }
     let bg = emu.bus.gpu.background();
-    // emu.bus.gpu.render_map(texture);
-    texture
-        .with_lock(None, |buffer: &mut [u8], pitch: usize| {
-            if emu.bus.gpu.is_on() {
-                buffer[..].copy_from_slice(&bg.texture());
-            }
-        })
-        .unwrap();
+    emu.bus.gpu.render_map(texture);
+    // texture
+    //     .with_lock(None, |buffer: &mut [u8], pitch: usize| {
+    //         if emu.bus.gpu.is_on() {
+    //             buffer[..].copy_from_slice(&bg.texture())
+    //         }
+    //     })
+    //     .unwrap();
     let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(
@@ -160,7 +160,7 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     if timer.elapsed() < min_dur {
         ::std::thread::sleep(min_dur - timer.elapsed());
     }
-    // println!("Frame time: {}", timer.elapsed().as_secs_f64());
+    println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> Window {
