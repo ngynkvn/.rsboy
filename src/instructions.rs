@@ -1,4 +1,3 @@
-use self::Direction::*;
 use self::Flag::*;
 use self::Instr::*;
 use self::JumpType::*;
@@ -93,6 +92,7 @@ pub enum Instr {
     SCF,
     CCF,
     ADDSP,
+    HALT,
     RST(usize),
 }
 
@@ -215,7 +215,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Memory(HL), Register(E)),           //0x73
     LD(Memory(HL), Register(H)),           //0x74
     LD(Memory(HL), Register(L)),           //0x75
-    UNIMPLEMENTED,                         //0x76
+    HALT,                         //0x76
     LD(Memory(HL), Register(A)),           //0x77
     LD(Register(A), Register(B)),          //0x78
     LD(Register(A), Register(C)),          //0x79

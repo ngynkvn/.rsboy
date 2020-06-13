@@ -30,6 +30,8 @@ pub struct GPU {
 const END_HBLANK: u8 = 143;
 const END_VBLANK: u8 = 153;
 
+type PixelData = [u8; 256 * 256 * 2];
+
 impl GPU {
     pub fn new() -> Self {
         Self {
@@ -77,11 +79,39 @@ impl GPU {
 
     pub fn tiles(&self) -> Vec<Tile> {
         self.vram[..0x1800]
-                    .chunks_exact(16) // Tile
-                    .map(|tile| {
-                        Tile::construct(self.bg_palette, tile)
-                    })
-                    .collect()
+            .chunks_exact(16) // Tile
+            .map(|tile| Tile::construct(self.bg_palette, tile))
+            .collect()
+    }
+
+    pub fn render_tile(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile_data: &[u8]) {
+        for row in 0..8 {
+            for col in 0..8 {
+                let t = row * 16 + col * 2;
+
+                //Find offset from map x and y
+                let location = mapx * 16 + col * 2 + mapy * 8 * 512 + row * 512;
+                pixels[location] = tile_data[t];
+                pixels[location + 1] = tile_data[t + 1];
+            }
+        }
+    }
+
+    pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
+        let mut i = 0;
+        let mut pixels: PixelData = [0; 131072];
+        let tile_set = self.tiles();
+        let map = &self.vram[0x1800..0x1C00];
+
+        for tile in map {
+            let t = &tile_set[*tile as usize];
+            let x = i % 32;
+            let y = i / 32;
+            self.render_tile(&mut pixels, x, y, t.texture());
+            i += 1;
+        }
+        dbg!(i);
+        texture.update(None, &pixels, 256 * 2).unwrap();
     }
 
     pub fn step(&mut self) {
