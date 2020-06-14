@@ -127,7 +127,7 @@ macro_rules! RL {
 
 fn swapped_nibbles(byte: u8) -> u8 {
     let [hi, lo] = [byte >> 4, byte & 0xF];
-    (lo << 4) | byte
+    (lo << 4) | hi
 }
 
 impl RegisterState {

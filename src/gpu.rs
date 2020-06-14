@@ -110,7 +110,6 @@ impl GPU {
             self.render_tile(&mut pixels, x, y, t.texture());
             i += 1;
         }
-        dbg!(i);
         texture.update(None, &pixels, 256 * 2).unwrap();
     }
 

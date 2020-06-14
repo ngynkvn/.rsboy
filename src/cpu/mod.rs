@@ -448,32 +448,31 @@ impl CPU {
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
         let curr_address = self.registers.pc;
-        if curr_address == 0x02d3 {
-            dbg!(&self.registers);
-            return Err(String::from("Stopped running"));
-        }
+        let waszero = self.registers.b == 0;
+        let ff = self.registers.b == 0xff;
         self.encounter.entry(self.registers.pc).and_modify(|x| {
             *x += 1;
         }).or_insert_with(|| {
-            println!(
-                "First encounter: 0x{:04x?}",
-                curr_address,
-            );
+            // println!(
+            //     "First encounter: 0x{:04x?}",
+            //     curr_address,
+            // );
             0
         });
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
-        if true || self.debug {
-            // println!(
-            //     "0x{:04x?}: {:02x} {:?}",
-            //     self.registers.pc - 1,
-            //     curr_byte,
-            //     instruction,
-            // );
+        if curr_address >= 0x29b0 && curr_address <= 0x29b8 {
+            println!(
+                "0x{:04x?}: {:02x} {:?}",
+                self.registers.pc - 1,
+                curr_byte,
+                instruction
+            );
         }
-        self.perform_instruction(*instruction, bus)
+        let result = self.perform_instruction(*instruction, bus);
+        result
     }
     fn check_flag(&mut self, flag: Flag) -> bool {
         match flag {
