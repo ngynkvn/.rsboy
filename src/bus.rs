@@ -10,11 +10,17 @@ pub trait Memory {
     fn write(&mut self, address: u16, value: u8);
 }
 
+pub enum Select {
+    Buttons,
+    Directions
+}
+
 pub struct Bus {
     pub memory: [u8; 0x10000],
     pub bootrom: [u8; 0x100],
     pub in_bios: u8,
     pub interrupts_enabled: bool,
+    pub joypad_io: Select,
     pub gpu: GPU,
 }
 
@@ -38,6 +44,7 @@ impl Bus {
             bootrom,
             interrupts_enabled: false,
             in_bios: skip_bios as u8,
+            joypad_io: Select::Buttons,
             gpu: GPU::new(),
         }
     }
@@ -99,6 +106,16 @@ impl Memory for Bus {
             0xFF47 => panic!("0xFF47 (bg_palette) is WRITE ONLY"),
             0xFF4A => self.gpu.windowy,
             0xFF4B => self.gpu.windowx,
+            0xff00 => {
+                match self.joypad_io {
+                    Select::Buttons => {
+                        return 0xff;//Todo
+                    },
+                    Select::Directions => {
+                        return 0xff;
+                    }
+                }
+            }
             // 0xFFFF => &self.gpu.,
             // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
             // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
@@ -119,9 +136,21 @@ impl Memory for Bus {
             0xff4b => self.gpu.windowx = value,
             // 0xffff => &self.gpu.,
             0xff50 => self.in_bios = value,
-            0xff01 => {
+            0xff80 => {
+                if value == 255 {
+                    println!("!WARN 255 to ff80")
+                }
                 self.memory[address as usize] = value;
             },
+            0xff00 => {
+                let select_buttons = value & 0b0010_0000 != 0;
+                let select_directions = value & 0b0001_0000 != 0;
+                if select_buttons {
+                    self.joypad_io = Select::Buttons;
+                } else if select_directions {
+                    self.joypad_io = Select::Directions;
+                }
+            }
             // 0xff02 => {println!("r: acc serial transfer data flgs"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
             _ => self.memory[address as usize] = value,

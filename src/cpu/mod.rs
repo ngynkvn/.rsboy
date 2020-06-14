@@ -406,7 +406,8 @@ impl CPU {
                 Ok(())
             }
             Instr::RLA => {
-                let (result, overflow) = self.registers.a.overflowing_shl(1);
+                let overflow = self.registers.a & 0x80 != 0;
+                let result = self.registers.a << 1;
                 self.registers.a = result | (self.registers.flg_c() as u8);
                 self.registers.set_cf(overflow);
                 Ok(())
@@ -450,25 +451,28 @@ impl CPU {
         let curr_address = self.registers.pc;
         let waszero = self.registers.b == 0;
         let ff = self.registers.b == 0xff;
+        let r = &self.registers;
         self.encounter.entry(self.registers.pc).and_modify(|x| {
             *x += 1;
         }).or_insert_with(|| {
-            // println!(
-            //     "First encounter: 0x{:04x?}",
-            //     curr_address,
-            // );
+            println!(
+                "First encounter: 0x{:04x?} {:?} \n{}",
+                curr_address,
+                INSTR_TABLE[bus.read(curr_address) as usize],
+                r 
+            );
             0
         });
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
-        if curr_address >= 0x29b0 && curr_address <= 0x29b8 {
+        if false && curr_address >= 0x02cf && curr_address <= 0x02d3 {
             println!(
-                "0x{:04x?}: {:02x} {:?}",
+                "0x{:04x?}: {:02x} {:?}, {}",
                 self.registers.pc - 1,
                 curr_byte,
-                instruction
+                instruction, self.registers
             );
         }
         let result = self.perform_instruction(*instruction, bus);
