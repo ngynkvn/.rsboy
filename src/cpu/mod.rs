@@ -427,10 +427,11 @@ impl CPU {
                 self.registers.set_cf(overflow);
                 Ok(())
             }
-            // Instr::RETI => {
-            //     // self.bus.enable
-            //     Ok(())
-            // }
+            Instr::RETI => {
+                bus.enable_interrupts();
+                let addr = self.pop_stack(bus)?;
+                self.handle_jump(addr, JumpType::Always, bus)
+            }
             Instr::DAA => {
                 self.registers.a = self.bcd_adjust(self.registers.a);
                 Ok(())
@@ -441,6 +442,15 @@ impl CPU {
             }
             Instr::DisableInterrupts => {
                 bus.disable_interrupts();
+                Ok(())
+            }
+            Instr::INC(l) => {
+                let n: u8 = self.read_location(l, bus).try_into().unwrap();
+                let half_carry = (n & 0x0f) == 0x0f;
+                let n = n.wrapping_add(1);
+                self.registers.set_zf(n == 0);
+                self.registers.set_nf(true);
+                self.registers.set_hf(half_carry);
                 Ok(())
             }
             x => Err(format!("{} read_instruction: {:?}", source_error!(), x)),

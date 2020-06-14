@@ -132,7 +132,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     while i < 17476 {
         match emu.cycle() {
             Ok(c) => i += c,
-            Err(s) => return Err(())
+            Err(s) => panic!(s)
         }
     }
     emu.bus.gpu.render_map(texture);
