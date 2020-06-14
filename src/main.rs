@@ -149,8 +149,9 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
 }
 
 fn delay_min(min_dur: Duration, timer: &Instant) {
-    if timer.elapsed() < min_dur {
-        ::std::thread::sleep(min_dur - timer.elapsed());
+    let time = timer.elapsed(); 
+    if time < min_dur {
+        ::std::thread::sleep(min_dur - time);
     }
     // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }

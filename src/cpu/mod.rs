@@ -154,6 +154,7 @@ impl CPU {
     }
 
     fn push_stack(&mut self, value: u16, bus: &mut Bus) -> CpuResult<()> {
+        println!("push {:04x} {:?}", value, INSTR_TABLE[bus.memory[value as usize] as usize]);
         let bytes = value.to_be_bytes();
         self.set_byte(self.registers.sp.wrapping_sub(1), bytes[0], bus)?;
         self.set_byte(self.registers.sp, bytes[1], bus)?;
@@ -165,7 +166,9 @@ impl CPU {
         let b1 = self.read_byte(self.registers.sp.wrapping_add(1), bus);
         let b2 = self.read_byte(self.registers.sp.wrapping_add(2), bus);
         self.registers.sp = self.registers.sp.wrapping_add(2);
-        Ok(((b1 as u16) << 8) | b2 as u16)
+        let value = ((b1 as u16) << 8) | b2 as u16;
+        println!("pop {:04x} {:?}", value, INSTR_TABLE[bus.memory[value as usize] as usize]);
+        Ok(value)
     }
 
     fn dec(&mut self, r: Register) {
@@ -613,7 +616,6 @@ impl CPU {
             }
             0x3F => self.registers = self.registers.srl(Register::A)?,
             0x80..=0xBF => {
-                println!("{:02x}", opcode);
                 let mut bit_index = (((opcode & 0xF0) >> 4) - 8) * 2;
                 if opcode & 0x08 != 0 {
                     bit_index += 1;
