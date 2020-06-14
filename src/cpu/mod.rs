@@ -1,9 +1,10 @@
 use crate::bus::Bus;
 use crate::bus::Memory;
+use crate::instructions::Register::*;
 use crate::instructions::*;
 use crate::registers::RegisterState;
-use std::convert::TryInto;
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 const HISTORY_SIZE: usize = 10;
 
@@ -12,7 +13,7 @@ pub struct CPU {
     debug: bool,
     pub running: bool,
     pub clock: usize,
-    encounter: HashMap<u16, usize>
+    encounter: HashMap<u16, usize>,
 }
 
 type CpuResult<T> = Result<T, String>;
@@ -43,7 +44,7 @@ impl CPU {
             debug: false,
             clock: 0,
             running: true,
-            encounter: HashMap::new()
+            encounter: HashMap::new(),
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
@@ -77,7 +78,7 @@ impl CPU {
         Ok(())
     }
 
-    fn read_location(&mut self, location: Location, bus: &mut Bus) -> u16 {
+    fn read_from(&mut self, location: Location, bus: &mut Bus) -> u16 {
         match location {
             Location::Immediate(1) => self.next_u8(bus).into(),
             Location::Immediate(2) => self.next_u16(bus),
@@ -92,24 +93,19 @@ impl CPU {
                 let next = self.next_u8(bus);
                 self.read_io(next as u16, bus).into()
             }
-            Location::MemOffsetRegister(r) => self
-                .read_io(
-                    self.registers.fetch(r),
-                    bus,
-                )
-                .into(),
+            Location::MemOffsetRegister(r) => self.read_io(self.registers.fetch(r), bus).into(),
         }
     }
 
-    fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
-        let from_value = self.read_location(from, bus);
+    fn read_location(&mut self, location: Location, bus: &mut Bus) -> u16 {
+        self.read_from(location, bus)
+    }
+
+    fn write_into(&mut self, into: Location, from_value: u16, bus: &mut Bus) -> CpuResult<()> {
         let get_u8 = || -> Result<u8, String> {
-            from_value.try_into().or_else(|_| {
-                Err(format!(
-                    "into: {:?}, from: {:?}, value: {}",
-                    into, from, from_value
-                ))
-            })
+            from_value
+                .try_into()
+                .or_else(|_| Err(format!("into: {:?}, value: {}", into, from_value)))
         };
         match into {
             Location::Immediate(2) => {
@@ -150,6 +146,11 @@ impl CPU {
             _ => unimplemented!("{:?}", into),
         };
         Ok(())
+    }
+
+    fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
+        let from_value = self.read_location(from, bus);
+        self.write_into(into, from_value, bus)
     }
 
     fn push_stack(&mut self, value: u16, bus: &mut Bus) -> CpuResult<()> {
@@ -269,7 +270,8 @@ impl CPU {
                 // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
                 self.registers
                     .set_hf((self.registers.a & 0xf) + (value & 0xf) + carry > 0xf);
-                self.registers.set_cf(self.registers.a as u16 + value as u16 + carry as u16 > 0xff);
+                self.registers
+                    .set_cf(self.registers.a as u16 + value as u16 + carry as u16 > 0xff);
                 Ok(())
             }
             Instr::ADDHL(location) => {
@@ -314,13 +316,12 @@ impl CPU {
                 self.registers.a = self.registers.a.wrapping_sub(value);
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(true);
-                self.registers.set_hf( // Mooneye  
-                    (self.registers.a & 0xf)
-                        .wrapping_sub(value & 0xf)
-                        & (0xf + 1)
-                        != 0,
+                self.registers.set_hf(
+                    // Mooneye
+                    (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
                 );
-                self.registers.set_cf((self.registers.a as u16) < (value as u16));
+                self.registers
+                    .set_cf((self.registers.a as u16) < (value as u16));
                 Ok(())
             }
             Instr::NOT(location) => {
@@ -458,7 +459,8 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
-        if bus.interrupts_enabled {//&& bus.int_enabled != 0 && bus.int_flags != 0{
+        if bus.interrupts_enabled {
+            //&& bus.int_enabled != 0 && bus.int_flags != 0{
             let fired = bus.int_enabled & bus.int_flags;
             if fired & 0x01 != 0 {
                 bus.handle_vblank();
@@ -470,17 +472,20 @@ impl CPU {
         let ff = self.registers.b == 0xff;
         let r = &self.registers;
         if bus.in_bios != 0 {
-            self.encounter.entry(self.registers.pc).and_modify(|x| {
-                *x += 1;
-            }).or_insert_with(|| {
-                println!(
-                    "First encounter: 0x{:04x?} {:?} \n{}",
-                    curr_address,
-                    INSTR_TABLE[bus.read(curr_address) as usize],
-                    r 
-                );
-                0
-            });
+            self.encounter
+                .entry(self.registers.pc)
+                .and_modify(|x| {
+                    *x += 1;
+                })
+                .or_insert_with(|| {
+                    println!(
+                        "First encounter: 0x{:04x?} {:?} \n{}",
+                        curr_address,
+                        INSTR_TABLE[bus.read(curr_address) as usize],
+                        r
+                    );
+                    0
+                });
         }
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
@@ -491,7 +496,8 @@ impl CPU {
                 "0x{:04x?}: {:02x} {:?}, {}",
                 self.registers.pc - 1,
                 curr_byte,
-                instruction, self.registers
+                instruction,
+                self.registers
             );
         }
         let result = self.perform_instruction(*instruction, bus);
@@ -526,6 +532,27 @@ impl CPU {
             }
         }
         Ok(())
+    }
+    fn cb_location(opcode: u8) -> Location {
+        match opcode & 0x0F {
+            0x00 => Location::Register(B),
+            0x08 => Location::Register(B),
+            0x01 => Location::Register(C),
+            0x09 => Location::Register(C),
+            0x02 => Location::Register(D),
+            0x0a => Location::Register(D),
+            0x03 => Location::Register(E),
+            0x0b => Location::Register(E),
+            0x04 => Location::Register(H),
+            0x0c => Location::Register(H),
+            0x05 => Location::Register(L),
+            0x0d => Location::Register(L),
+            0x06 => Location::Memory(HL),
+            0x0e => Location::Memory(HL),
+            0x07 => Location::Register(A),
+            0x0f => Location::Register(A),
+            _ => panic!(),
+        }
     }
     fn handle_cb(&mut self, bus: &mut Bus) -> CpuResult<()> {
         let opcode = self.next_u8(bus);
@@ -585,6 +612,17 @@ impl CPU {
                 self.registers.set_cf(byte & 1 != 0);
             }
             0x3F => self.registers = self.registers.srl(Register::A)?,
+            0x80..=0xBF => {
+                println!("{:02x}", opcode);
+                let mut bit_index = (((opcode & 0xF0) >> 4) - 8) * 2;
+                if opcode & 0x08 != 0 {
+                    bit_index += 1;
+                }
+                let target = CPU::cb_location(opcode);
+                let mut n = self.read_from(target, bus);
+                n &= !(1 << bit_index);
+                self.write_into(target, n, bus)?;
+            }
             _ => {
                 let s = source_error!();
                 return Err(format!("{} CB: {:02X}", s, opcode));
