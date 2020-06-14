@@ -48,7 +48,7 @@ impl CPU {
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
         self.clock += 1;
-        bus.gpu.cycle().unwrap();
+        bus.cycle().unwrap();
         let val = bus.read(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         val
@@ -56,7 +56,7 @@ impl CPU {
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
         self.clock += 1;
-        bus.gpu.cycle().unwrap();
+        bus.cycle().unwrap();
         let val =
             (bus.read(self.registers.pc + 1) as u16) << 8 | (bus.read(self.registers.pc) as u16);
         self.registers.pc = self.registers.pc.wrapping_add(2);
@@ -64,7 +64,7 @@ impl CPU {
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
         self.clock += 1;
-        bus.gpu.cycle().unwrap();
+        bus.cycle().unwrap();
         bus.read(address)
     }
     fn read_io(&mut self, offset: u16, bus: &mut Bus) -> u8 {
@@ -72,7 +72,7 @@ impl CPU {
     }
     fn set_byte(&mut self, address: u16, value: u8, bus: &mut Bus) -> CpuResult<()> {
         self.clock += 1;
-        bus.gpu.cycle().unwrap();
+        bus.cycle().unwrap();
         bus.write(address, value);
         Ok(())
     }
@@ -218,14 +218,14 @@ impl CPU {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.dec(Register::HL);
                 self.clock += 1; // TODO
-                bus.gpu.cycle()?;
+                bus.cycle()?;
                 Ok(())
             }
             Instr::LDI(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.inc(Register::HL);
                 self.clock += 1; // TODO
-                bus.gpu.cycle()?;
+                bus.cycle()?;
                 Ok(())
             }
             Instr::NOOP => Ok(()),
@@ -448,21 +448,30 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
+        if bus.interrupts_enabled {//&& bus.int_enabled != 0 && bus.int_flags != 0{
+            let fired = bus.int_enabled & bus.int_flags;
+            if fired & 0x01 != 0 {
+                bus.handle_vblank();
+                return self.perform_instruction(Instr::RST(0x40), bus);
+            }
+        }
         let curr_address = self.registers.pc;
         let waszero = self.registers.b == 0;
         let ff = self.registers.b == 0xff;
         let r = &self.registers;
-        self.encounter.entry(self.registers.pc).and_modify(|x| {
-            *x += 1;
-        }).or_insert_with(|| {
-            println!(
-                "First encounter: 0x{:04x?} {:?} \n{}",
-                curr_address,
-                INSTR_TABLE[bus.read(curr_address) as usize],
-                r 
-            );
-            0
-        });
+        if bus.in_bios != 0 {
+            self.encounter.entry(self.registers.pc).and_modify(|x| {
+                *x += 1;
+            }).or_insert_with(|| {
+                println!(
+                    "First encounter: 0x{:04x?} {:?} \n{}",
+                    curr_address,
+                    INSTR_TABLE[bus.read(curr_address) as usize],
+                    r 
+                );
+                0
+            });
+        }
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
@@ -510,7 +519,7 @@ impl CPU {
     }
     fn handle_cb(&mut self, bus: &mut Bus) -> CpuResult<()> {
         let opcode = self.next_u8(bus);
-        bus.gpu.cycle()?;
+        bus.cycle()?;
         match opcode {
             0x37 => self.registers = self.registers.swap_nibbles(Register::A)?,
             0x30 => self.registers = self.registers.swap_nibbles(Register::B)?,

@@ -152,7 +152,7 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     if timer.elapsed() < min_dur {
         ::std::thread::sleep(min_dur - timer.elapsed());
     }
-    println!("Frame time: {}", timer.elapsed().as_secs_f64());
+    // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> Window {
