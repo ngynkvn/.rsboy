@@ -23,3 +23,4 @@ Cause that hasnt been done before.
 - _GameBoy Emulation in JavaScript: GPU Timings_, Imran Nazar: http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-GPU-Timings
 - _GameBoy Opcode Summary_, Jeff Frohwein: http://www.devrs.com/gb/files/opcodes.html
 - _GameBoy CPU Manual_, Pan of Anthrox et al.: https://realboyemulator.files.wordpress.com/2013/01/gbcpuman.pdf
+- _Pan Docs_, Pan of ATX et al.: https://gbdev.io/pandocs/
