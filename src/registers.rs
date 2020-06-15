@@ -68,7 +68,7 @@ macro_rules! INC {
         let n = n.wrapping_add(1);
         RegisterState {
             $r1: n,
-            f: flags(n == 0, true, half_carry, $self.flg_c()),
+            f: flags(n == 0, false, half_carry, $self.flg_c()),
             ..(*$self)
         }
     }};
@@ -314,14 +314,12 @@ impl RegisterState {
             HL => {
                 let n = self.hl().wrapping_sub(1);
                 let [h, l] = n.to_be_bytes();
-                let f = flags(n == 0, true, false, self.flg_c()); //TOODO HalfCarry
-                Self { h, l, f, ..(*self) }
+                Self { h, l, ..(*self) }
             }
             BC => {
                 let n = self.bc().wrapping_sub(1);
                 let [b, c] = n.to_be_bytes();
-                let f = flags(n == 0, true, false, self.flg_c());// TODO HalfCarry
-                Self { b, c, f, ..(*self) }
+                Self { b, c, ..(*self) }
             }
             A => DEC!(self, a),
             B => DEC!(self, b),
@@ -482,5 +480,26 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(reg.hl(), 0b0000_0001_1000_0001);
+    }
+
+    #[test]
+    fn inc() {
+        let reg = RegisterState {
+            h: 0xF0,
+            l: 0xFF,
+            ..Default::default()
+        };
+        let reg = reg.inc(Register::HL);
+        assert_eq!(reg.hl(), 0xF100);
+    }
+    #[test]
+    fn dec() {
+        let reg = RegisterState {
+            h: 0xFF,
+            l: 0x00,
+            ..Default::default()
+        };
+        let reg = reg.dec(Register::HL);
+        assert_eq!(reg.hl(), 0xFEFF);
     }
 }
