@@ -26,7 +26,6 @@ mod gpu;
 mod instructions;
 mod registers;
 mod texture;
-use crate::cpu::CPU;
 use crate::emu::Emu;
 use crate::texture::{Map, Tile};
 
@@ -96,7 +95,6 @@ fn sdl_main() -> std::io::Result<()> {
 
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
-
     let mut event_pump = context.event_pump().unwrap();
 
     'running: loop {
@@ -134,7 +132,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     while i < 17476 {
         match emu.cycle() {
             Ok(c) => i += c,
-            Err(s) => return Err(())
+            Err(s) => panic!(s)
         }
     }
     emu.bus.gpu.render_map(texture);
@@ -151,10 +149,11 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
 }
 
 fn delay_min(min_dur: Duration, timer: &Instant) {
-    if timer.elapsed() < min_dur {
-        ::std::thread::sleep(min_dur - timer.elapsed());
+    let time = timer.elapsed(); 
+    if time < min_dur {
+        ::std::thread::sleep(min_dur - time);
     }
-    println!("Frame time: {}", timer.elapsed().as_secs_f64());
+    // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn create_window(context: &sdl2::Sdl) -> Window {

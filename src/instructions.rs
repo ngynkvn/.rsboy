@@ -330,7 +330,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     AND(Immediate(1)), //0xE6
     RST(0x20), //0xE7
     ADDSP,     //0xE8
-    JP(To(Memory(HL))), //0xE9
+    JP(To(Register(HL))), //0xE9
     LD(MemoryImmediate, Register(A)), //0xEA
     UNIMPLEMENTED, //0xEB
     UNIMPLEMENTED, //0xEC
