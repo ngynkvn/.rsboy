@@ -386,7 +386,8 @@ impl RegisterState {
             PC => self.pc,
         }
     }
-
+    // TODO See if swapping these makes a difference..
+    // Probably not
     pub fn flg_z(&self) -> bool {
         (self.f & 0b1000_0000) != 0
     }
