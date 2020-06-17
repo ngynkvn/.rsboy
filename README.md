@@ -1,4 +1,4 @@
-# RUST GB EMULATOR
+## A gameboy emulator in Rust
 [![Run on Repl.it](https://repl.it/badge/github/ngynkvn/rust-emu)](https://repl.it/github/ngynkvn/rust-emu)
 
 Cause that hasnt been done before.
