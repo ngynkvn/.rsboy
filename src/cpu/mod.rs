@@ -154,7 +154,10 @@ impl CPU {
     }
 
     fn push_stack(&mut self, value: u16, bus: &mut Bus) -> CpuResult<()> {
-        println!("push {:04x} {:?}", value, INSTR_TABLE[bus.memory[value as usize] as usize]);
+        // println!(
+        //     "push {:04x} {:?}",
+        //     value, INSTR_TABLE[bus.memory[value as usize] as usize]
+        // );
         let bytes = value.to_be_bytes();
         self.set_byte(self.registers.sp.wrapping_sub(1), bytes[0], bus)?;
         self.set_byte(self.registers.sp, bytes[1], bus)?;
@@ -167,7 +170,10 @@ impl CPU {
         let b2 = self.read_byte(self.registers.sp.wrapping_add(2), bus);
         self.registers.sp = self.registers.sp.wrapping_add(2);
         let value = ((b1 as u16) << 8) | b2 as u16;
-        println!("pop {:04x} {:?}", value, INSTR_TABLE[bus.memory[value as usize] as usize]);
+        // println!(
+        //     "pop {:04x} {:?}",
+        //     value, INSTR_TABLE[bus.memory[value as usize] as usize]
+        // );
         Ok(value)
     }
 
@@ -406,6 +412,9 @@ impl CPU {
                 if self.registers.flg_c() {
                     self.registers.a |= 0b1000_0000;
                 }
+                self.registers.set_zf(false);
+                self.registers.set_hf(false);
+                self.registers.set_nf(false);
                 self.registers.set_cf(carry);
                 Ok(())
             }
@@ -413,12 +422,18 @@ impl CPU {
                 let overflow = self.registers.a & 0x80 != 0;
                 let result = self.registers.a << 1;
                 self.registers.a = result | (self.registers.flg_c() as u8);
+                self.registers.set_zf(false);
+                self.registers.set_hf(false);
+                self.registers.set_nf(false);
                 self.registers.set_cf(overflow);
                 Ok(())
             }
             Instr::RLCA => {
                 let (result, overflow) = self.registers.a.overflowing_shl(1);
-                self.registers.a = result | (overflow as u8);
+                self.registers.a = result;
+                self.registers.set_zf(false);
+                self.registers.set_hf(false);
+                self.registers.set_nf(false);
                 self.registers.set_cf(overflow);
                 Ok(())
             }
