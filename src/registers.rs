@@ -68,7 +68,7 @@ macro_rules! INC {
         let n = n.wrapping_add(1);
         RegisterState {
             $r1: n,
-            f: flags(n == 0, true, half_carry, $self.flg_c()),
+            f: flags(n == 0, false, half_carry, $self.flg_c()),
             ..(*$self)
         }
     }};
@@ -275,6 +275,8 @@ impl RegisterState {
             }
             AF => {
                 let [a, f] = value.to_be_bytes();
+                dbg!(a, f);
+                panic!();
                 Ok(Self { a, f, ..(*self) })
             }
             _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),
@@ -320,7 +322,7 @@ impl RegisterState {
             BC => {
                 let n = self.bc().wrapping_sub(1);
                 let [b, c] = n.to_be_bytes();
-                let f = flags(n == 0, true, false, self.flg_c());// TODO HalfCarry
+                let f = flags(n == 0, true, false, self.flg_c()); // TODO HalfCarry
                 Self { b, c, f, ..(*self) }
             }
             A => DEC!(self, a),
