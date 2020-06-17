@@ -61,11 +61,9 @@ impl CPU {
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
         self.clock += 1;
-        bus.cycle().unwrap();
-        let val =
-            (bus.read(self.registers.pc + 1) as u16) << 8 | (bus.read(self.registers.pc) as u16);
-        self.registers.pc = self.registers.pc.wrapping_add(2);
-        val
+        let lo = self.next_u8(bus);
+        let hi = self.next_u8(bus);
+        u16::from_le_bytes([lo, hi])
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
         self.clock += 1;
@@ -742,4 +740,13 @@ mod tests {
         assert_eq!(cpu.registers.bc(), 0x1122);
         Ok(())
     }
+
+    // #[test]
+    // fn test_ld16() {
+    //     let mut cpu = CPU::new(false);
+    //     cpu.registers.sp = 0xFFFF;
+    //     cpu.registers.b = 0x21;
+    //     cpu.registers.c = 0x21;
+    //     assert_eq!(cpu.registers.bc(), 0x2121);
+    // }
 }

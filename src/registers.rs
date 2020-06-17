@@ -77,11 +77,10 @@ macro_rules! INC {
 macro_rules! DEC {
     ($self: ident, $r1: ident) => {{
         let n = $self.$r1;
-        let half_carry = (n & 0x0f) == 0x0f;
         let n = n.wrapping_sub(1);
         RegisterState {
             $r1: n,
-            f: flags(n == 0, true, half_carry, $self.flg_c()),
+            f: flags(n == 0, true, n == 0x00, $self.flg_c()),
             ..(*$self)
         }
     }};
@@ -111,20 +110,6 @@ macro_rules! SRL {
         })
     }};
 }
-
-macro_rules! RL {
-    ($self: ident, $r1: ident) => {{
-        let leftmost = $self.$r1 & 0b1000_0000 != 0;
-        let carry = $self.flg_c() as u8;
-        let n = ($self.$r1 << 1) + carry;
-        Ok(RegisterState {
-            $r1: n,
-            f: flags(n == 0, false, false, leftmost),
-            ..(*$self)
-        })
-    }};
-}
-
 fn swapped_nibbles(byte: u8) -> u8 {
     let [hi, lo] = [byte >> 4, byte & 0xF];
     (lo << 4) | hi
@@ -198,19 +183,6 @@ impl RegisterState {
             H => RR!(self, h),
             L => RR!(self, l),
             _ => Err(format!("rr: {:?}", reg)),
-        }
-    }
-
-    pub fn rot_thru_carry(&self, reg: Register) -> Result<Self, String> {
-        match reg {
-            A => RL!(self, a),
-            B => RL!(self, b),
-            C => RL!(self, c),
-            D => RL!(self, d),
-            E => RL!(self, e),
-            H => RL!(self, h),
-            L => RL!(self, l),
-            _ => Err(format!("swap_nibble: {:?}", reg)),
         }
     }
 
