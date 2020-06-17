@@ -275,8 +275,6 @@ impl RegisterState {
             }
             AF => {
                 let [a, f] = value.to_be_bytes();
-                dbg!(a, f);
-                panic!();
                 Ok(Self { a, f, ..(*self) })
             }
             _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),

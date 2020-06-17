@@ -396,8 +396,20 @@ impl CPU {
                 Ok(())
             }
             Instr::RET(jump_type) => {
-                let addr = self.pop_stack(bus)?;
-                self.handle_jump(addr, jump_type, bus)
+                match jump_type {
+                    JumpType::If(flag) => {
+                        if self.check_flag(flag) {
+                            let address = self.pop_stack(bus)?;
+                            self.registers = self.registers.jump(address)?;
+                        }
+                    }
+                    JumpType::Always => {
+                        let address = self.pop_stack(bus)?;
+                        self.registers = self.registers.jump(address)?;
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(())
             }
             Instr::RRA => {
                 let carry = self.registers.a & 1 != 0;
