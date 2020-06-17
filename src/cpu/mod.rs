@@ -32,6 +32,12 @@ fn source_error<T>(e: String) -> Result<T, String> {
     Err(format!("{}:{}:{}: {:?}", file!(), line!(), column!(), e))
 }
 
+#[inline]
+fn swapped_nibbles(byte: u8) -> u8 {
+    let [hi, lo] = [byte >> 4, byte & 0xF];
+    (lo << 4) | hi
+}
+
 macro_rules! source_error {
     () => {
         format!("{}:{}:{}", file!(), line!(), column!())
@@ -603,19 +609,12 @@ impl CPU {
         let opcode = self.next_u8(bus);
         bus.cycle()?;
         match opcode {
-            0x37 => self.registers = self.registers.swap_nibbles(Register::A)?,
-            0x30 => self.registers = self.registers.swap_nibbles(Register::B)?,
-            0x31 => self.registers = self.registers.swap_nibbles(Register::C)?,
-            0x32 => self.registers = self.registers.swap_nibbles(Register::D)?,
-            0x33 => self.registers = self.registers.swap_nibbles(Register::E)?,
-            0x34 => self.registers = self.registers.swap_nibbles(Register::H)?,
-            0x35 => self.registers = self.registers.swap_nibbles(Register::L)?,
-            0x36 => {
-                let address = self.registers.fetch_u16(Register::HL);
-                let byte = self.read_byte(address, bus);
-                let [hi, lo] = [byte >> 4, byte & 0xF];
-                let new_byte = (lo << 4) | byte;
-                self.set_byte(address, new_byte, bus)?;
+            0x30..=0x37 => {
+                // SWAP
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus).try_into().unwrap();
+                let value = swapped_nibbles(value);
+                self.write_into(target, value as u16, bus)?;
             }
             0x40..=0x7F => {
                 let target = CPU::cb_location(opcode);

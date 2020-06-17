@@ -52,15 +52,6 @@ macro_rules! TEST_BIT {
     }};
 }
 
-macro_rules! SWAP_NIBBLE {
-    ($self: ident, $reg: ident) => {
-        Ok(RegisterState {
-            $reg: swapped_nibbles($self.$reg),
-            ..(*$self)
-        })
-    };
-}
-
 macro_rules! INC {
     ($self: ident, $r1: ident) => {{
         let n = $self.$r1;
@@ -109,10 +100,6 @@ macro_rules! SRL {
             ..(*$self)
         })
     }};
-}
-fn swapped_nibbles(byte: u8) -> u8 {
-    let [hi, lo] = [byte >> 4, byte & 0xF];
-    (lo << 4) | hi
 }
 
 impl RegisterState {
@@ -183,19 +170,6 @@ impl RegisterState {
             H => RR!(self, h),
             L => RR!(self, l),
             _ => Err(format!("rr: {:?}", reg)),
-        }
-    }
-
-    pub fn swap_nibbles(&self, reg: Register) -> Result<Self, String> {
-        match reg {
-            A => SWAP_NIBBLE!(self, a),
-            B => SWAP_NIBBLE!(self, b),
-            C => SWAP_NIBBLE!(self, c),
-            D => SWAP_NIBBLE!(self, d),
-            E => SWAP_NIBBLE!(self, e),
-            H => SWAP_NIBBLE!(self, h),
-            L => SWAP_NIBBLE!(self, l),
-            _ => Err(format!("swap_nibble: {:?}", reg)),
         }
     }
 
