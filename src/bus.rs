@@ -172,6 +172,12 @@ impl Memory for Bus {
                     self.joypad_io = Select::Directions;
                 }
             }
+            0xff01 => {
+                if(self.memory[0xff02] == 0x81) {
+                    print!("{}",char::from(value));
+                }
+                self.memory[address as usize] = value;
+            }
             // 0xff02 => {println!("r: acc serial transfer data flgs"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
             _ => self.memory[address as usize] = value,

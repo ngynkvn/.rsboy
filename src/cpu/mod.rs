@@ -6,7 +6,7 @@ use crate::registers::RegisterState;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-const HISTORY_SIZE: usize = 10;
+const HISTORY_SIZE: usize = 20;
 
 pub struct CPU {
     pub registers: RegisterState,
@@ -14,6 +14,8 @@ pub struct CPU {
     pub running: bool,
     pub clock: usize,
     encounter: HashMap<u16, usize>,
+    trace: [u16; HISTORY_SIZE],
+    trace_ptr: usize
 }
 
 type CpuResult<T> = Result<T, String>;
@@ -45,6 +47,8 @@ impl CPU {
             clock: 0,
             running: true,
             encounter: HashMap::new(),
+            trace: [0; HISTORY_SIZE],
+            trace_ptr: 0,
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
@@ -277,12 +281,15 @@ impl CPU {
                 Ok(())
             }
             Instr::ADDHL(location) => {
-                let hl = [self.registers.h, self.registers.l];
-                let old = u16::from_be_bytes(hl);
+                let old = self.registers.hl();
                 let value = self.read_location(location, bus);
+                let result = old.wrapping_add(value);
                 let [h, l] = old.wrapping_add(value).to_be_bytes();
                 self.registers.h = h;
                 self.registers.l = l;
+                self.registers.set_nf(false);
+                self.registers.set_hf(((old & 0x00FF) + (value & 0x00FF)) & 0x0100 == 0x0100);
+                self.registers.set_cf(result < old);
                 //TODO FLAGS
                 Ok(())
             }
@@ -315,6 +322,7 @@ impl CPU {
             }
             Instr::SUB(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
+                let (result, carry) = self.registers.a.overflowing_sub(value);
                 self.registers.a = self.registers.a.wrapping_sub(value);
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(true);
@@ -322,8 +330,7 @@ impl CPU {
                     // Mooneye
                     (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
                 );
-                self.registers
-                    .set_cf((self.registers.a as u16) < (value as u16));
+                self.registers.set_cf(carry);
                 Ok(())
             }
             Instr::NOT(location) => {
@@ -444,9 +451,12 @@ impl CPU {
             }
             Instr::ADDSP => {
                 let offset = self.next_u8(bus) as i8;
+                let old = self.registers.sp;
                 let (result, overflow) = self.registers.sp.overflowing_add(offset as u16);
-                let half_carry = (((result & 0xf) + (offset as u16 & 0xf)) & 0x10) == 0x10;
+                let half_carry = (((old & 0x00FF) + (offset as u16 & 0x00FF)) & 0x0100) == 0x0100;
                 self.registers.sp = result;
+                self.registers.set_zf(false);
+                self.registers.set_nf(false);
                 self.registers.set_hf(half_carry);
                 self.registers.set_cf(overflow);
                 Ok(())
@@ -491,9 +501,20 @@ impl CPU {
             }
         }
         let curr_address = self.registers.pc;
+        self.trace[self.trace_ptr] = curr_address;
+        self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
+        if curr_address == 0x0a00 {
+            println!("{:04x}", self.registers.sp);
+            let n = self.pop_stack(bus)?;
+            println!("{:04x}", n);
+            for i in 0..HISTORY_SIZE {
+                println!("{:04x}", self.trace[self.trace_ptr]);
+                self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
+            }
+            panic!();
+        }
         let waszero = self.registers.b == 0;
         let ff = self.registers.b == 0xff;
-        let r = &self.registers;
         if bus.in_bios != 0 {
             self.encounter
                 .entry(self.registers.pc)
@@ -502,10 +523,10 @@ impl CPU {
                 })
                 .or_insert_with(|| {
                     println!(
-                        "First encounter: 0x{:04x?} {:?} \n{}",
+                        "First encounter: 0x{:04x?} {:?}",
+                        // "First encounter: 0x{:04x?}",
                         curr_address,
                         INSTR_TABLE[bus.read(curr_address) as usize],
-                        r
                     );
                     0
                 });
@@ -514,15 +535,15 @@ impl CPU {
         let instruction = &INSTR_TABLE[curr_byte as usize];
         let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
         let instr_len = size as u16 + 1;
-        if false && curr_address >= 0x02cf && curr_address <= 0x02d3 {
-            println!(
-                "0x{:04x?}: {:02x} {:?}, {}",
-                self.registers.pc - 1,
-                curr_byte,
-                instruction,
-                self.registers
-            );
-        }
+        // if curr_address >= 0x02dd && curr_address <= 0x02e1 {
+        //     println!(
+        //         "0x{:04x?}: {:02x} {:?}, {}",
+        //         self.registers.pc - 1,
+        //         curr_byte,
+        //         instruction,
+        //         self.registers
+        //     );
+        // }
         let result = self.perform_instruction(*instruction, bus);
         result
     }
