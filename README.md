@@ -1,3 +1,5 @@
+<img src="docs/rsboy.png" style="display:block;margin:0 auto" width=300px/>
+
 ## A gameboy emulator in Rust
 [![Run on Repl.it](https://repl.it/badge/github/ngynkvn/rust-emu)](https://repl.it/github/ngynkvn/rust-emu)
 
@@ -24,3 +26,7 @@ Cause that hasnt been done before.
 - _GameBoy Opcode Summary_, Jeff Frohwein: http://www.devrs.com/gb/files/opcodes.html
 - _GameBoy CPU Manual_, Pan of Anthrox et al.: https://realboyemulator.files.wordpress.com/2013/01/gbcpuman.pdf
 - _Pan Docs_, Pan of ATX et al.: https://gbdev.io/pandocs/
+- _mooneye-gb_, Game Boy research project and emulator, Joonas Javanainen: https://github.com/Gekkio/mooneye-gb
+
+---
+<img src="docs/cuddlyferris.svg" style="display:block;margin:0 auto" width=200px/>
