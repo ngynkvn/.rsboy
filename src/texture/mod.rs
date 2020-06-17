@@ -24,7 +24,7 @@ impl Color {
             0b10 => 0x360A,
             0b11 => 0x08C4,
             _ => unreachable!("Are you sure you're reading byte data?"),
-        }    
+        }
     }
     pub fn byte2color(value: u8) -> Self {
         match value {
@@ -42,11 +42,12 @@ pub struct Tile {
 }
 
 impl Tile {
-     pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
-        let mut texture  = [255; 128];
+    pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
+        let mut texture = [255; 128];
         // We receive in order of
         // low byte, then high byte
-        for (y, d) in tile_data.chunks_exact(2).enumerate() { //Each row in tile is pair of 2 bytes.
+        for (y, d) in tile_data.chunks_exact(2).enumerate() {
+            //Each row in tile is pair of 2 bytes.
             for x in 0..8 {
                 let lo = d[0] >> (7 - x) & 1;
                 let hi = d[1] >> (7 - x) & 1;
@@ -93,7 +94,11 @@ impl<'a> Map<'a> {
                 }
             }
         }
-       byte_row.iter().flatten().flat_map(|x| x.to_le_bytes().to_vec()).collect()
+        byte_row
+            .iter()
+            .flatten()
+            .flat_map(|x| x.to_le_bytes().to_vec())
+            .collect()
     }
 
     pub fn dimensions(&self) -> (usize, usize) {
