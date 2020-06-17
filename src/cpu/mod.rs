@@ -158,21 +158,20 @@ impl CPU {
     }
 
     fn push_stack(&mut self, value: u16, bus: &mut Bus) -> CpuResult<()> {
-        // println!("push {:04x} {:?}", value, INSTR_TABLE[bus.memory[value as usize] as usize]);
-        let bytes = value.to_be_bytes();
-        self.set_byte(self.registers.sp - 1, bytes[0], bus)?;
-        self.set_byte(self.registers.sp, bytes[1], bus)?;
-        self.registers.sp = self.registers.sp - 2;
+        let [lo, hi] = value.to_le_bytes();
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        self.set_byte(self.registers.sp, hi, bus)?;
+        self.registers.sp = self.registers.sp.wrapping_sub(1);
+        self.set_byte(self.registers.sp, lo, bus)?;
         Ok(())
     }
 
     fn pop_stack(&mut self, bus: &mut Bus) -> CpuResult<u16> {
-        let b1 = self.read_byte(self.registers.sp+1, bus);
-        let b2 = self.read_byte(self.registers.sp+2, bus);
-        self.registers.sp = self.registers.sp + 2;
-        let value = ((b1 as u16) << 8) | b2 as u16;
-        // println!("pop {:04x} {:?}", value, INSTR_TABLE[bus.memory[value as usize] as usize]);
-        Ok(value)
+        let lo = self.read_byte(self.registers.sp, bus);
+        self.registers.sp = self.registers.sp.wrapping_add(1);
+        let hi = self.read_byte(self.registers.sp, bus);
+        self.registers.sp = self.registers.sp.wrapping_add(1);
+        Ok(u16::from_le_bytes([lo, hi]))
     }
 
     fn dec(&mut self, r: Register) {
@@ -404,8 +403,20 @@ impl CPU {
                 Ok(())
             }
             Instr::RET(jump_type) => {
-                let addr = self.pop_stack(bus)?;
-                self.handle_jump(addr, jump_type, bus)
+                match jump_type {
+                    JumpType::If(flag) => {
+                        if self.check_flag(flag) {
+                            let address = self.pop_stack(bus)?;
+                            self.registers = self.registers.jump(address)?;
+                        }
+                    }
+                    JumpType::Always => {
+                        let address = self.pop_stack(bus)?;
+                        self.registers = self.registers.jump(address)?;
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(())
             }
             Instr::RRA => {
                 let carry = self.registers.a & 1 != 0;
@@ -413,6 +424,9 @@ impl CPU {
                 if self.registers.flg_c() {
                     self.registers.a |= 0b1000_0000;
                 }
+                self.registers.set_zf(false);
+                self.registers.set_hf(false);
+                self.registers.set_nf(false);
                 self.registers.set_cf(carry);
                 Ok(())
             }
@@ -420,12 +434,18 @@ impl CPU {
                 let overflow = self.registers.a & 0x80 != 0;
                 let result = self.registers.a << 1;
                 self.registers.a = result | (self.registers.flg_c() as u8);
+                self.registers.set_zf(false);
+                self.registers.set_hf(false);
+                self.registers.set_nf(false);
                 self.registers.set_cf(overflow);
                 Ok(())
             }
             Instr::RLCA => {
                 let (result, overflow) = self.registers.a.overflowing_shl(1);
-                self.registers.a = result | (overflow as u8);
+                self.registers.a = result;
+                self.registers.set_zf(false);
+                self.registers.set_hf(false);
+                self.registers.set_nf(false);
                 self.registers.set_cf(overflow);
                 Ok(())
             }
@@ -596,23 +616,29 @@ impl CPU {
                 let new_byte = (lo << 4) | byte;
                 self.set_byte(address, new_byte, bus)?;
             }
-            0x78 => self.registers = self.registers.test_bit(Register::B, 7)?,
-            0x79 => self.registers = self.registers.test_bit(Register::C, 7)?,
-            0x7A => self.registers = self.registers.test_bit(Register::D, 7)?,
-            0x7B => self.registers = self.registers.test_bit(Register::E, 7)?,
-            0x7C => self.registers = self.registers.test_bit(Register::H, 7)?,
-            0x7D => self.registers = self.registers.test_bit(Register::L, 7)?,
-            0x17 => self.registers = self.registers.rot_thru_carry(Register::A)?,
-            0x10 => self.registers = self.registers.rot_thru_carry(Register::B)?,
-            0x11 => self.registers = self.registers.rot_thru_carry(Register::C)?,
-            0x12 => self.registers = self.registers.rot_thru_carry(Register::D)?,
-            0x13 => self.registers = self.registers.rot_thru_carry(Register::E)?,
-            0x14 => self.registers = self.registers.rot_thru_carry(Register::H)?,
-            0x15 => self.registers = self.registers.rot_thru_carry(Register::L)?,
-            // 0x16 => {
-            //     //rot_thru_carry (hl)
-            // }
-            0x18 => self.registers = self.registers.rr(Register::B)?,
+            0x40..=0x7F => {
+                let target = CPU::cb_location(opcode);
+                let mut bit_index = (((opcode & 0xF0) >> 4) - 4) * 2;
+                if opcode & 0x08 != 0 {
+                    bit_index += 1;
+                }
+                let value = self.read_from(target, bus);
+                let check_zero = value & (1 << bit_index) == 0;
+                self.registers.set_zf(check_zero);
+                self.registers.set_nf(false);
+                self.registers.set_hf(true);
+            }
+            0x10..=0x18 => {
+                //RL
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus);
+                let result = value << 1 | self.registers.flg_c() as u16;
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(result & 0x100 != 0);
+                self.write_into(target, result & 0xFF, bus)?;
+            }
             0x19 => self.registers = self.registers.rr(Register::C)?,
             0x1A => self.registers = self.registers.rr(Register::D)?,
             0x1B => self.registers = self.registers.rr(Register::E)?,
@@ -636,6 +662,28 @@ impl CPU {
                 self.registers.set_cf(byte & 1 != 0);
             }
             0x3F => self.registers = self.registers.srl(Register::A)?,
+            0x20..=0x27 => {
+                // SLA
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus);
+                let result = self.read_from(target, bus) << 1;
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(result & 0x100 != 0);
+                self.write_into(target, result & 0xFF, bus)?;
+            }
+            0x28..=0x2F => {
+                // SRA
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus);
+                let result = value >> 1 | (value & 0x80);
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(value & 0x1 != 0);
+                self.write_into(target, result & 0xFF, bus)?;
+            }
             0x80..=0xBF => {
                 let mut bit_index = (((opcode & 0xF0) >> 4) - 8) * 2;
                 if opcode & 0x08 != 0 {
