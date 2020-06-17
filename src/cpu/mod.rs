@@ -595,23 +595,29 @@ impl CPU {
                 let new_byte = (lo << 4) | byte;
                 self.set_byte(address, new_byte, bus)?;
             }
-            0x78 => self.registers = self.registers.test_bit(Register::B, 7)?,
-            0x79 => self.registers = self.registers.test_bit(Register::C, 7)?,
-            0x7A => self.registers = self.registers.test_bit(Register::D, 7)?,
-            0x7B => self.registers = self.registers.test_bit(Register::E, 7)?,
-            0x7C => self.registers = self.registers.test_bit(Register::H, 7)?,
-            0x7D => self.registers = self.registers.test_bit(Register::L, 7)?,
-            0x17 => self.registers = self.registers.rot_thru_carry(Register::A)?,
-            0x10 => self.registers = self.registers.rot_thru_carry(Register::B)?,
-            0x11 => self.registers = self.registers.rot_thru_carry(Register::C)?,
-            0x12 => self.registers = self.registers.rot_thru_carry(Register::D)?,
-            0x13 => self.registers = self.registers.rot_thru_carry(Register::E)?,
-            0x14 => self.registers = self.registers.rot_thru_carry(Register::H)?,
-            0x15 => self.registers = self.registers.rot_thru_carry(Register::L)?,
-            // 0x16 => {
-            //     //rot_thru_carry (hl)
-            // }
-            0x18 => self.registers = self.registers.rr(Register::B)?,
+            0x40..=0x7F => {
+                let target = CPU::cb_location(opcode);
+                let mut bit_index = (((opcode & 0xF0) >> 4) - 4) * 2;
+                if opcode & 0x08 != 0 {
+                    bit_index += 1;
+                }
+                let value = self.read_from(target, bus);
+                let check_zero = value & (1 << bit_index) == 0;
+                self.registers.set_zf(check_zero);
+                self.registers.set_nf(false);
+                self.registers.set_hf(true);
+            }
+            0x10..=0x18 => {
+                //RL
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus);
+                let result = value << 1 | self.registers.flg_c() as u16;
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(result & 0x100 != 0);
+                self.write_into(target, result & 0xFF, bus)?;
+            }
             0x19 => self.registers = self.registers.rr(Register::C)?,
             0x1A => self.registers = self.registers.rr(Register::D)?,
             0x1B => self.registers = self.registers.rr(Register::E)?,
@@ -635,6 +641,28 @@ impl CPU {
                 self.registers.set_cf(byte & 1 != 0);
             }
             0x3F => self.registers = self.registers.srl(Register::A)?,
+            0x20..=0x27 => {
+                // SLA
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus);
+                let result = self.read_from(target, bus) << 1;
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(result & 0x100 != 0);
+                self.write_into(target, result & 0xFF, bus)?;
+            }
+            0x28..=0x2F => {
+                // SRA
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus);
+                let result = value >> 1 | (value & 0x80);
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(value & 0x1 != 0);
+                self.write_into(target, result & 0xFF, bus)?;
+            }
             0x80..=0xBF => {
                 let mut bit_index = (((opcode & 0xF0) >> 4) - 8) * 2;
                 if opcode & 0x08 != 0 {
