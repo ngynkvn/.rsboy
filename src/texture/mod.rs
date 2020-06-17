@@ -93,8 +93,7 @@ impl<'a> Map<'a> {
                 }
             }
         }
-        let ret = byte_row.iter().flatten().flat_map(|x| x.to_le_bytes().to_vec()).collect();
-        ret
+       byte_row.iter().flatten().flat_map(|x| x.to_le_bytes().to_vec()).collect()
     }
 
     pub fn dimensions(&self) -> (usize, usize) {

@@ -194,8 +194,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
         .update(None, &(background.texture()), 256 * 2)
         .map_err(|e| e.to_string())?;
     canvas
-        .copy(&texture, None, None)
-        .map_err(|e| e.to_string())?;
+        .copy(&texture, None, None)?;
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
 

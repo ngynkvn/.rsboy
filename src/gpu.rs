@@ -98,17 +98,15 @@ impl GPU {
     }
 
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
-        let mut i = 0;
         let mut pixels: PixelData = [0; 131072];
         let tile_set = self.tiles();
         let map = &self.vram[0x1800..0x1C00];
 
-        for tile in map {
+        for (i, tile) in map.into_iter().enumerate() {
             let t = &tile_set[*tile as usize];
             let x = i % 32;
             let y = i / 32;
             self.render_tile(&mut pixels, x, y, t.texture());
-            i += 1;
         }
         texture.update(None, &pixels, 256 * 2).unwrap();
     }

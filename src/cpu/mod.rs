@@ -315,7 +315,7 @@ impl CPU {
             }
             Instr::AND(location) => {
                 let value: u8 = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a & value;
+                self.registers.a &= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
                 self.registers.set_hf(true);
@@ -324,7 +324,7 @@ impl CPU {
             }
             Instr::XOR(location) => {
                 let value: u8 = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a ^ value;
+                self.registers.a ^= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
                 self.registers.set_hf(false);
@@ -333,7 +333,7 @@ impl CPU {
             }
             Instr::OR(location) => {
                 let value: u8 = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a | value;
+                self.registers.a |= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
                 self.registers.set_hf(false);
@@ -388,7 +388,7 @@ impl CPU {
                 self.set_byte(address, result, bus)?;
                 self.registers.set_zf(result == 0);
                 self.registers.set_nf(true);
-                self.registers.set_hf(value & 0xf == 0);
+                self.registers.set_hf(value.trailing_zeros() == 4);
                 Ok(())
             }
             Instr::DEC(Location::Register(r)) => {
@@ -427,7 +427,7 @@ impl CPU {
             }
             Instr::RRA => {
                 let carry = self.registers.a & 1 != 0;
-                self.registers.a = self.registers.a >> 1;
+                self.registers.a >>= 1;
                 if self.registers.flg_c() {
                     self.registers.a |= 0b1000_0000;
                 }
@@ -510,16 +510,6 @@ impl CPU {
         let curr_address = self.registers.pc;
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
-        if curr_address == 0x0a00 {
-            println!("{:04x}", self.registers.sp);
-            let n = self.pop_stack(bus)?;
-            println!("{:04x}", n);
-            for i in 0..HISTORY_SIZE {
-                println!("{:04x}", self.trace[self.trace_ptr]);
-                self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
-            }
-            panic!();
-        }
         let waszero = self.registers.b == 0;
         let ff = self.registers.b == 0xff;
         if bus.in_bios != 0 {
@@ -551,8 +541,7 @@ impl CPU {
         //         self.registers
         //     );
         // }
-        let result = self.perform_instruction(*instruction, bus);
-        result
+        self.perform_instruction(*instruction, bus)
     }
     fn check_flag(&mut self, flag: Flag) -> bool {
         match flag {
