@@ -15,7 +15,7 @@ pub struct CPU {
     pub clock: usize,
     encounter: HashMap<u16, usize>,
     trace: [u16; HISTORY_SIZE],
-    trace_ptr: usize
+    trace_ptr: usize,
 }
 
 type CpuResult<T> = Result<T, String>;
@@ -255,13 +255,28 @@ impl CPU {
             Instr::ADD(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
                 let (result, carry) = self.registers.a.overflowing_add(value);
+                //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
+                let half_carry = (self.registers.a & 0x0f)
+                    .checked_add(value | 0xf0)
+                    .is_none();
                 self.registers.a = result;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
-                // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
-                self.registers
-                    .set_hf(((self.registers.a & 0xf) + (value & 0xf)) & 0x10 == 0x10);
+                self.registers.set_hf(half_carry);
                 self.registers.set_cf(carry);
+                Ok(())
+            }
+            Instr::SUB(location) => {
+                let value = self.read_location(location, bus).try_into().unwrap();
+                self.registers.a = self.registers.a.wrapping_sub(value);
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(true);
+                self.registers.set_hf(
+                    // Mooneye
+                    (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
+                );
+                self.registers
+                    .set_cf((self.registers.a as u16) < (value as u16));
                 Ok(())
             }
             Instr::ADC(location) => {
@@ -286,7 +301,8 @@ impl CPU {
                 self.registers.h = h;
                 self.registers.l = l;
                 self.registers.set_nf(false);
-                self.registers.set_hf(((old & 0x00FF) + (value & 0x00FF)) & 0x0100 == 0x0100);
+                self.registers
+                    .set_hf(((old & 0x00FF) + (value & 0x00FF)) & 0x0100 == 0x0100);
                 self.registers.set_cf(result < old);
                 //TODO FLAGS
                 Ok(())
@@ -316,19 +332,6 @@ impl CPU {
                 self.registers.set_nf(false);
                 self.registers.set_hf(false);
                 self.registers.set_cf(false);
-                Ok(())
-            }
-            Instr::SUB(location) => {
-                let value = self.read_location(location, bus).try_into().unwrap();
-                let (result, carry) = self.registers.a.overflowing_sub(value);
-                self.registers.a = self.registers.a.wrapping_sub(value);
-                self.registers.set_zf(self.registers.a == 0);
-                self.registers.set_nf(true);
-                self.registers.set_hf(
-                    // Mooneye
-                    (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
-                );
-                self.registers.set_cf(carry);
                 Ok(())
             }
             Instr::NOT(location) => {
