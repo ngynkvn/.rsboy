@@ -58,27 +58,27 @@ impl CPU {
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
-        self.tick(bus);
+        self.tick(bus).unwrap();
         let val = bus.read(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         val
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
-        self.tick(bus);
+        self.tick(bus).unwrap();
         let lo = self.next_u8(bus);
         let hi = self.next_u8(bus);
         u16::from_le_bytes([lo, hi])
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
-        self.tick(bus);
+        self.tick(bus).unwrap();
         bus.read(address)
     }
     fn read_io(&mut self, offset: u16, bus: &mut Bus) -> u8 {
         self.read_byte(0xFF00 + offset, bus)
     }
     fn set_byte(&mut self, address: u16, value: u8, bus: &mut Bus) -> CpuResult<()> {
-        self.tick(bus);
+        self.tick(bus).unwrap();
         bus.write(address, value);
         Ok(())
     }
@@ -230,13 +230,13 @@ impl CPU {
             Instr::LDD(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.dec(Register::HL);
-                self.tick(bus);
+                self.tick(bus)?;
                 Ok(())
             }
             Instr::LDI(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.inc(Register::HL);
-                self.tick(bus);
+                self.tick(bus)?;
                 Ok(())
             }
             Instr::NOOP => Ok(()),
@@ -705,7 +705,6 @@ impl CPU {
 mod tests {
     use super::*;
     use crate::instructions::Location::*;
-    use crate::instructions::Register::*;
 
     #[test]
     fn ld() -> Result<(), String> {
