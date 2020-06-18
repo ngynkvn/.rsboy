@@ -603,8 +603,13 @@ impl CPU {
                 let value = self.read_from(target, bus).try_into().unwrap();
                 let value = swapped_nibbles(value);
                 self.write_into(target, value as u16, bus)?;
+                self.registers.set_zf(value == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(false);
             }
             0x40..=0x7F => {
+                // BIT
                 let target = CPU::cb_location(opcode);
                 let mut bit_index = (((opcode & 0xF0) >> 4) - 4) * 2;
                 if opcode & 0x08 != 0 {
