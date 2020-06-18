@@ -512,18 +512,21 @@ impl CPU {
             }
         }
         let curr_address = self.registers.pc;
-        if curr_address == 0x00f9 {
-            self.debug = true;
-        }
+        self.debug_area(bus, curr_address);
+        let curr_byte = self.next_u8(bus);
+        let instruction = &INSTR_TABLE[curr_byte as usize];
+        let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
+        let instr_len = size as u16 + 1;
+        self.perform_instruction(*instruction, bus)
+    }
+
+    fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
         if self.registers.a == 0xf6 && self.registers.f == 0xe0 {
             println!("{:04x}: \n{}", curr_address, self.registers);
             panic!()
         }
         if self.debug {
             println!("{:04x}: \n{}", curr_address, self.registers);
-        }
-        if self.registers.bc() == 0x06FF {
-            panic!("..")
         }
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
@@ -547,20 +550,6 @@ impl CPU {
                     0
                 });
         }
-        let curr_byte = self.next_u8(bus);
-        let instruction = &INSTR_TABLE[curr_byte as usize];
-        let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
-        let instr_len = size as u16 + 1;
-        // if curr_address >= 0x02dd && curr_address <= 0x02e1 {
-        //     println!(
-        //         "0x{:04x?}: {:02x} {:?}, {}",
-        //         self.registers.pc - 1,
-        //         curr_byte,
-        //         instruction,
-        //         self.registers
-        //     );
-        // }
-        self.perform_instruction(*instruction, bus)
     }
     fn check_flag(&mut self, flag: Flag) -> bool {
         match flag {
