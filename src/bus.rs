@@ -4,6 +4,10 @@ use std::io::Read;
 
 const VRAM_START: usize = 0x8000;
 const VRAM_END: usize = 0x9FFF;
+const DIVIDER_REGISTER: usize = 0xFF04;
+const TIMER_COUNTER: usize = 0xFF06;
+const TIMER_CONTROL: usize = 0xFF07;
+const TIMER_MODULO: usize = 0xFF06;
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -12,7 +16,7 @@ pub trait Memory {
 
 pub enum Select {
     Buttons,
-    Directions
+    Directions,
 }
 
 pub struct Bus {
@@ -21,6 +25,7 @@ pub struct Bus {
     pub in_bios: u8,
     pub int_enabled: u8,
     pub int_flags: u8,
+    pub clock: usize,
     pub interrupts_enabled: bool,
     pub joypad_io: Select,
     pub gpu: GPU,
@@ -48,6 +53,7 @@ impl Bus {
             in_bios: skip_bios as u8,
             int_enabled: 0,
             int_flags: 0,
+            clock: 0,
             joypad_io: Select::Buttons,
             gpu: GPU::new(),
         }
@@ -62,13 +68,41 @@ impl Bus {
     }
 
     pub fn handle_vblank(&mut self) {
-        self.gpu.irq = false; 
-        self.int_flags = self.gpu.irq as u8;
+        self.gpu.irq = false;
+        self.int_flags &= !1;
+    }
+
+    fn tick_timer_counter(&mut self) {
+        let control = self.memory[TIMER_CONTROL];
+        let enabled = control & 0b100 != 0;
+        let clock_select = control & 0b11;
+        let clock_speed = match clock_select {
+            0b00 => 1024,
+            0b01 => 16,
+            0b10 => 64,
+            0b11 => 256,
+            _ => unreachable!(),
+        };
+        if self.clock % clock_speed == 0 {
+            let (value, overflow) = self.memory[TIMER_COUNTER].overflowing_add(1);
+            self.memory[TIMER_COUNTER] = value;
+            if overflow {
+                self.int_flags |= 1 << 2;
+            }
+        }
+    }
+    fn tick(&mut self) {
+        self.clock += 1;
+        if self.clock % 256 == 0 {
+            self.memory[DIVIDER_REGISTER] = self.memory[DIVIDER_REGISTER].wrapping_add(1);
+        }
+        self.tick_timer_counter();
     }
 
     pub fn cycle(&mut self) -> Result<(), String> {
         self.gpu.cycle()?;
-        self.int_flags = self.gpu.irq as u8;
+        self.tick();
+        self.int_flags |= self.gpu.irq as u8;
         Ok(())
     }
 
@@ -126,8 +160,8 @@ impl Memory for Bus {
             0xff00 => {
                 match self.joypad_io {
                     Select::Buttons => {
-                        return 0xff;//Todo
-                    },
+                        return 0xff; //Todo
+                    }
                     Select::Directions => {
                         return 0xff;
                     }
@@ -143,6 +177,7 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
+            DIVIDER_REGISTER => self.memory[DIVIDER_REGISTER] = 0,
             0xff40 => self.gpu.lcdc = value,
             0xff41 => self.gpu.lcdstat = value,
             0xff42 => self.gpu.vscroll = value,
@@ -154,15 +189,15 @@ impl Memory for Bus {
             0xffff => self.int_enabled = value,
             0xff0f => {
                 self.gpu.irq = (value & 0x01) != 0;
-                self.int_flags = self.gpu.irq as u8;
-            },
+                self.int_flags |= self.gpu.irq as u8;
+            }
             0xff50 => self.in_bios = value,
             0xff80 => {
                 if value == 255 {
                     println!("!WARN 255 to ff80")
                 }
                 self.memory[address as usize] = value;
-            },
+            }
             0xff00 => {
                 let select_buttons = value & 0b0010_0000 != 0;
                 let select_directions = value & 0b0001_0000 != 0;
@@ -173,8 +208,8 @@ impl Memory for Bus {
                 }
             }
             0xff01 => {
-                if(self.memory[0xff02] == 0x81) {
-                    print!("{}",char::from(value));
+                if self.memory[0xff02] == 0x81 {
+                    print!("{}", char::from(value));
                 }
                 self.memory[address as usize] = value;
             }

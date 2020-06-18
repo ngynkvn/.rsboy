@@ -58,30 +58,27 @@ impl CPU {
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
-        self.clock += 1;
-        bus.cycle().unwrap();
+        self.tick(bus);
         let val = bus.read(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         val
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
-        self.clock += 1;
+        self.tick(bus);
         let lo = self.next_u8(bus);
         let hi = self.next_u8(bus);
         u16::from_le_bytes([lo, hi])
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
-        self.clock += 1;
-        bus.cycle().unwrap();
+        self.tick(bus);
         bus.read(address)
     }
     fn read_io(&mut self, offset: u16, bus: &mut Bus) -> u8 {
         self.read_byte(0xFF00 + offset, bus)
     }
     fn set_byte(&mut self, address: u16, value: u8, bus: &mut Bus) -> CpuResult<()> {
-        self.clock += 1;
-        bus.cycle().unwrap();
+        self.tick(bus);
         bus.write(address, value);
         Ok(())
     }
@@ -156,6 +153,11 @@ impl CPU {
         Ok(())
     }
 
+    fn tick(&mut self, bus: &mut Bus) -> CpuResult<()> {
+        self.clock += 1;
+        bus.cycle()
+    }
+
     fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
         let from_value = self.read_location(from, bus);
         self.write_into(into, from_value, bus)
@@ -228,15 +230,13 @@ impl CPU {
             Instr::LDD(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.dec(Register::HL);
-                self.clock += 1; // TODO
-                bus.cycle()?;
+                self.tick(bus);
                 Ok(())
             }
             Instr::LDI(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.inc(Register::HL);
-                self.clock += 1; // TODO
-                bus.cycle()?;
+                self.tick(bus);
                 Ok(())
             }
             Instr::NOOP => Ok(()),
