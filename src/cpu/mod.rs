@@ -302,15 +302,14 @@ impl CPU {
             Instr::ADDHL(location) => {
                 let old = self.registers.hl();
                 let value = self.read_location(location, bus);
-                let result = old.wrapping_add(value);
-                let [h, l] = old.wrapping_add(value).to_be_bytes();
+                let (value, overflow) = old.overflowing_add(value);
+                let [h, l] = value.to_be_bytes();
                 self.registers.h = h;
                 self.registers.l = l;
                 self.registers.set_nf(false);
                 self.registers
-                    .set_hf(((old & 0x00FF) + (value & 0x00FF)) & 0x0100 == 0x0100);
-                self.registers.set_cf(result < old);
-                //TODO FLAGS
+                    .set_hf((old & 0x0fff + value & 0x0fff) & 0x0800 == 0x0800);
+                self.registers.set_cf(overflow);
                 Ok(())
             }
             Instr::AND(location) => {
