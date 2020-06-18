@@ -179,6 +179,11 @@ impl CPU {
         self.registers.sp = self.registers.sp.wrapping_add(1);
         Ok(u16::from_le_bytes([lo, hi]))
     }
+    fn peek_stack(&mut self, bus: &mut Bus) -> u16 {
+        let lo = bus.memory[self.registers.sp as usize];
+        let hi = bus.memory[(self.registers.sp + 1) as usize];
+        u16::from_le_bytes([lo, hi])
+    }
 
     fn dec(&mut self, r: Register) {
         self.registers = self.registers.dec(r);
@@ -387,7 +392,7 @@ impl CPU {
                 self.set_byte(address, result, bus)?;
                 self.registers.set_zf(result == 0);
                 self.registers.set_nf(true);
-                self.registers.set_hf(value.trailing_zeros() == 4);
+                self.registers.set_hf(value == 0);
                 Ok(())
             }
             Instr::DEC(Location::Register(r)) => {
@@ -507,8 +512,22 @@ impl CPU {
             }
         }
         let curr_address = self.registers.pc;
+        if curr_address == 0x00f9 {
+            self.debug = true;
+        }
+        if self.registers.a == 0xf6 && self.registers.f == 0xe0 {
+            println!("{:04x}: \n{}", curr_address, self.registers);
+            panic!()
+        }
+        if self.debug {
+            println!("{:04x}: \n{}", curr_address, self.registers);
+        }
+        if self.registers.bc() == 0x06FF {
+            panic!("..")
+        }
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
+        let r = &self.registers;
         let waszero = self.registers.b == 0;
         let ff = self.registers.b == 0xff;
         if bus.in_bios != 0 {
@@ -524,6 +543,7 @@ impl CPU {
                         curr_address,
                         INSTR_TABLE[bus.read(curr_address) as usize],
                     );
+                    println!("HERE: \n{}", r);
                     0
                 });
         }

@@ -67,11 +67,11 @@ macro_rules! INC {
 
 macro_rules! DEC {
     ($self: ident, $r1: ident) => {{
-        let n = $self.$r1;
-        let n = n.wrapping_sub(1);
+        let old = $self.$r1;
+        let n = old.wrapping_sub(1);
         RegisterState {
             $r1: n,
-            f: flags(n == 0, true, n == 0x00, $self.flg_c()),
+            f: flags(n == 0, true, old == 0x00, $self.flg_c()),
             ..(*$self)
         }
     }};
