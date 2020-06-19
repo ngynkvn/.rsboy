@@ -11,6 +11,11 @@ Cause that hasnt been done before.
 - Software Renderer
 - Parse and decode instructions from gameboy binaries
 
+---
+
+<img src="docs/image.png" style="display:block;margin:0 auto" width=300px/>
+Render image of Tetris main screen
+
 ## TODO
 - CREATE CONTEXT - DONE
 - CPU - WIP
