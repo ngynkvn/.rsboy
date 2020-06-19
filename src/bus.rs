@@ -109,42 +109,6 @@ impl Bus {
         }
         self.tick();
     }
-
-    // Compare to
-    // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence
-    pub fn dump_io(&self) {
-        println!("{:04X} = {:02X}; {}", 0xFF05, self.read(0xFF05), "TIMA");
-        println!("{:04X} = {:02X}; {}", 0xFF06, self.read(0xFF06), "TMA");
-        println!("{:04X} = {:02X}; {}", 0xFF07, self.read(0xFF07), "TAC");
-        println!("{:04X} = {:02X}; {}", 0xFF10, self.read(0xFF10), "NR10");
-        println!("{:04X} = {:02X}; {}", 0xFF11, self.read(0xFF11), "NR11");
-        println!("{:04X} = {:02X}; {}", 0xFF12, self.read(0xFF12), "NR12");
-        println!("{:04X} = {:02X}; {}", 0xFF14, self.read(0xFF14), "NR14");
-        println!("{:04X} = {:02X}; {}", 0xFF16, self.read(0xFF16), "NR21");
-        println!("{:04X} = {:02X}; {}", 0xFF17, self.read(0xFF17), "NR22");
-        println!("{:04X} = {:02X}; {}", 0xFF19, self.read(0xFF19), "NR24");
-        println!("{:04X} = {:02X}; {}", 0xFF1A, self.read(0xFF1A), "NR30");
-        println!("{:04X} = {:02X}; {}", 0xFF1B, self.read(0xFF1B), "NR31");
-        println!("{:04X} = {:02X}; {}", 0xFF1C, self.read(0xFF1C), "NR32");
-        println!("{:04X} = {:02X}; {}", 0xFF1E, self.read(0xFF1E), "NR33");
-        println!("{:04X} = {:02X}; {}", 0xFF20, self.read(0xFF20), "NR41");
-        println!("{:04X} = {:02X}; {}", 0xFF21, self.read(0xFF21), "NR42");
-        println!("{:04X} = {:02X}; {}", 0xFF22, self.read(0xFF22), "NR43");
-        println!("{:04X} = {:02X}; {}", 0xFF23, self.read(0xFF23), "NR44");
-        println!("{:04X} = {:02X}; {}", 0xFF24, self.read(0xFF24), "NR50");
-        println!("{:04X} = {:02X}; {}", 0xFF25, self.read(0xFF25), "NR51");
-        println!("{:04X} = {:02X}; {}", 0xFF26, self.read(0xFF26), "NR52");
-        println!("{:04X} = {:02X}; {}", 0xFF40, self.read(0xFF40), "LCDC");
-        println!("{:04X} = {:02X}; {}", 0xFF42, self.read(0xFF42), "SCY");
-        println!("{:04X} = {:02X}; {}", 0xFF43, self.read(0xFF43), "SCX");
-        println!("{:04X} = {:02X}; {}", 0xFF45, self.read(0xFF45), "LYC");
-        println!("{:04X} = {:02X}; {}", 0xFF47, self.read(0xFF47), "BGP");
-        println!("{:04X} = {:02X}; {}", 0xFF48, self.read(0xFF48), "OBP0");
-        println!("{:04X} = {:02X}; {}", 0xFF49, self.read(0xFF49), "OBP1");
-        println!("{:04X} = {:02X}; {}", 0xFF4A, self.read(0xFF4A), "WY");
-        println!("{:04X} = {:02X}; {}", 0xFF4B, self.read(0xFF4B), "WX");
-        println!("{:04X} = {:02X}; {}", 0xFFFF, self.read(0xFFFF), "IE");
-    }
 }
 
 impl Memory for Bus {
