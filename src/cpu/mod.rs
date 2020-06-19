@@ -244,6 +244,18 @@ impl CPU {
                 self.tick(bus);
                 Ok(())
             }
+            Instr::LDSP => {
+                let offset = self.next_u8(bus) as i8 as u16;
+                let result = self.registers.sp.wrapping_add(offset);
+                let half_carry = (self.registers.sp & 0x0F).wrapping_add(offset & 0x0F) > 0x0F;
+                let carry = (self.registers.sp & 0xFF).wrapping_add(offset & 0xFF) > 0xFF;
+                self.registers.set_zf(false);
+                self.registers.set_nf(false);
+                self.registers.set_hf(half_carry);
+                self.registers.set_cf(carry);
+                Ok(())
+            }
+            Instr::STOP => panic!("STOP: {:04x}", self.registers.pc - 1), // TODO ?
             Instr::NOOP => Ok(()),
             Instr::RST(size) => {
                 if size == 0x38 {

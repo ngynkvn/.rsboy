@@ -61,6 +61,7 @@ pub enum Instr {
     LD(Location, Location), // (To, From)
     LDD(Location, Location),
     LDI(Location, Location),
+    LDSP,
     INC(Location),
     DEC(Location),
     ADD(Location),
@@ -345,7 +346,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     PUSH(Register(AF)), //0xF5
     OR(Immediate(1)), //0xF6
     RST(0x30), //0xF7
-    UNIMPLEMENTED, //0xF8
+    LDSP,      //0xF8
     LD(Register(SP), Register(HL)), //0xF9
     LD(Register(A), MemoryImmediate), //0xFA
     EnableInterrupts, //0xFB
