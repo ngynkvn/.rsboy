@@ -4,6 +4,10 @@ use std::io::Read;
 
 const VRAM_START: usize = 0x8000;
 const VRAM_END: usize = 0x9FFF;
+const DIVIDER_REGISTER: usize = 0xFF04;
+const TIMER_COUNTER: usize = 0xFF06;
+const TIMER_CONTROL: usize = 0xFF07;
+const TIMER_MODULO: usize = 0xFF06;
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -12,7 +16,7 @@ pub trait Memory {
 
 pub enum Select {
     Buttons,
-    Directions
+    Directions,
 }
 
 pub struct Bus {
@@ -21,9 +25,11 @@ pub struct Bus {
     pub in_bios: u8,
     pub int_enabled: u8,
     pub int_flags: u8,
+    pub clock: usize,
     pub interrupts_enabled: bool,
     pub joypad_io: Select,
     pub gpu: GPU,
+    pub rom_start_signal: bool,
 }
 
 fn load_bootrom() -> Vec<u8> {
@@ -41,6 +47,7 @@ impl Bus {
         let bootrom_vec = load_bootrom();
         bootrom[..].clone_from_slice(&bootrom_vec[..]);
         memory[..rom_vec.len()].clone_from_slice(&rom_vec[..]);
+
         Bus {
             memory,
             bootrom,
@@ -48,8 +55,10 @@ impl Bus {
             in_bios: skip_bios as u8,
             int_enabled: 0,
             int_flags: 0,
+            clock: 0,
             joypad_io: Select::Buttons,
             gpu: GPU::new(),
+            rom_start_signal: false,
         }
     }
 
@@ -62,50 +71,43 @@ impl Bus {
     }
 
     pub fn handle_vblank(&mut self) {
-        self.gpu.irq = false; 
-        self.int_flags = self.gpu.irq as u8;
+        self.interrupts_enabled = false;
+        self.int_flags &= !1;
     }
 
-    pub fn cycle(&mut self) -> Result<(), String> {
-        self.gpu.cycle()?;
-        self.int_flags = self.gpu.irq as u8;
-        Ok(())
+    fn tick_timer_counter(&mut self) {
+        let control = self.memory[TIMER_CONTROL];
+        let enabled = control & 0b100 != 0;
+        let clock_select = control & 0b11;
+        let clock_speed = match clock_select {
+            0b00 => 1024,
+            0b01 => 16,
+            0b10 => 64,
+            0b11 => 256,
+            _ => unreachable!(),
+        };
+        if self.clock % clock_speed == 0 {
+            let (value, overflow) = self.memory[TIMER_COUNTER].overflowing_add(1);
+            self.memory[TIMER_COUNTER] = value;
+            if overflow {
+                self.int_flags |= 1 << 2;
+            }
+        }
+    }
+    fn tick(&mut self) {
+        self.clock += 1;
+        if self.clock % 256 == 0 {
+            self.memory[DIVIDER_REGISTER] = self.memory[DIVIDER_REGISTER].wrapping_add(1);
+        }
+        self.tick_timer_counter();
     }
 
-    // Compare to
-    // https://gbdev.gg8.se/wiki/articles/Power_Up_Sequence
-    pub fn dump_io(&self) {
-        println!("{:04X} = {:02X}; {}", 0xFF05, self.read(0xFF05), "TIMA");
-        println!("{:04X} = {:02X}; {}", 0xFF06, self.read(0xFF06), "TMA");
-        println!("{:04X} = {:02X}; {}", 0xFF07, self.read(0xFF07), "TAC");
-        println!("{:04X} = {:02X}; {}", 0xFF10, self.read(0xFF10), "NR10");
-        println!("{:04X} = {:02X}; {}", 0xFF11, self.read(0xFF11), "NR11");
-        println!("{:04X} = {:02X}; {}", 0xFF12, self.read(0xFF12), "NR12");
-        println!("{:04X} = {:02X}; {}", 0xFF14, self.read(0xFF14), "NR14");
-        println!("{:04X} = {:02X}; {}", 0xFF16, self.read(0xFF16), "NR21");
-        println!("{:04X} = {:02X}; {}", 0xFF17, self.read(0xFF17), "NR22");
-        println!("{:04X} = {:02X}; {}", 0xFF19, self.read(0xFF19), "NR24");
-        println!("{:04X} = {:02X}; {}", 0xFF1A, self.read(0xFF1A), "NR30");
-        println!("{:04X} = {:02X}; {}", 0xFF1B, self.read(0xFF1B), "NR31");
-        println!("{:04X} = {:02X}; {}", 0xFF1C, self.read(0xFF1C), "NR32");
-        println!("{:04X} = {:02X}; {}", 0xFF1E, self.read(0xFF1E), "NR33");
-        println!("{:04X} = {:02X}; {}", 0xFF20, self.read(0xFF20), "NR41");
-        println!("{:04X} = {:02X}; {}", 0xFF21, self.read(0xFF21), "NR42");
-        println!("{:04X} = {:02X}; {}", 0xFF22, self.read(0xFF22), "NR43");
-        println!("{:04X} = {:02X}; {}", 0xFF23, self.read(0xFF23), "NR44");
-        println!("{:04X} = {:02X}; {}", 0xFF24, self.read(0xFF24), "NR50");
-        println!("{:04X} = {:02X}; {}", 0xFF25, self.read(0xFF25), "NR51");
-        println!("{:04X} = {:02X}; {}", 0xFF26, self.read(0xFF26), "NR52");
-        println!("{:04X} = {:02X}; {}", 0xFF40, self.read(0xFF40), "LCDC");
-        println!("{:04X} = {:02X}; {}", 0xFF42, self.read(0xFF42), "SCY");
-        println!("{:04X} = {:02X}; {}", 0xFF43, self.read(0xFF43), "SCX");
-        println!("{:04X} = {:02X}; {}", 0xFF45, self.read(0xFF45), "LYC");
-        println!("{:04X} = {:02X}; {}", 0xFF47, self.read(0xFF47), "BGP");
-        println!("{:04X} = {:02X}; {}", 0xFF48, self.read(0xFF48), "OBP0");
-        println!("{:04X} = {:02X}; {}", 0xFF49, self.read(0xFF49), "OBP1");
-        println!("{:04X} = {:02X}; {}", 0xFF4A, self.read(0xFF4A), "WY");
-        println!("{:04X} = {:02X}; {}", 0xFF4B, self.read(0xFF4B), "WX");
-        println!("{:04X} = {:02X}; {}", 0xFFFF, self.read(0xFFFF), "IE");
+    pub fn cycle(&mut self) {
+        // IRQ requested
+        if self.gpu.cycle() {
+            self.int_flags |= 1;
+        }
+        self.tick();
     }
 }
 
@@ -126,8 +128,8 @@ impl Memory for Bus {
             0xff00 => {
                 match self.joypad_io {
                     Select::Buttons => {
-                        return 0xff;//Todo
-                    },
+                        return 0xff; //Todo
+                    }
                     Select::Directions => {
                         return 0xff;
                     }
@@ -143,6 +145,7 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
+            DIVIDER_REGISTER => self.memory[DIVIDER_REGISTER] = 0,
             0xff40 => self.gpu.lcdc = value,
             0xff41 => self.gpu.lcdstat = value,
             0xff42 => self.gpu.vscroll = value,
@@ -153,16 +156,20 @@ impl Memory for Bus {
             0xff4b => self.gpu.windowx = value,
             0xffff => self.int_enabled = value,
             0xff0f => {
-                self.gpu.irq = (value & 0x01) != 0;
-                self.int_flags = self.gpu.irq as u8;
-            },
-            0xff50 => self.in_bios = value,
+                self.int_flags |= value;
+            }
+            0xff50 => {
+                if value != 0 {
+                    self.rom_start_signal = true;
+                }
+                self.in_bios = value
+            }
             0xff80 => {
                 if value == 255 {
                     println!("!WARN 255 to ff80")
                 }
                 self.memory[address as usize] = value;
-            },
+            }
             0xff00 => {
                 let select_buttons = value & 0b0010_0000 != 0;
                 let select_directions = value & 0b0001_0000 != 0;
@@ -173,8 +180,8 @@ impl Memory for Bus {
                 }
             }
             0xff01 => {
-                if(self.memory[0xff02] == 0x81) {
-                    print!("{}",char::from(value));
+                if self.memory[0xff02] == 0x81 {
+                    print!("{}", char::from(value));
                 }
                 self.memory[address as usize] = value;
             }

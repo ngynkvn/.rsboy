@@ -15,7 +15,7 @@ pub struct CPU {
     pub clock: usize,
     encounter: HashMap<u16, usize>,
     trace: [u16; HISTORY_SIZE],
-    trace_ptr: usize
+    trace_ptr: usize,
 }
 
 type CpuResult<T> = Result<T, String>;
@@ -30,6 +30,12 @@ fn prefix(prefix: String) -> impl FnOnce(String) -> Result<(), String> {
 
 fn source_error<T>(e: String) -> Result<T, String> {
     Err(format!("{}:{}:{}: {:?}", file!(), line!(), column!(), e))
+}
+
+#[inline]
+fn swapped_nibbles(byte: u8) -> u8 {
+    let [hi, lo] = [byte >> 4, byte & 0xF];
+    (lo << 4) | hi
 }
 
 macro_rules! source_error {
@@ -52,32 +58,27 @@ impl CPU {
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
-        self.clock += 1;
-        bus.cycle().unwrap();
+        self.tick(bus);
         let val = bus.read(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         val
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
-        self.clock += 1;
-        bus.cycle().unwrap();
-        let val =
-            (bus.read(self.registers.pc + 1) as u16) << 8 | (bus.read(self.registers.pc) as u16);
-        self.registers.pc = self.registers.pc.wrapping_add(2);
-        val
+        self.tick(bus);
+        let lo = self.next_u8(bus);
+        let hi = self.next_u8(bus);
+        u16::from_le_bytes([lo, hi])
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
-        self.clock += 1;
-        bus.cycle().unwrap();
+        self.tick(bus);
         bus.read(address)
     }
     fn read_io(&mut self, offset: u16, bus: &mut Bus) -> u8 {
         self.read_byte(0xFF00 + offset, bus)
     }
     fn set_byte(&mut self, address: u16, value: u8, bus: &mut Bus) -> CpuResult<()> {
-        self.clock += 1;
-        bus.cycle().unwrap();
+        self.tick(bus);
         bus.write(address, value);
         Ok(())
     }
@@ -152,6 +153,11 @@ impl CPU {
         Ok(())
     }
 
+    fn tick(&mut self, bus: &mut Bus) {
+        self.clock += 1;
+        bus.cycle();
+    }
+
     fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
         let from_value = self.read_location(from, bus);
         self.write_into(into, from_value, bus)
@@ -172,6 +178,11 @@ impl CPU {
         let hi = self.read_byte(self.registers.sp, bus);
         self.registers.sp = self.registers.sp.wrapping_add(1);
         Ok(u16::from_le_bytes([lo, hi]))
+    }
+    fn peek_stack(&mut self, bus: &mut Bus) -> u16 {
+        let lo = bus.memory[self.registers.sp as usize];
+        let hi = bus.memory[(self.registers.sp + 1) as usize];
+        u16::from_le_bytes([lo, hi])
     }
 
     fn dec(&mut self, r: Register) {
@@ -224,15 +235,13 @@ impl CPU {
             Instr::LDD(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.dec(Register::HL);
-                self.clock += 1; // TODO
-                bus.cycle()?;
+                self.tick(bus);
                 Ok(())
             }
             Instr::LDI(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.inc(Register::HL);
-                self.clock += 1; // TODO
-                bus.cycle()?;
+                self.tick(bus);
                 Ok(())
             }
             Instr::NOOP => Ok(()),
@@ -257,13 +266,28 @@ impl CPU {
             Instr::ADD(location) => {
                 let value = self.read_location(location, bus).try_into().unwrap();
                 let (result, carry) = self.registers.a.overflowing_add(value);
+                //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
+                let half_carry = (self.registers.a & 0x0f)
+                    .checked_add(value | 0xf0)
+                    .is_none();
                 self.registers.a = result;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
-                // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
-                self.registers
-                    .set_hf(((self.registers.a & 0xf) + (value & 0xf)) & 0x10 == 0x10);
+                self.registers.set_hf(half_carry);
                 self.registers.set_cf(carry);
+                Ok(())
+            }
+            Instr::SUB(location) => {
+                let value = self.read_location(location, bus).try_into().unwrap();
+                self.registers.a = self.registers.a.wrapping_sub(value);
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(true);
+                self.registers.set_hf(
+                    // Mooneye
+                    (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
+                );
+                self.registers
+                    .set_cf((self.registers.a as u16) < (value as u16));
                 Ok(())
             }
             Instr::ADC(location) => {
@@ -283,19 +307,19 @@ impl CPU {
             Instr::ADDHL(location) => {
                 let old = self.registers.hl();
                 let value = self.read_location(location, bus);
-                let result = old.wrapping_add(value);
-                let [h, l] = old.wrapping_add(value).to_be_bytes();
+                let (value, overflow) = old.overflowing_add(value);
+                let [h, l] = value.to_be_bytes();
                 self.registers.h = h;
                 self.registers.l = l;
                 self.registers.set_nf(false);
-                self.registers.set_hf(((old & 0x00FF) + (value & 0x00FF)) & 0x0100 == 0x0100);
-                self.registers.set_cf(result < old);
-                //TODO FLAGS
+                self.registers
+                    .set_hf((old & 0x0fff + value & 0x0fff) & 0x0800 == 0x0800);
+                self.registers.set_cf(overflow);
                 Ok(())
             }
             Instr::AND(location) => {
                 let value: u8 = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a & value;
+                self.registers.a &= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
                 self.registers.set_hf(true);
@@ -304,7 +328,7 @@ impl CPU {
             }
             Instr::XOR(location) => {
                 let value: u8 = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a ^ value;
+                self.registers.a ^= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
                 self.registers.set_hf(false);
@@ -313,24 +337,11 @@ impl CPU {
             }
             Instr::OR(location) => {
                 let value: u8 = self.read_location(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a | value;
+                self.registers.a |= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
                 self.registers.set_hf(false);
                 self.registers.set_cf(false);
-                Ok(())
-            }
-            Instr::SUB(location) => {
-                let value = self.read_location(location, bus).try_into().unwrap();
-                let (result, carry) = self.registers.a.overflowing_sub(value);
-                self.registers.a = self.registers.a.wrapping_sub(value);
-                self.registers.set_zf(self.registers.a == 0);
-                self.registers.set_nf(true);
-                self.registers.set_hf(
-                    // Mooneye
-                    (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
-                );
-                self.registers.set_cf(carry);
                 Ok(())
             }
             Instr::NOT(location) => {
@@ -381,7 +392,7 @@ impl CPU {
                 self.set_byte(address, result, bus)?;
                 self.registers.set_zf(result == 0);
                 self.registers.set_nf(true);
-                self.registers.set_hf(value & 0xf == 0);
+                self.registers.set_hf(value == 0);
                 Ok(())
             }
             Instr::DEC(Location::Register(r)) => {
@@ -420,7 +431,7 @@ impl CPU {
             }
             Instr::RRA => {
                 let carry = self.registers.a & 1 != 0;
-                self.registers.a = self.registers.a >> 1;
+                self.registers.a >>= 1;
                 if self.registers.flg_c() {
                     self.registers.a |= 0b1000_0000;
                 }
@@ -501,18 +512,30 @@ impl CPU {
             }
         }
         let curr_address = self.registers.pc;
+        self.debug_area(bus, curr_address);
+        let curr_byte = self.next_u8(bus);
+        let instruction = &INSTR_TABLE[curr_byte as usize];
+        let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
+        let instr_len = size as u16 + 1;
+        self.perform_instruction(*instruction, bus)
+    }
+
+    fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
+        // if curr_address == 0x0825 {
+        //     self.debug = true;
+        // }
+        // if self.debug {
+        //     println!("{:04x}: \n{}", curr_address, self.registers);
+        // }
+        // match curr_address {
+        //     0x0430..=0x0473 => {
+        //         println!("{:04x}: \n{}", curr_address, self.registers);
+        //     }
+        //     _ => {}
+        // }
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
-        if curr_address == 0x0a00 {
-            println!("{:04x}", self.registers.sp);
-            let n = self.pop_stack(bus)?;
-            println!("{:04x}", n);
-            for i in 0..HISTORY_SIZE {
-                println!("{:04x}", self.trace[self.trace_ptr]);
-                self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
-            }
-            panic!();
-        }
+        let r = &self.registers;
         let waszero = self.registers.b == 0;
         let ff = self.registers.b == 0xff;
         if bus.in_bios != 0 {
@@ -528,24 +551,10 @@ impl CPU {
                         curr_address,
                         INSTR_TABLE[bus.read(curr_address) as usize],
                     );
+                    println!("HERE: \n{}", r);
                     0
                 });
         }
-        let curr_byte = self.next_u8(bus);
-        let instruction = &INSTR_TABLE[curr_byte as usize];
-        let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
-        let instr_len = size as u16 + 1;
-        // if curr_address >= 0x02dd && curr_address <= 0x02e1 {
-        //     println!(
-        //         "0x{:04x?}: {:02x} {:?}, {}",
-        //         self.registers.pc - 1,
-        //         curr_byte,
-        //         instruction,
-        //         self.registers
-        //     );
-        // }
-        let result = self.perform_instruction(*instruction, bus);
-        result
     }
     fn check_flag(&mut self, flag: Flag) -> bool {
         match flag {
@@ -600,23 +609,21 @@ impl CPU {
     }
     fn handle_cb(&mut self, bus: &mut Bus) -> CpuResult<()> {
         let opcode = self.next_u8(bus);
-        bus.cycle()?;
+        bus.cycle();
         match opcode {
-            0x37 => self.registers = self.registers.swap_nibbles(Register::A)?,
-            0x30 => self.registers = self.registers.swap_nibbles(Register::B)?,
-            0x31 => self.registers = self.registers.swap_nibbles(Register::C)?,
-            0x32 => self.registers = self.registers.swap_nibbles(Register::D)?,
-            0x33 => self.registers = self.registers.swap_nibbles(Register::E)?,
-            0x34 => self.registers = self.registers.swap_nibbles(Register::H)?,
-            0x35 => self.registers = self.registers.swap_nibbles(Register::L)?,
-            0x36 => {
-                let address = self.registers.fetch_u16(Register::HL);
-                let byte = self.read_byte(address, bus);
-                let [hi, lo] = [byte >> 4, byte & 0xF];
-                let new_byte = (lo << 4) | byte;
-                self.set_byte(address, new_byte, bus)?;
+            0x30..=0x37 => {
+                // SWAP
+                let target = CPU::cb_location(opcode);
+                let value = self.read_from(target, bus).try_into().unwrap();
+                let value = swapped_nibbles(value);
+                self.write_into(target, value as u16, bus)?;
+                self.registers.set_zf(value == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(false);
+                self.registers.set_cf(false);
             }
             0x40..=0x7F => {
+                // BIT
                 let target = CPU::cb_location(opcode);
                 let mut bit_index = (((opcode & 0xF0) >> 4) - 4) * 2;
                 if opcode & 0x08 != 0 {
@@ -701,8 +708,56 @@ impl CPU {
         }
         Ok(())
     }
+
+    // TODO hide this
+    fn load_start_values(&mut self, bus: &mut Bus) {
+        self.registers.a = 0x01;
+        self.registers.f = 0xb0;
+        self.registers.b = 0x00;
+        self.registers.c = 0x13;
+        self.registers.d = 0x00;
+        self.registers.e = 0xd8;
+        self.registers.h = 0x01;
+        self.registers.l = 0x4d;
+        self.registers.sp = 0xfffe;
+        bus.memory[0xFF06] = 0x00; // TMA
+        bus.memory[0xFF07] = 0x00; // TAC
+        bus.memory[0xFF10] = 0x80; // NR10
+        bus.memory[0xFF11] = 0xBF; // NR11
+        bus.memory[0xFF12] = 0xF3; // NR12
+        bus.memory[0xFF14] = 0xBF; // NR14
+        bus.memory[0xFF16] = 0x3F; // NR21
+        bus.memory[0xFF17] = 0x00; // NR22
+        bus.memory[0xFF19] = 0xBF; // NR24
+        bus.memory[0xFF1A] = 0x7F; // NR30
+        bus.memory[0xFF1B] = 0xFF; // NR31
+        bus.memory[0xFF1C] = 0x9F; // NR32
+        bus.memory[0xFF1E] = 0xBF; // NR33
+        bus.memory[0xFF20] = 0xFF; // NR41
+        bus.memory[0xFF21] = 0x00; // NR42
+        bus.memory[0xFF22] = 0x00; // NR43
+        bus.memory[0xFF23] = 0xBF; // NR30
+        bus.memory[0xFF24] = 0x77; // NR50
+        bus.memory[0xFF25] = 0xF3; // NR51
+        bus.memory[0xFF26] = 0xF1; // NR52
+        bus.memory[0xFF40] = 0x91; // LCDC
+        bus.memory[0xFF42] = 0x00; // SCY
+        bus.memory[0xFF43] = 0x00; // SCX
+        bus.memory[0xFF45] = 0x00; // LYC
+        bus.memory[0xFF47] = 0xFC; // BGP
+        bus.memory[0xFF48] = 0xFF; // OBP0
+        bus.memory[0xFF49] = 0xFF; // OBP1
+        bus.memory[0xFF4A] = 0x00; // WY
+        bus.memory[0xFF4B] = 0x00; // WX
+        bus.memory[0xFFFF] = 0x00; // IE
+    }
+
     pub fn cycle(&mut self, bus: &mut Bus) -> CpuResult<usize> {
         let prev = self.clock;
+        if bus.rom_start_signal {
+            bus.rom_start_signal = false;
+            self.load_start_values(bus);
+        }
         self.read_instruction(bus)?;
         Ok(self.clock - prev)
     }
@@ -712,7 +767,6 @@ impl CPU {
 mod tests {
     use super::*;
     use crate::instructions::Location::*;
-    use crate::instructions::Register::*;
 
     #[test]
     fn ld() -> Result<(), String> {
@@ -742,4 +796,13 @@ mod tests {
         assert_eq!(cpu.registers.bc(), 0x1122);
         Ok(())
     }
+
+    // #[test]
+    // fn test_ld16() {
+    //     let mut cpu = CPU::new(false);
+    //     cpu.registers.sp = 0xFFFF;
+    //     cpu.registers.b = 0x21;
+    //     cpu.registers.c = 0x21;
+    //     assert_eq!(cpu.registers.bc(), 0x2121);
+    // }
 }

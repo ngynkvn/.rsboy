@@ -113,7 +113,6 @@ fn sdl_main() -> std::io::Result<()> {
         if f.is_err() {
             break;
         }
-        // println!("{}", emu.cpu.registers);
         delay_min(FRAME_TIME, &timer);
         timer = Instant::now();
     }
@@ -132,7 +131,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     while i < 17476 {
         match emu.cycle() {
             Ok(c) => i += c,
-            Err(s) => panic!(s)
+            Err(s) => panic!(s),
         }
     }
     emu.bus.gpu.render_map(texture);
@@ -149,7 +148,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
 }
 
 fn delay_min(min_dur: Duration, timer: &Instant) {
-    let time = timer.elapsed(); 
+    let time = timer.elapsed();
     if time < min_dur {
         ::std::thread::sleep(min_dur - time);
     }
@@ -193,9 +192,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
     texture
         .update(None, &(background.texture()), 256 * 2)
         .map_err(|e| e.to_string())?;
-    canvas
-        .copy(&texture, None, None)
-        .map_err(|e| e.to_string())?;
+    canvas.copy(&texture, None, None)?;
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
 

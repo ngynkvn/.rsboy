@@ -23,7 +23,7 @@ pub enum Register {
     AF,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Flag {
     FlagNZ,
     FlagZ,
@@ -31,7 +31,7 @@ pub enum Flag {
     FlagNC,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Location {
     Memory(Register),
     Immediate(usize), // Bytes
@@ -41,13 +41,13 @@ pub enum Location {
     MemOffsetRegister(Register),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Direction {
     LEFT,
     RIGHT,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum JumpType {
     Always,
     If(Flag),
@@ -215,7 +215,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     LD(Memory(HL), Register(E)),           //0x73
     LD(Memory(HL), Register(H)),           //0x74
     LD(Memory(HL), Register(L)),           //0x75
-    HALT,                         //0x76
+    HALT,                                  //0x76
     LD(Memory(HL), Register(A)),           //0x77
     LD(Register(A), Register(B)),          //0x78
     LD(Register(A), Register(C)),          //0x79

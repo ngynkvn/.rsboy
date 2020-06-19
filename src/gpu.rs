@@ -24,7 +24,6 @@ pub struct GPU {
     pub windowx: u8, //
     pub windowy: u8, //
     pub bg_palette: u8,
-    pub irq: bool,
 }
 
 const END_HBLANK: u8 = 143;
@@ -48,20 +47,20 @@ impl GPU {
             windowx: 0,
             windowy: 0,
             bg_palette: 0,
-            irq: false,
             vram: [0; 0x2000],
         }
     }
     pub fn is_on(&self) -> bool {
         self.lcdc & 0b1000_0000 == 0b1000_0000
     }
-    pub fn cycle(&mut self) -> Result<(), String> {
+
+    // Returns true if IRQ is requested.
+    pub fn cycle(&mut self) -> bool {
         if !self.is_on() {
-            return Ok(());
+            return false;
         }
         self.clock += 1;
-        self.step();
-        Ok(())
+        self.step()
     }
 
     pub fn scroll(&self) -> (u32, u32) {
@@ -98,22 +97,21 @@ impl GPU {
     }
 
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
-        let mut i = 0;
         let mut pixels: PixelData = [0; 131072];
         let tile_set = self.tiles();
         let map = &self.vram[0x1800..0x1C00];
 
-        for tile in map {
+        for (i, tile) in map.into_iter().enumerate() {
             let t = &tile_set[*tile as usize];
             let x = i % 32;
             let y = i / 32;
             self.render_tile(&mut pixels, x, y, t.texture());
-            i += 1;
         }
         texture.update(None, &pixels, 256 * 2).unwrap();
     }
 
-    pub fn step(&mut self) {
+    // Returns true if interrupt is requested
+    pub fn step(&mut self) -> bool {
         match self.mode {
             GpuMode::OAM => {
                 if self.clock >= 80 {
@@ -134,7 +132,7 @@ impl GPU {
                     if self.scanline == END_HBLANK {
                         self.mode = GpuMode::VBlank;
                         //Might be wrong position to trigger interrupt
-                        self.irq = true;
+                        return true;
                     }
                 }
             }
@@ -149,6 +147,7 @@ impl GPU {
                 }
             }
         }
+        false
     }
 }
 
