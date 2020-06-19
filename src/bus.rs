@@ -138,7 +138,7 @@ impl Memory for Bus {
             // 0xFFFF => &self.gpu.,
             // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
             // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
-            VRAM_START..=VRAM_END => self.gpu[address - VRAM_START as u16],
+            VRAM_START..=VRAM_END => self.gpu[address],
             _ => self.memory[address as usize],
         }
     }

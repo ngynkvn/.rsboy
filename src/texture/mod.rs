@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 const TILE_WIDTH: usize = 8;
 #[derive(Copy, Clone, Debug)]
 pub enum Color {
@@ -61,6 +63,11 @@ impl Tile {
             }
         }
         Self { texture }
+    }
+
+    // Size of a tile
+    pub fn range(i: usize) -> Range<usize> {
+        return i..i + 16;
     }
 
     pub fn texture(&self) -> &[u8; 128] {

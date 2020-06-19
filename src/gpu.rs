@@ -98,15 +98,31 @@ impl GPU {
 
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
         let mut pixels: PixelData = [0; 131072];
-        let tile_set = self.tiles();
-        let map = &self.vram[0x1800..0x1C00];
-
-        for (i, tile) in map.into_iter().enumerate() {
-            let t = &tile_set[*tile as usize];
+        for (i, tile) in self.vram[0x1800..0x1C00].into_iter().enumerate() {
+            let idx = *tile as usize * 16;
+            let t = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
             let x = i % 32;
             let y = i / 32;
             self.render_tile(&mut pixels, x, y, t.texture());
         }
+
+        // TODO
+        // Need to emulate scanline, and priority rendering
+        // for sprite_attributes in self.vram[..0x1000].chunks_exact(4) {
+        //     if let [x, y, pattern, flags] = sprite_attributes {
+        //         let idx = *pattern as usize * 16;
+        //         let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
+        //         let screen_x = x.wrapping_sub(8);
+        //         let screen_y = y.wrapping_sub(16);
+        //         self.render_tile(
+        //             &mut pixels,
+        //             screen_x as usize,
+        //             screen_y as usize,
+        //             tile.texture(),
+        //         );
+        //     }
+        // }
+
         texture.update(None, &pixels, 256 * 2).unwrap();
     }
 
@@ -156,7 +172,7 @@ impl Index<u16> for GPU {
     fn index(&self, i: u16) -> &Self::Output {
         match i {
             0x44 => &self.scanline,
-            _ => &self.vram[i as usize],
+            _ => &self.vram[i as usize - 0x8000],
         }
     }
 }
