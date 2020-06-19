@@ -382,8 +382,20 @@ impl CPU {
             }
             Instr::CALL(jump_type) => {
                 let address = self.next_u16(bus);
-                self.push_stack(self.registers.pc, bus)?;
-                self.handle_jump(address, jump_type, bus)
+                match jump_type {
+                    JumpType::If(flag) => {
+                        if self.check_flag(flag) {
+                            self.push_stack(self.registers.pc, bus)?;
+                            self.registers = self.registers.jump(address)?;
+                        }
+                    }
+                    JumpType::Always => {
+                        self.push_stack(self.registers.pc, bus)?;
+                        self.registers = self.registers.jump(address)?;
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(())
             }
             Instr::DEC(Location::Memory(r)) => {
                 let address = self.registers.fetch_u16(r);
@@ -522,9 +534,10 @@ impl CPU {
 
     fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
         // if curr_address == 0x0825 {
+        // if curr_address == 0x0d601 {
         //     self.debug = true;
         // }
-        // if self.debug {
+        // if curr_address == 0x0b92 || self.debug {
         //     println!("{:04x}: \n{}", curr_address, self.registers);
         // }
         // match curr_address {
@@ -532,6 +545,9 @@ impl CPU {
         //         println!("{:04x}: \n{}", curr_address, self.registers);
         //     }
         //     _ => {}
+        // }
+        // if curr_address == 0x0b92 {
+        //     panic!()
         // }
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
@@ -545,13 +561,13 @@ impl CPU {
                     *x += 1;
                 })
                 .or_insert_with(|| {
-                    println!(
-                        "First encounter: 0x{:04x?} {:?}",
-                        // "First encounter: 0x{:04x?}",
-                        curr_address,
-                        INSTR_TABLE[bus.read(curr_address) as usize],
-                    );
-                    println!("HERE: \n{}", r);
+                    // println!(
+                    //     "First encounter: 0x{:04x?} {:?}",
+                    //     // "First encounter: 0x{:04x?}",
+                    //     curr_address,
+                    //     INSTR_TABLE[bus.read(curr_address) as usize],
+                    // );
+                    // println!("HERE: \n{}", r);
                     0
                 });
         }
