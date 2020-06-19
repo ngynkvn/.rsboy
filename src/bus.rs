@@ -165,9 +165,6 @@ impl Memory for Bus {
                 self.in_bios = value
             }
             0xff80 => {
-                if value == 255 {
-                    println!("!WARN 255 to ff80")
-                }
                 self.memory[address as usize] = value;
             }
             0xff00 => {
