@@ -510,7 +510,12 @@ impl CPU {
                 self.registers.set_hf(half_carry);
                 Ok(())
             }
-            x => Err(format!("{} read_instruction: {:?}", source_error!(), x)),
+            x => Err(format!(
+                "{} read_instruction: {:?} {:04x}",
+                source_error!(),
+                x,
+                self.registers.pc - 1
+            )),
         }
     }
 
