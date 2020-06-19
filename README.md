@@ -25,8 +25,6 @@ Render image of Tetris main screen
 - OTHER STUFF
 - WebAssembly Port
 
-Cpu Cycle time: 400ns
-
 ## References
 - _Writing a Game Boy emulator, Cinoop_, CTurt: https://cturt.github.io/cinoop.html
 - _GameBoy Emulation in JavaScript: GPU Timings_, Imran Nazar: http://imrannazar.com/GameBoy-Emulation-in-JavaScript:-GPU-Timings
