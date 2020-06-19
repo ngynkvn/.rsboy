@@ -58,27 +58,27 @@ impl CPU {
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
-        self.tick(bus).unwrap();
+        self.tick(bus);
         let val = bus.read(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         val
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
-        self.tick(bus).unwrap();
+        self.tick(bus);
         let lo = self.next_u8(bus);
         let hi = self.next_u8(bus);
         u16::from_le_bytes([lo, hi])
     }
     fn read_byte(&mut self, address: u16, bus: &mut Bus) -> u8 {
-        self.tick(bus).unwrap();
+        self.tick(bus);
         bus.read(address)
     }
     fn read_io(&mut self, offset: u16, bus: &mut Bus) -> u8 {
         self.read_byte(0xFF00 + offset, bus)
     }
     fn set_byte(&mut self, address: u16, value: u8, bus: &mut Bus) -> CpuResult<()> {
-        self.tick(bus).unwrap();
+        self.tick(bus);
         bus.write(address, value);
         Ok(())
     }
@@ -153,9 +153,9 @@ impl CPU {
         Ok(())
     }
 
-    fn tick(&mut self, bus: &mut Bus) -> CpuResult<()> {
+    fn tick(&mut self, bus: &mut Bus) {
         self.clock += 1;
-        bus.cycle()
+        bus.cycle();
     }
 
     fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
@@ -235,13 +235,13 @@ impl CPU {
             Instr::LDD(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.dec(Register::HL);
-                self.tick(bus)?;
+                self.tick(bus);
                 Ok(())
             }
             Instr::LDI(into, from) => {
                 self.load(into, from, bus).or_else(source_error)?;
                 self.inc(Register::HL);
-                self.tick(bus)?;
+                self.tick(bus);
                 Ok(())
             }
             Instr::NOOP => Ok(()),
@@ -521,13 +521,18 @@ impl CPU {
     }
 
     fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
-        if self.registers.a == 0xf6 && self.registers.f == 0xe0 {
-            println!("{:04x}: \n{}", curr_address, self.registers);
-            panic!()
-        }
-        if self.debug {
-            println!("{:04x}: \n{}", curr_address, self.registers);
-        }
+        // if curr_address == 0x0825 {
+        //     self.debug = true;
+        // }
+        // if self.debug {
+        //     println!("{:04x}: \n{}", curr_address, self.registers);
+        // }
+        // match curr_address {
+        //     0x0430..=0x0473 => {
+        //         println!("{:04x}: \n{}", curr_address, self.registers);
+        //     }
+        //     _ => {}
+        // }
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
         let r = &self.registers;
@@ -604,7 +609,7 @@ impl CPU {
     }
     fn handle_cb(&mut self, bus: &mut Bus) -> CpuResult<()> {
         let opcode = self.next_u8(bus);
-        bus.cycle()?;
+        bus.cycle();
         match opcode {
             0x30..=0x37 => {
                 // SWAP
@@ -703,8 +708,56 @@ impl CPU {
         }
         Ok(())
     }
+
+    // TODO hide this
+    fn load_start_values(&mut self, bus: &mut Bus) {
+        self.registers.a = 0x01;
+        self.registers.f = 0xb0;
+        self.registers.b = 0x00;
+        self.registers.c = 0x13;
+        self.registers.d = 0x00;
+        self.registers.e = 0xd8;
+        self.registers.h = 0x01;
+        self.registers.l = 0x4d;
+        self.registers.sp = 0xfffe;
+        bus.memory[0xFF06] = 0x00; // TMA
+        bus.memory[0xFF07] = 0x00; // TAC
+        bus.memory[0xFF10] = 0x80; // NR10
+        bus.memory[0xFF11] = 0xBF; // NR11
+        bus.memory[0xFF12] = 0xF3; // NR12
+        bus.memory[0xFF14] = 0xBF; // NR14
+        bus.memory[0xFF16] = 0x3F; // NR21
+        bus.memory[0xFF17] = 0x00; // NR22
+        bus.memory[0xFF19] = 0xBF; // NR24
+        bus.memory[0xFF1A] = 0x7F; // NR30
+        bus.memory[0xFF1B] = 0xFF; // NR31
+        bus.memory[0xFF1C] = 0x9F; // NR32
+        bus.memory[0xFF1E] = 0xBF; // NR33
+        bus.memory[0xFF20] = 0xFF; // NR41
+        bus.memory[0xFF21] = 0x00; // NR42
+        bus.memory[0xFF22] = 0x00; // NR43
+        bus.memory[0xFF23] = 0xBF; // NR30
+        bus.memory[0xFF24] = 0x77; // NR50
+        bus.memory[0xFF25] = 0xF3; // NR51
+        bus.memory[0xFF26] = 0xF1; // NR52
+        bus.memory[0xFF40] = 0x91; // LCDC
+        bus.memory[0xFF42] = 0x00; // SCY
+        bus.memory[0xFF43] = 0x00; // SCX
+        bus.memory[0xFF45] = 0x00; // LYC
+        bus.memory[0xFF47] = 0xFC; // BGP
+        bus.memory[0xFF48] = 0xFF; // OBP0
+        bus.memory[0xFF49] = 0xFF; // OBP1
+        bus.memory[0xFF4A] = 0x00; // WY
+        bus.memory[0xFF4B] = 0x00; // WX
+        bus.memory[0xFFFF] = 0x00; // IE
+    }
+
     pub fn cycle(&mut self, bus: &mut Bus) -> CpuResult<usize> {
         let prev = self.clock;
+        if bus.rom_start_signal {
+            bus.rom_start_signal = false;
+            self.load_start_values(bus);
+        }
         self.read_instruction(bus)?;
         Ok(self.clock - prev)
     }

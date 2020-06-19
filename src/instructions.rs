@@ -23,7 +23,7 @@ pub enum Register {
     AF,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Flag {
     FlagNZ,
     FlagZ,
@@ -31,7 +31,7 @@ pub enum Flag {
     FlagNC,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Location {
     Memory(Register),
     Immediate(usize), // Bytes
@@ -41,13 +41,13 @@ pub enum Location {
     MemOffsetRegister(Register),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Direction {
     LEFT,
     RIGHT,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub enum JumpType {
     Always,
     If(Flag),

@@ -29,6 +29,7 @@ pub struct Bus {
     pub interrupts_enabled: bool,
     pub joypad_io: Select,
     pub gpu: GPU,
+    pub rom_start_signal: bool,
 }
 
 fn load_bootrom() -> Vec<u8> {
@@ -46,6 +47,7 @@ impl Bus {
         let bootrom_vec = load_bootrom();
         bootrom[..].clone_from_slice(&bootrom_vec[..]);
         memory[..rom_vec.len()].clone_from_slice(&rom_vec[..]);
+
         Bus {
             memory,
             bootrom,
@@ -56,6 +58,7 @@ impl Bus {
             clock: 0,
             joypad_io: Select::Buttons,
             gpu: GPU::new(),
+            rom_start_signal: false,
         }
     }
 
@@ -68,7 +71,7 @@ impl Bus {
     }
 
     pub fn handle_vblank(&mut self) {
-        self.gpu.irq = false;
+        self.interrupts_enabled = false;
         self.int_flags &= !1;
     }
 
@@ -99,11 +102,12 @@ impl Bus {
         self.tick_timer_counter();
     }
 
-    pub fn cycle(&mut self) -> Result<(), String> {
-        self.gpu.cycle()?;
+    pub fn cycle(&mut self) {
+        // IRQ requested
+        if self.gpu.cycle() {
+            self.int_flags |= 1;
+        }
         self.tick();
-        self.int_flags |= self.gpu.irq as u8;
-        Ok(())
     }
 
     // Compare to
@@ -188,10 +192,14 @@ impl Memory for Bus {
             0xff4b => self.gpu.windowx = value,
             0xffff => self.int_enabled = value,
             0xff0f => {
-                self.gpu.irq = (value & 0x01) != 0;
-                self.int_flags |= self.gpu.irq as u8;
+                self.int_flags |= value;
             }
-            0xff50 => self.in_bios = value,
+            0xff50 => {
+                if value != 0 {
+                    self.rom_start_signal = true;
+                }
+                self.in_bios = value
+            }
             0xff80 => {
                 if value == 255 {
                     println!("!WARN 255 to ff80")
