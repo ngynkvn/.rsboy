@@ -1,5 +1,5 @@
 use crate::texture::*;
-use std::ops::Index;
+use std::{ops::Index, time};
 
 pub const VRAM_START: usize = 0x8000;
 pub const VRAM_END: usize = 0x9FFF;
@@ -111,26 +111,27 @@ impl GPU {
             .collect()
     }
 
-    pub fn render_tile(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile_data: &[u16]) {
+    fn render_tile(&self, pixels: &mut PixelData, vram_index: usize) {
+        let tile = self.vram[vram_index] as usize * 16;
+        let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(tile)]);
+        let mapx = (vram_index - 0x1800) % 32;
+        let mapy = (vram_index - 0x1800) / 32;
         for row in 0..8 {
             for col in 0..8 {
                 let t = col + row * 8;
 
                 //Find offset from map x and y
                 let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
-                pixels[location] = tile_data[t];
+                pixels[location] = tile.texture[t];
             }
         }
     }
 
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
         let mut pixels: PixelData = [0; 256 * 256];
-        for (i, tile) in self.vram[0x1800..0x1C00].into_iter().enumerate() {
-            let idx = *tile as usize * 16;
-            let t = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
-            let x = i % 32;
-            let y = i / 32;
-            self.render_tile(&mut pixels, x, y, t.texture());
+        let start = time::Instant::now();
+        for i in 0x1800..0x1C00 {
+            self.render_tile(&mut pixels, i);
         }
 
         // TODO
@@ -151,6 +152,10 @@ impl GPU {
         // }
 
         let pixels = unsafe { std::mem::transmute::<PixelData, [u8; 256 * 256 * 2]>(pixels) };
+        // println!(
+        //     "{:?}",
+        //     time::Instant::now().saturating_duration_since(start)
+        // );
         texture.update(None, &pixels, 256 * 2).unwrap();
     }
 
