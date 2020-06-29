@@ -1,6 +1,9 @@
 use crate::texture::*;
 use std::ops::Index;
 
+pub const VRAM_START: usize = 0x8000;
+pub const VRAM_END: usize = 0x9FFF;
+
 #[derive(Debug)]
 enum GpuMode {
     HBlank, // 0
@@ -29,7 +32,25 @@ pub struct GPU {
 const END_HBLANK: u8 = 143;
 const END_VBLANK: u8 = 153;
 
-type PixelData = [u8; 256 * 256 * 2];
+type PixelData = [u16; 256 * 256];
+
+struct SpriteAttribute {
+    above: bool,
+    yflip: bool,
+    xflip: bool,
+}
+
+impl From<u8> for SpriteAttribute {
+    fn from(byte: u8) -> Self {
+        Self {
+            above: byte & 0x80 != 0,
+            yflip: byte & 0x40 != 0,
+            xflip: byte & 0x20 != 0,
+        }
+    }
+}
+
+type SpriteEntry = (u8, u8, u8, SpriteAttribute);
 
 impl GPU {
     pub fn new() -> Self {
@@ -52,6 +73,13 @@ impl GPU {
     }
     pub fn is_on(&self) -> bool {
         self.lcdc & 0b1000_0000 == 0b1000_0000
+    }
+
+    pub fn print_sprite_table(&self) {
+        // 0x1e00-0x1ea0
+        for i in self.vram[0x1e00..0x1ea0].chunks_exact(4) {
+            println!("{:?}", i);
+        }
     }
 
     // Returns true if IRQ is requested.
@@ -83,21 +111,20 @@ impl GPU {
             .collect()
     }
 
-    pub fn render_tile(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile_data: &[u8]) {
+    pub fn render_tile(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile_data: &[u16]) {
         for row in 0..8 {
             for col in 0..8 {
-                let t = row * 16 + col * 2;
+                let t = col + row * 8;
 
                 //Find offset from map x and y
-                let location = mapx * 16 + col * 2 + mapy * 8 * 512 + row * 512;
+                let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
                 pixels[location] = tile_data[t];
-                pixels[location + 1] = tile_data[t + 1];
             }
         }
     }
 
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
-        let mut pixels: PixelData = [0; 131072];
+        let mut pixels: PixelData = [0; 256 * 256];
         for (i, tile) in self.vram[0x1800..0x1C00].into_iter().enumerate() {
             let idx = *tile as usize * 16;
             let t = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
@@ -123,6 +150,7 @@ impl GPU {
         //     }
         // }
 
+        let pixels = unsafe { std::mem::transmute::<PixelData, [u8; 256 * 256 * 2]>(pixels) };
         texture.update(None, &pixels, 256 * 2).unwrap();
     }
 

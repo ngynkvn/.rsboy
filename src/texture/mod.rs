@@ -1,51 +1,24 @@
 use std::ops::Range;
 
 const TILE_WIDTH: usize = 8;
-#[derive(Copy, Clone, Debug)]
-pub enum Color {
-    White,
-    LightGrey,
-    DarkGrey,
-    Black,
-}
 
-impl Color {
-    pub fn value(self) -> &'static [u8; 3] {
-        match self {
-            Color::White => &[224, 248, 208],
-            Color::LightGrey => &[136, 192, 112],
-            Color::DarkGrey => &[52, 104, 86],
-            Color::Black => &[8, 24, 32],
-        }
-    }
-    // TODO color 2 u16
-    pub fn pixel(value: u8) -> u16 {
-        match value {
-            0b00 => 0xE7DA,
-            0b01 => 0x8E0E,
-            0b10 => 0x360A,
-            0b11 => 0x08C4,
-            _ => unreachable!("Are you sure you're reading byte data?"),
-        }
-    }
-    pub fn byte2color(value: u8) -> Self {
-        match value {
-            0b00 => Color::White,
-            0b01 => Color::LightGrey,
-            0b10 => Color::DarkGrey,
-            0b11 => Color::Black,
-            _ => unreachable!("Are you sure you're reading byte data?"),
-        }
+fn pixel(value: u8) -> u16 {
+    match value {
+        0b00 => 0xE7DA,
+        0b01 => 0x8E0E,
+        0b10 => 0x360A,
+        0b11 => 0x08C4,
+        _ => unreachable!("Are you sure you're reading byte data?"),
     }
 }
 
 pub struct Tile {
-    pub texture: [u8; 128],
+    pub texture: [u16; 64],
 }
 
 impl Tile {
     pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
-        let mut texture = [255; 128];
+        let mut texture = [255; 64];
         // We receive in order of
         // low byte, then high byte
         for (y, d) in tile_data.chunks_exact(2).enumerate() {
@@ -55,11 +28,9 @@ impl Tile {
                 let hi = d[1] >> (7 - x) & 1;
                 let index = (hi << 1) | lo;
                 let color = (palette >> (index << 1)) & 0b11;
-                let [p1, p2] = Color::pixel(color).to_le_bytes();
-                // dbg!((p1, p2));
-                let location = x * 2 + y * 16;
-                texture[location] = p1;
-                texture[location + 1] = p2;
+                let c = pixel(color);
+                let location = x + y * 8;
+                texture[location] = c;
             }
         }
         Self { texture }
@@ -70,7 +41,7 @@ impl Tile {
         return i..i + 16;
     }
 
-    pub fn texture(&self) -> &[u8; 128] {
+    pub fn texture(&self) -> &[u16; 64] {
         &self.texture
     }
 }
@@ -94,7 +65,7 @@ impl<'a> Map<'a> {
                 // Tile index
                 for (j, tile_row) in self.tile_set[index as usize]
                     .texture()
-                    .chunks_exact(16)
+                    .chunks_exact(8)
                     .enumerate()
                 {
                     byte_row[i * TILE_WIDTH + j].extend_from_slice(&tile_row);
