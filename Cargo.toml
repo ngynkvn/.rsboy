@@ -12,6 +12,7 @@ only_bootrom = []
 
 [dependencies]
 sdl2 = "0.32.2"
+fern = "0.6.0"
 log = "0.4.8"
 env_logger = "0.7.1"
 wasm-bindgen = "0.2.63"
