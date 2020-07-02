@@ -1,9 +1,9 @@
 use crate::gpu::GPU;
+use crate::gpu::VRAM_END;
+use crate::gpu::VRAM_START;
 use std::fs::File;
 use std::io::Read;
 
-const VRAM_START: usize = 0x8000;
-const VRAM_END: usize = 0x9FFF;
 const DIVIDER_REGISTER: usize = 0xFF04;
 const TIMER_COUNTER: usize = 0xFF06;
 const TIMER_CONTROL: usize = 0xFF07;
@@ -138,7 +138,7 @@ impl Memory for Bus {
             // 0xFFFF => &self.gpu.,
             // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
             // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
-            VRAM_START..=VRAM_END => self.gpu[address - VRAM_START as u16],
+            VRAM_START..=VRAM_END => self.gpu[address],
             _ => self.memory[address as usize],
         }
     }
@@ -165,9 +165,6 @@ impl Memory for Bus {
                 self.in_bios = value
             }
             0xff80 => {
-                if value == 255 {
-                    println!("!WARN 255 to ff80")
-                }
                 self.memory[address as usize] = value;
             }
             0xff00 => {
@@ -180,12 +177,14 @@ impl Memory for Bus {
                 }
             }
             0xff01 => {
-                if self.memory[0xff02] == 0x81 {
-                    print!("{}", char::from(value));
+                self.memory[address as usize] = value;
+            }
+            0xff02 => {
+                if value == 0x81 {
+                    print!("{}", char::from(self.memory[0xff01]));
                 }
                 self.memory[address as usize] = value;
             }
-            // 0xff02 => {println!("r: acc serial transfer data flgs"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
             _ => self.memory[address as usize] = value,
         }

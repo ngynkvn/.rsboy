@@ -244,6 +244,18 @@ impl CPU {
                 self.tick(bus);
                 Ok(())
             }
+            Instr::LDSP => {
+                let offset = self.next_u8(bus) as i8 as u16;
+                let result = self.registers.sp.wrapping_add(offset);
+                let half_carry = (self.registers.sp & 0x0F).wrapping_add(offset & 0x0F) > 0x0F;
+                let carry = (self.registers.sp & 0xFF).wrapping_add(offset & 0xFF) > 0xFF;
+                self.registers.set_zf(false);
+                self.registers.set_nf(false);
+                self.registers.set_hf(half_carry);
+                self.registers.set_cf(carry);
+                Ok(())
+            }
+            Instr::STOP => panic!("STOP: {:04x}", self.registers.pc - 1), // TODO ?
             Instr::NOOP => Ok(()),
             Instr::RST(size) => {
                 if size == 0x38 {
@@ -382,8 +394,20 @@ impl CPU {
             }
             Instr::CALL(jump_type) => {
                 let address = self.next_u16(bus);
-                self.push_stack(self.registers.pc, bus)?;
-                self.handle_jump(address, jump_type, bus)
+                match jump_type {
+                    JumpType::If(flag) => {
+                        if self.check_flag(flag) {
+                            self.push_stack(self.registers.pc, bus)?;
+                            self.registers = self.registers.jump(address)?;
+                        }
+                    }
+                    JumpType::Always => {
+                        self.push_stack(self.registers.pc, bus)?;
+                        self.registers = self.registers.jump(address)?;
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(())
             }
             Instr::DEC(Location::Memory(r)) => {
                 let address = self.registers.fetch_u16(r);
@@ -498,7 +522,12 @@ impl CPU {
                 self.registers.set_hf(half_carry);
                 Ok(())
             }
-            x => Err(format!("{} read_instruction: {:?}", source_error!(), x)),
+            x => Err(format!(
+                "{} read_instruction: {:?} {:04x}",
+                source_error!(),
+                x,
+                self.registers.pc - 1
+            )),
         }
     }
 
@@ -522,9 +551,10 @@ impl CPU {
 
     fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
         // if curr_address == 0x0825 {
+        // if curr_address == 0x0d601 {
         //     self.debug = true;
         // }
-        // if self.debug {
+        // if curr_address == 0x0b92 || self.debug {
         //     println!("{:04x}: \n{}", curr_address, self.registers);
         // }
         // match curr_address {
@@ -532,6 +562,9 @@ impl CPU {
         //         println!("{:04x}: \n{}", curr_address, self.registers);
         //     }
         //     _ => {}
+        // }
+        // if curr_address == 0x0b92 {
+        //     panic!()
         // }
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
@@ -545,13 +578,13 @@ impl CPU {
                     *x += 1;
                 })
                 .or_insert_with(|| {
-                    println!(
-                        "First encounter: 0x{:04x?} {:?}",
-                        // "First encounter: 0x{:04x?}",
-                        curr_address,
-                        INSTR_TABLE[bus.read(curr_address) as usize],
-                    );
-                    println!("HERE: \n{}", r);
+                    // println!(
+                    //     "First encounter: 0x{:04x?} {:?}",
+                    //     // "First encounter: 0x{:04x?}",
+                    //     curr_address,
+                    //     INSTR_TABLE[bus.read(curr_address) as usize],
+                    // );
+                    // println!("HERE: \n{}", r);
                     0
                 });
         }
