@@ -1,8 +1,15 @@
 use crate::texture::*;
-use std::{ops::Index, time};
+use std::{
+    ops::{Index, Range},
+    time,
+};
 
 pub const VRAM_START: usize = 0x8000;
 pub const VRAM_END: usize = 0x9FFF;
+pub const SPRITE_ATTR_RANGE: Range<usize> = 0x1e00..0x1ea0;
+pub const TILE_DATA_RANGE: Range<usize> = 0..0x1800;
+pub const MAP_DATA_RANGE: Range<usize> = 0x1800..0x1C00;
+pub const TILE_SIZE: usize = 16;
 
 #[derive(Debug)]
 enum GpuMode {
@@ -77,7 +84,7 @@ impl GPU {
 
     pub fn print_sprite_table(&self) {
         // 0x1e00-0x1ea0
-        for i in self.vram[0x1e00..0x1ea0].chunks_exact(4) {
+        for i in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
             println!("{:?}", i);
         }
     }
@@ -100,13 +107,13 @@ impl GPU {
             width: 32,
             height: 32,
             tile_set: self.tiles(),
-            map: &self.vram[0x1800..0x1C00],
+            map: &self.vram[MAP_DATA_RANGE],
         }
     }
 
     pub fn tiles(&self) -> Vec<Tile> {
-        self.vram[..0x1800]
-            .chunks_exact(16) // Tile
+        self.vram[TILE_DATA_RANGE]
+            .chunks_exact(TILE_SIZE) // Tile
             .map(|tile| Tile::construct(self.bg_palette, tile))
             .collect()
     }
@@ -142,13 +149,13 @@ impl GPU {
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
         let mut pixels: PixelData = [0; 256 * 256];
         let start = time::Instant::now();
-        for i in 0x1800..0x1C00 {
+        for i in MAP_DATA_RANGE {
             self.render_tile(&mut pixels, i);
         }
 
         // TODO
         // Need to emulate scanline, and priority rendering
-        for sprite_attributes in self.vram[0x1e00..0x1ea0].chunks_exact(4) {
+        for sprite_attributes in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
             if let [flags, pattern, x, y] = sprite_attributes {
                 let idx = *pattern as usize * 16;
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
