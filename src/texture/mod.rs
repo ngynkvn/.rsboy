@@ -1,3 +1,4 @@
+use crate::gpu::PixelData;
 use std::ops::Range;
 
 const TILE_WIDTH: usize = 8;
@@ -34,6 +35,22 @@ impl Tile {
             }
         }
         Self { texture }
+    }
+
+    pub fn write(palette: u8, pixels: &mut PixelData, location: (usize, usize), tile_data: &[u8]) {
+        let (mapx, mapy) = location;
+        for (y, d) in tile_data.chunks_exact(2).enumerate() {
+            //Each row in tile is pair of 2 bytes.
+            for x in 0..8 {
+                let lo = d[0] >> (7 - x) & 1;
+                let hi = d[1] >> (7 - x) & 1;
+                let index = (hi << 1) | lo;
+                let color = (palette >> (index << 1)) & 0b11;
+                let c = pixel(color);
+                let location = mapx * 8 + x + mapy * 8 * 256 + y * 256;
+                pixels[location] = c;
+            }
+        }
     }
 
     // Size of a tile

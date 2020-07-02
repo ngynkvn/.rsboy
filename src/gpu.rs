@@ -39,7 +39,7 @@ pub struct GPU {
 const END_HBLANK: u8 = 143;
 const END_VBLANK: u8 = 153;
 
-type PixelData = [u16; 256 * 256];
+pub type PixelData = [u16; 256 * 256];
 
 struct SpriteAttribute {
     above: bool,
@@ -120,18 +120,24 @@ impl GPU {
 
     fn render_tile(&self, pixels: &mut PixelData, vram_index: usize) {
         let tile = self.vram[vram_index] as usize * 16;
-        let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(tile)]);
         let mapx = (vram_index - 0x1800) % 32;
         let mapy = (vram_index - 0x1800) / 32;
-        for row in 0..8 {
-            for col in 0..8 {
-                let t = col + row * 8;
+        Tile::write(
+            self.bg_palette,
+            pixels,
+            (mapx, mapy),
+            &self.vram[Tile::range(tile)],
+        );
+        // let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(tile)]);
+        // for row in 0..8 {
+        //     for col in 0..8 {
+        //         let t = col + row * 8;
 
-                //Find offset from map x and y
-                let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
-                pixels[location] = tile.texture[t];
-            }
-        }
+        //         //Find offset from map x and y
+        //         let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
+        //         pixels[location] = tile.texture[t];
+        //     }
+        // }
     }
 
     fn render_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
