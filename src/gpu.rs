@@ -127,6 +127,18 @@ impl GPU {
         }
     }
 
+    fn render_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
+        for row in 0..8 {
+            for col in 0..8 {
+                let t = col + row * 8;
+
+                //Find offset from map x and y
+                let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
+                pixels[location] = tile.texture[t];
+            }
+        }
+    }
+
     pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
         let mut pixels: PixelData = [0; 256 * 256];
         let start = time::Instant::now();
@@ -136,21 +148,18 @@ impl GPU {
 
         // TODO
         // Need to emulate scanline, and priority rendering
-        // for sprite_attributes in self.vram[..0x1000].chunks_exact(4) {
-        //     if let [x, y, pattern, flags] = sprite_attributes {
-        //         let idx = *pattern as usize * 16;
-        //         let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
-        //         let screen_x = x.wrapping_sub(8);
-        //         let screen_y = y.wrapping_sub(16);
-        //         self.render_tile(
-        //             &mut pixels,
-        //             screen_x as usize,
-        //             screen_y as usize,
-        //             tile.texture(),
-        //         );
-        //     }
-        // }
+        for sprite_attributes in self.vram[0x1e00..0x1ea0].chunks_exact(4) {
+            if let [flags, pattern, x, y] = sprite_attributes {
+                let idx = *pattern as usize * 16;
+                let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
+                let screen_x = *x;
+                let screen_y = *y;
+                self.render_texture(&mut pixels, screen_x as usize, screen_y as usize, tile);
+            }
+        }
 
+        // Convert u16 array to u8 for sending to sdl2
+        // TODO: Write test for this transformation
         let pixels = unsafe { std::mem::transmute::<PixelData, [u8; 256 * 256 * 2]>(pixels) };
         // println!(
         //     "{:?}",
