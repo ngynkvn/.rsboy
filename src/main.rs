@@ -39,20 +39,20 @@ const ZERO: Duration = Duration::from_secs(0);
 
 fn setup_logger() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
-     .format(|out, message, record| {
-        out.finish(format_args!(
-            "[{}][{}:{}] {}",
-            record.level(),
-            record.file().unwrap(),
-            record.line().unwrap(),
-            message
-        ))
-    })
-    // Output to stdout, files, and other Dispatch configurations
-    .chain(std::io::stdout())
-    .chain(fern::log_file("output.log")?)
-    // Apply globally
-    .apply()?;
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "[{}][{}:{}] {}",
+                record.level(),
+                record.file().unwrap(),
+                record.line().unwrap(),
+                message
+            ))
+        })
+        // Output to stdout, files, and other Dispatch configurations
+        .chain(std::io::stdout())
+        .chain(fern::log_file("output.log")?)
+        // Apply globally
+        .apply()?;
     Ok(())
 }
 
