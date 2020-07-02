@@ -12,9 +12,9 @@ impl Emu {
         self.cpu.cycle(&mut self.bus)
     }
 
-    pub fn new(skip_bios: bool, rom: Vec<u8>) -> Emu {
-        let cpu = CPU::new(skip_bios);
-        let bus = Bus::new(skip_bios, rom);
+    pub fn new(rom: Vec<u8>) -> Emu {
+        let cpu = CPU::new();
+        let bus = Bus::new(rom);
         Emu { cpu, bus }
     }
 }

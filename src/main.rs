@@ -12,7 +12,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 //File IO
-use env_logger::Env;
 use log::info;
 use std::env;
 use std::fs::File;
@@ -38,10 +37,31 @@ const ZERO: Duration = Duration::from_secs(0);
 // 	sdl_main().unwrap();
 // }
 
+fn setup_logger() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+     .format(|out, message, record| {
+        out.finish(format_args!(
+            "[{}][{}:{}] {}",
+            record.level(),
+            record.file().unwrap(),
+            record.line().unwrap(),
+            message
+        ))
+    })
+    // Output to stdout, files, and other Dispatch configurations
+    .chain(std::io::stdout())
+    .chain(fern::log_file("output.log")?)
+    // Apply globally
+    .apply()?;
+    Ok(())
+}
+
 // #[cfg(not(sdl))]
 fn main() {
     println!("Just cpu");
     // just_cpu();
+    setup_logger().unwrap();
+    info!("Logging setup");
     sdl_main().unwrap();
     // decompiler();
 }
@@ -58,8 +78,6 @@ fn decompiler() -> std::io::Result<()> {
 
 fn init() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
-    let skip_bios = args.len() >= 3;
-    println!("{:?}", args);
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
         panic!();
@@ -69,7 +87,7 @@ fn init() -> Result<Emu, std::io::Error> {
     let mut file = File::open(args[1].to_string())?;
     let mut rom = Vec::new();
     file.read_to_end(&mut rom)?;
-    let emu = Emu::new(false, rom);
+    let emu = Emu::new(rom);
     Ok(emu)
 }
 
@@ -81,7 +99,6 @@ fn just_cpu() {
 }
 
 fn sdl_main() -> std::io::Result<()> {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
     let mut emu = init().unwrap();
     let context = sdl2::init().unwrap();
     let window = create_window(&context);

@@ -103,13 +103,7 @@ macro_rules! SRL {
 }
 
 impl RegisterState {
-    pub fn new(skip_bios: bool) -> Self {
-        if skip_bios {
-            return Self {
-                pc: 0x100,
-                ..Default::default()
-            };
-        }
+    pub fn new() -> Self {
         Self {
             ..Default::default()
         }

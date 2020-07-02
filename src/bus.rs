@@ -41,7 +41,7 @@ fn load_bootrom() -> Vec<u8> {
 }
 
 impl Bus {
-    pub fn new(skip_bios: bool, rom_vec: Vec<u8>) -> Self {
+    pub fn new(rom_vec: Vec<u8>) -> Self {
         let mut memory = [0; 0x10000];
         let mut bootrom = [0; 0x100];
         let bootrom_vec = load_bootrom();
@@ -52,7 +52,7 @@ impl Bus {
             memory,
             bootrom,
             interrupts_enabled: false,
-            in_bios: skip_bios as u8,
+            in_bios: 0,
             int_enabled: 0,
             int_flags: 0,
             clock: 0,

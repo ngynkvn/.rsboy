@@ -45,10 +45,10 @@ macro_rules! source_error {
 }
 
 impl CPU {
-    pub fn new(skip_bios: bool) -> Self {
+    pub fn new() -> Self {
         // TODO
         Self {
-            registers: RegisterState::new(skip_bios),
+            registers: RegisterState::new(),
             debug: false,
             clock: 0,
             running: true,
@@ -550,22 +550,22 @@ impl CPU {
     }
 
     fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
-        // if curr_address == 0x0825 {
-        // if curr_address == 0x0d601 {
-        //     self.debug = true;
-        // }
-        // if curr_address == 0x0b92 || self.debug {
-        //     println!("{:04x}: \n{}", curr_address, self.registers);
-        // }
+        if curr_address == 0x0825 {
+            // if curr_address == 0x0d601 {
+            self.debug = true;
+        }
+        if self.debug {
+            println!("{:04x}: \n{}", curr_address, self.registers);
+        }
         // match curr_address {
         //     0x0430..=0x0473 => {
         //         println!("{:04x}: \n{}", curr_address, self.registers);
         //     }
         //     _ => {}
         // }
-        // if curr_address == 0x0b92 {
-        //     panic!()
-        // }
+        if self.debug && curr_address == 0x074a {
+            panic!()
+        }
         self.trace[self.trace_ptr] = curr_address;
         self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
         let r = &self.registers;
@@ -578,13 +578,13 @@ impl CPU {
                     *x += 1;
                 })
                 .or_insert_with(|| {
-                    // println!(
-                    //     "First encounter: 0x{:04x?} {:?}",
-                    //     // "First encounter: 0x{:04x?}",
-                    //     curr_address,
-                    //     INSTR_TABLE[bus.read(curr_address) as usize],
-                    // );
-                    // println!("HERE: \n{}", r);
+                    println!(
+                        "First encounter: 0x{:04x?} {:?}",
+                        // "First encounter: 0x{:04x?}",
+                        curr_address,
+                        INSTR_TABLE[bus.read(curr_address) as usize],
+                    );
+                    println!("HERE: \n{}", r);
                     0
                 });
         }
