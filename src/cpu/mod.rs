@@ -3,6 +3,7 @@ use crate::bus::Memory;
 use crate::instructions::Register::*;
 use crate::instructions::*;
 use crate::registers::RegisterState;
+use log::info;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
@@ -528,6 +529,9 @@ impl CPU {
                 x,
                 self.registers.pc - 1
             )),
+            Instr::UNIMPLEMENTED => unimplemented!(),
+            Instr::SBC(_) => unimplemented!(),
+            Instr::RRCA => unimplemented!(),
         }
     }
 
@@ -578,7 +582,7 @@ impl CPU {
                     *x += 1;
                 })
                 .or_insert_with(|| {
-                    println!(
+                    info!(
                         "First encounter: 0x{:04x?} {:?}",
                         // "First encounter: 0x{:04x?}",
                         curr_address,
