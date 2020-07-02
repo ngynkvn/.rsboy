@@ -402,7 +402,7 @@ mod tests {
     use super::*;
     #[test]
     fn it_initalizes() {
-        let reg = RegisterState::new(false);
+        let reg = RegisterState::new();
     }
 
     #[test]

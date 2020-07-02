@@ -523,15 +523,10 @@ impl CPU {
                 self.registers.set_hf(half_carry);
                 Ok(())
             }
-            x => Err(format!(
-                "{} read_instruction: {:?} {:04x}",
-                source_error!(),
-                x,
-                self.registers.pc - 1
-            )),
             Instr::UNIMPLEMENTED => unimplemented!(),
             Instr::SBC(_) => unimplemented!(),
             Instr::RRCA => unimplemented!(),
+            _ => unreachable!(),
         }
     }
 
@@ -584,7 +579,6 @@ impl CPU {
                 .or_insert_with(|| {
                     info!(
                         "First encounter: 0x{:04x?} {:?}",
-                        // "First encounter: 0x{:04x?}",
                         curr_address,
                         INSTR_TABLE[bus.read(curr_address) as usize],
                     );
@@ -807,10 +801,10 @@ mod tests {
 
     #[test]
     fn ld() -> Result<(), String> {
-        let mut cpu = CPU::new(false);
+        let mut cpu = CPU::new();
         cpu.registers.a = 5;
         cpu.registers.b = 8;
-        let mut bus = Bus::new(false, vec![]);
+        let mut bus = Bus::new(vec![]);
         assert_eq!(cpu.registers.a, 0x5);
         cpu.perform_instruction(Instr::LD(Register(A), Register(B)), &mut bus)?;
         assert_eq!(cpu.registers.a, 0x8);
@@ -819,12 +813,12 @@ mod tests {
 
     #[test]
     fn ldbc() -> Result<(), String> {
-        let mut cpu = CPU::new(false);
+        let mut cpu = CPU::new();
         cpu.registers.b = 0x21;
         cpu.registers.c = 0x21;
         assert_eq!(cpu.registers.bc(), 0x2121);
-        let mut bus = Bus::new(false, vec![]); // LD BC, d16
-                                               // TODO, make Bus a trait that I can inherit from so I can mock it.
+        let mut bus = Bus::new(vec![]); // LD BC, d16
+                                        // TODO, make Bus a trait that I can inherit from so I can mock it.
         bus.bootrom[0] = 0x01;
         bus.bootrom[1] = 0x22;
         bus.bootrom[2] = 0x11;
