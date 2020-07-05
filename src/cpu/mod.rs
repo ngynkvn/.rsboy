@@ -549,27 +549,6 @@ impl CPU {
     }
 
     fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
-        if curr_address == 0x0825 {
-            // if curr_address == 0x0d601 {
-            self.debug = true;
-        }
-        if self.debug {
-            println!("{:04x}: \n{}", curr_address, self.registers);
-        }
-        // match curr_address {
-        //     0x0430..=0x0473 => {
-        //         println!("{:04x}: \n{}", curr_address, self.registers);
-        //     }
-        //     _ => {}
-        // }
-        if self.debug && curr_address == 0x074a {
-            panic!()
-        }
-        self.trace[self.trace_ptr] = curr_address;
-        self.trace_ptr = (self.trace_ptr + 1) % HISTORY_SIZE;
-        let r = &self.registers;
-        let waszero = self.registers.b == 0;
-        let ff = self.registers.b == 0xff;
         if bus.in_bios != 0 {
             self.encounter
                 .entry(self.registers.pc)
@@ -582,7 +561,6 @@ impl CPU {
                         curr_address,
                         INSTR_TABLE[bus.read(curr_address) as usize],
                     );
-                    println!("HERE: \n{}", r);
                     0
                 });
         }

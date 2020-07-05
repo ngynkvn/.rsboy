@@ -1,6 +1,7 @@
 use crate::gpu::GPU;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
+use log::warn;
 use std::fs::File;
 use std::io::Read;
 
@@ -181,7 +182,7 @@ impl Memory for Bus {
             }
             0xff02 => {
                 if value == 0x81 {
-                    print!("{}", char::from(self.memory[0xff01]));
+                    warn!("{}", char::from(self.memory[0xff01]));
                 }
                 self.memory[address as usize] = value;
             }

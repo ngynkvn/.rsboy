@@ -58,10 +58,10 @@ fn setup_logger() -> Result<(), fern::InitError> {
 
 // #[cfg(not(sdl))]
 fn main() {
-    println!("Just cpu");
     // just_cpu();
+    info!("Setup logging");
     setup_logger().unwrap();
-    info!("Logging setup");
+    info!("Running SDL Main");
     sdl_main().unwrap();
     // decompiler();
 }
