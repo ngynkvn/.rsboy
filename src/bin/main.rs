@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
 //SDL
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -17,25 +14,12 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
-mod bus;
-mod cpu;
-mod disassembly;
-mod emu;
-mod gpu;
-mod instructions;
-mod registers;
-mod texture;
-use crate::emu::Emu;
-use crate::texture::{Map, Tile};
+use rust_emu::emu::Emu;
+use rust_emu::texture::{Map, Tile};
+use rust_emu::*;
 
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
 const ZERO: Duration = Duration::from_secs(0);
-
-// #[cfg(sdl)]
-// fn main() {
-// 	println!("Started sdl context");
-// 	sdl_main().unwrap();
-// }
 
 fn setup_logger() -> Result<(), fern::InitError> {
     fern::Dispatch::new()

@@ -7,27 +7,14 @@ use log::info;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-const HISTORY_SIZE: usize = 20;
-
 pub struct CPU {
     pub registers: RegisterState,
-    debug: bool,
     pub running: bool,
     pub clock: usize,
     encounter: HashMap<u16, usize>,
-    trace: [u16; HISTORY_SIZE],
-    trace_ptr: usize,
 }
 
 type CpuResult<T> = Result<T, String>;
-
-fn propagate_error(f: String) -> CpuResult<()> {
-    Err(f)
-}
-
-fn prefix(prefix: String) -> impl FnOnce(String) -> Result<(), String> {
-    move |e| Err(format!("{:?}: {:?}", prefix, e))
-}
 
 fn source_error<T>(e: String) -> Result<T, String> {
     Err(format!("{}:{}:{}: {:?}", file!(), line!(), column!(), e))
@@ -50,12 +37,9 @@ impl CPU {
         // TODO
         Self {
             registers: RegisterState::new(),
-            debug: false,
             clock: 0,
             running: true,
             encounter: HashMap::new(),
-            trace: [0; HISTORY_SIZE],
-            trace_ptr: 0,
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
@@ -180,6 +164,8 @@ impl CPU {
         self.registers.sp = self.registers.sp.wrapping_add(1);
         Ok(u16::from_le_bytes([lo, hi]))
     }
+
+    #[allow(dead_code)]
     fn peek_stack(&mut self, bus: &mut Bus) -> u16 {
         let lo = bus.memory[self.registers.sp as usize];
         let hi = bus.memory[(self.registers.sp + 1) as usize];
@@ -194,9 +180,6 @@ impl CPU {
         self.registers = self.registers.inc(r);
     }
 
-    fn inc_pc(&mut self) {
-        self.registers.pc += 1;
-    }
     // if (!n_flag) {  // after an addition, adjust if (half-)carry occurred or if result is out of bounds
     //   if (c_flag || a > 0x99) { a += 0x60; c_flag = 1; }
     //   if (h_flag || (a & 0x0f) > 0x09) { a += 0x6; }
@@ -247,9 +230,10 @@ impl CPU {
             }
             Instr::LDSP => {
                 let offset = self.next_u8(bus) as i8 as u16;
-                let result = self.registers.sp.wrapping_add(offset);
+                let result = self.registers.sp.wrapping_add(offset); // todo ?
                 let half_carry = (self.registers.sp & 0x0F).wrapping_add(offset & 0x0F) > 0x0F;
                 let carry = (self.registers.sp & 0xFF).wrapping_add(offset & 0xFF) > 0xFF;
+                self.write_into(Location::Register(HL), result, bus)?;
                 self.registers.set_zf(false);
                 self.registers.set_nf(false);
                 self.registers.set_hf(half_carry);
@@ -543,8 +527,6 @@ impl CPU {
         self.debug_area(bus, curr_address);
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
-        let Instruction(size, _) = INSTRUCTION_TABLE[curr_byte as usize]; //Todo refactor this ugly thing
-        let instr_len = size as u16 + 1;
         self.perform_instruction(*instruction, bus)
     }
 
@@ -574,10 +556,12 @@ impl CPU {
         }
     }
 
+    #[allow(dead_code)]
     fn jump(&mut self, address: u16) -> CpuResult<()> {
         self.registers = self.registers.jump(address)?;
         Ok(())
     }
+
     fn handle_jump(&mut self, address: u16, jt: JumpType, bus: &mut Bus) -> CpuResult<()> {
         match jt {
             JumpType::If(flag) => {
@@ -681,12 +665,12 @@ impl CPU {
             0x20..=0x27 => {
                 // SLA
                 let target = CPU::cb_location(opcode);
-                let value = self.read_from(target, bus);
-                let result = self.read_from(target, bus) << 1;
+                let value = self.read_from(target, bus); // todo ?
+                let result = value << 1;
                 self.registers.set_zf(result == 0);
                 self.registers.set_nf(false);
                 self.registers.set_hf(false);
-                self.registers.set_cf(result & 0x100 != 0);
+                self.registers.set_cf(value & 0x100 != 0);
                 self.write_into(target, result & 0xFF, bus)?;
             }
             0x28..=0x2F => {

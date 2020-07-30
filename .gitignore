@@ -2,3 +2,4 @@
 **/*.rs.bk
 roms
 SDL2*
+.cache
