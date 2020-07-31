@@ -13,10 +13,6 @@ pub struct CPU {
 
 type CpuResult<T> = Result<T, String>;
 
-fn source_error<T>(e: String) -> Result<T, String> {
-    Err(format!("{}:{}:{}: {:?}", file!(), line!(), column!(), e))
-}
-
 #[inline]
 fn swapped_nibbles(byte: u8) -> u8 {
     let [hi, lo] = [byte >> 4, byte & 0xF];
@@ -181,16 +177,6 @@ impl CPU {
         self.registers = self.registers.inc(r);
     }
 
-    // if (!n_flag) {  // after an addition, adjust if (half-)carry occurred or if result is out of bounds
-    //   if (c_flag || a > 0x99) { a += 0x60; c_flag = 1; }
-    //   if (h_flag || (a & 0x0f) > 0x09) { a += 0x6; }
-    // } else {  // after a subtraction, only adjust if (half-)carry occurred
-    //   if (c_flag) { a -= 0x60; }
-    //   if (h_flag) { a -= 0x6; }
-    // }
-    // // these flags are always updated
-    // z_flag = (a == 0); // the usual z flag
-    // h_flag = 0; // h flag is always cleared
     fn bcd_adjust(&mut self, value: u8) -> u8 {
         let mut value = value;
         if self.registers.flg_nn() {
@@ -202,10 +188,10 @@ impl CPU {
                 value = value.wrapping_add(0x6);
             }
         } else {
-            if self.registers.flg_c() || value > 0x99 {
+            if self.registers.flg_c() {
                 value = value.wrapping_sub(0x60);
             }
-            if self.registers.flg_h() || (value & 0x0F) > 0x09 {
+            if self.registers.flg_h() {
                 value = value.wrapping_sub(0x6);
             }
         }
@@ -216,15 +202,19 @@ impl CPU {
 
     fn perform_instruction(&mut self, instruction: Instr, bus: &mut Bus) -> CpuResult<()> {
         match instruction {
-            Instr::LD(into, from) => self.load(into, from, bus).or_else(source_error),
+            Instr::LD(into, from) => self
+                .load(into, from, bus)
+                .or_else(|x| return Err(format!("{:#}\n{}", self.registers, x))),
             Instr::LDD(into, from) => {
-                self.load(into, from, bus).or_else(source_error)?;
+                self.load(into, from, bus)
+                    .or_else(|x| return Err(format!("{:#}\n{}", self.registers, x)))?;
                 self.dec(Register::HL);
                 self.tick(bus);
                 Ok(())
             }
             Instr::LDI(into, from) => {
-                self.load(into, from, bus).or_else(source_error)?;
+                self.load(into, from, bus)
+                    .or_else(|x| return Err(format!("{:#}\n{}", self.registers, x)))?;
                 self.inc(Register::HL);
                 self.tick(bus);
                 Ok(())
@@ -732,9 +722,6 @@ impl CPU {
         if bus.rom_start_signal {
             bus.rom_start_signal = false;
             self.load_start_values(bus);
-        }
-        if self.registers.pc >= 0xc31a && self.registers.pc < 0xc32a {
-            self.dump_state();
         }
         self.read_instruction(bus)?;
         Ok(self.clock - prev)
