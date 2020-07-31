@@ -3,15 +3,12 @@ use crate::bus::Memory;
 use crate::instructions::Register::*;
 use crate::instructions::*;
 use crate::registers::RegisterState;
-use log::info;
-use std::collections::HashMap;
 use std::convert::TryInto;
 
 pub struct CPU {
     pub registers: RegisterState,
     pub running: bool,
     pub clock: usize,
-    encounter: HashMap<u16, usize>,
 }
 
 type CpuResult<T> = Result<T, String>;
@@ -39,7 +36,6 @@ impl CPU {
             registers: RegisterState::new(),
             clock: 0,
             running: true,
-            encounter: HashMap::new(),
         }
     }
     fn next_u8(&mut self, bus: &mut Bus) -> u8 {
@@ -47,6 +43,10 @@ impl CPU {
         let val = bus.read(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         val
+    }
+
+    fn dump_state(&mut self) {
+        println!("{:#}", self.registers);
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
@@ -84,6 +84,7 @@ impl CPU {
                 self.read_io(next as u16, bus).into()
             }
             Location::MemOffsetRegister(r) => self.read_io(self.registers.fetch(r), bus).into(),
+            Location::Literal(byte) => byte,
         }
     }
 
@@ -523,30 +524,11 @@ impl CPU {
                 return self.perform_instruction(Instr::RST(0x40), bus);
             }
         }
-        let curr_address = self.registers.pc;
-        self.debug_area(bus, curr_address);
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
         self.perform_instruction(*instruction, bus)
     }
 
-    fn debug_area(&mut self, bus: &mut Bus, curr_address: u16) {
-        if bus.in_bios != 0 {
-            self.encounter
-                .entry(self.registers.pc)
-                .and_modify(|x| {
-                    *x += 1;
-                })
-                .or_insert_with(|| {
-                    info!(
-                        "First encounter: 0x{:04x?} {:?}",
-                        curr_address,
-                        INSTR_TABLE[bus.read(curr_address) as usize],
-                    );
-                    0
-                });
-        }
-    }
     fn check_flag(&mut self, flag: Flag) -> bool {
         match flag {
             Flag::FlagC => self.registers.flg_c(),
@@ -751,51 +733,13 @@ impl CPU {
             bus.rom_start_signal = false;
             self.load_start_values(bus);
         }
+        if self.registers.pc >= 0xc31a && self.registers.pc < 0xc32a {
+            self.dump_state();
+        }
         self.read_instruction(bus)?;
         Ok(self.clock - prev)
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::instructions::Location::*;
-
-    #[test]
-    fn ld() -> Result<(), String> {
-        let mut cpu = CPU::new();
-        cpu.registers.a = 5;
-        cpu.registers.b = 8;
-        let mut bus = Bus::new(vec![]);
-        assert_eq!(cpu.registers.a, 0x5);
-        cpu.perform_instruction(Instr::LD(Register(A), Register(B)), &mut bus)?;
-        assert_eq!(cpu.registers.a, 0x8);
-        Ok(())
-    }
-
-    #[test]
-    fn ldbc() -> Result<(), String> {
-        let mut cpu = CPU::new();
-        cpu.registers.b = 0x21;
-        cpu.registers.c = 0x21;
-        assert_eq!(cpu.registers.bc(), 0x2121);
-        let mut bus = Bus::new(vec![]); // LD BC, d16
-                                        // TODO, make Bus a trait that I can inherit from so I can mock it.
-        bus.bootrom[0] = 0x01;
-        bus.bootrom[1] = 0x22;
-        bus.bootrom[2] = 0x11;
-
-        cpu.read_instruction(&mut bus)?;
-        assert_eq!(cpu.registers.bc(), 0x1122);
-        Ok(())
-    }
-
-    // #[test]
-    // fn test_ld16() {
-    //     let mut cpu = CPU::new(false);
-    //     cpu.registers.sp = 0xFFFF;
-    //     cpu.registers.b = 0x21;
-    //     cpu.registers.c = 0x21;
-    //     assert_eq!(cpu.registers.bc(), 0x2121);
-    // }
-}
+mod test;

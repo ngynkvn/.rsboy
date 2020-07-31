@@ -214,7 +214,7 @@ impl RegisterState {
                 Ok(Self { b, c, ..(*self) })
             }
             AF => {
-                let [a, f] = value.to_be_bytes();
+                let [a, f] = (value & 0b1111_1111_1111_0000).to_be_bytes();
                 Ok(Self { a, f, ..(*self) })
             }
             _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),

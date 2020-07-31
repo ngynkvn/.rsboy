@@ -39,6 +39,7 @@ pub enum Location {
     MemOffsetImm,
     MemoryImmediate,
     MemOffsetRegister(Register),
+    Literal(u16),
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
