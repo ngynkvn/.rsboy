@@ -42,7 +42,8 @@ impl CPU {
     }
 
     fn dump_state(&mut self) {
-        println!("{:#}", self.registers);
+        use log::info;
+        info!("{:#}", self.registers);
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
@@ -441,6 +442,18 @@ impl CPU {
                 self.registers.set_cf(carry);
                 Ok(())
             }
+            Instr::RRCA => {
+                let carry = self.registers.a & 1 != 0;
+                self.registers.a >>= 1;
+                if carry {
+                    self.registers.a |= 0b1000_0000;
+                }
+                self.registers.set_zf(false);
+                self.registers.set_hf(false);
+                self.registers.set_nf(false);
+                self.registers.set_cf(carry);
+                Ok(())
+            }
             Instr::RLA => {
                 let overflow = self.registers.a & 0x80 != 0;
                 let result = self.registers.a << 1;
@@ -499,8 +512,23 @@ impl CPU {
                 Ok(())
             }
             Instr::UNIMPLEMENTED => unimplemented!(),
-            Instr::SBC(_) => unimplemented!(),
-            Instr::RRCA => unimplemented!(),
+            Instr::SBC(l) => {
+                let a = self.registers.a;
+                let value: u8 = self.read_location(l, bus).try_into().unwrap();
+                let value = value.wrapping_add(self.registers.c as u8);
+                let result = a.wrapping_sub(value);
+                self.registers.a = result;
+                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_nf(true);
+                self.registers.set_hf(
+                    // Mooneye
+                    (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
+                );
+                self.registers
+                    .set_cf((self.registers.a as u16) < (value as u16));
+
+                Ok(())
+            }
             _ => unreachable!(),
         }
     }
