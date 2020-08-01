@@ -42,8 +42,7 @@ impl CPU {
     }
 
     fn dump_state(&mut self) {
-        use log::info;
-        info!("{:#}", self.registers);
+        println!("{:#}", self.registers);
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.

@@ -19,7 +19,6 @@ use rust_emu::texture::{Map, Tile};
 use rust_emu::*;
 
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
-const ZERO: Duration = Duration::from_secs(0);
 
 fn setup_logger() -> Result<(), fern::InitError> {
     fern::Dispatch::new()
@@ -135,7 +134,8 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
             Err(s) => panic!(s),
         }
     }
-    emu.bus.gpu.render_map(texture);
+    let data = emu.bus.gpu.render();
+    texture.update(None, &data, 256 * 2).unwrap();
     let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(

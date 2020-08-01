@@ -40,6 +40,7 @@ const END_HBLANK: u8 = 143;
 const END_VBLANK: u8 = 153;
 
 pub type PixelData = [u16; 256 * 256];
+pub type PixelMap = [u8; 256 * 256 * 2];
 
 struct SpriteAttribute {
     above: bool,
@@ -118,7 +119,7 @@ impl GPU {
             .collect()
     }
 
-    fn render_tile(&self, pixels: &mut PixelData, vram_index: usize) {
+    fn blit_tile(&self, pixels: &mut PixelData, vram_index: usize) {
         let tile = self.vram[vram_index] as usize * 16;
         let mapx = (vram_index - 0x1800) % 32;
         let mapy = (vram_index - 0x1800) / 32;
@@ -140,7 +141,7 @@ impl GPU {
         // }
     }
 
-    fn render_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
+    fn blit_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
         for row in 0..8 {
             for col in 0..8 {
                 let t = col + row * 8;
@@ -152,11 +153,11 @@ impl GPU {
         }
     }
 
-    pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
+    pub fn render(&self) -> PixelMap {
         let mut pixels: PixelData = [0; 256 * 256];
         let start = time::Instant::now();
         for i in MAP_DATA_RANGE {
-            self.render_tile(&mut pixels, i);
+            self.blit_tile(&mut pixels, i);
         }
 
         // TODO
@@ -167,18 +168,11 @@ impl GPU {
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
                 let screen_x = *x;
                 let screen_y = *y;
-                self.render_texture(&mut pixels, screen_x as usize, screen_y as usize, tile);
+                self.blit_texture(&mut pixels, screen_x as usize, screen_y as usize, tile);
             }
         }
-
-        // Convert u16 array to u8 for sending to sdl2
-        // TODO: Write test for this transformation
-        let pixels = unsafe { std::mem::transmute::<PixelData, [u8; 256 * 256 * 2]>(pixels) };
-        // println!(
-        //     "{:?}",
-        //     time::Instant::now().saturating_duration_since(start)
-        // );
-        texture.update(None, &pixels, 256 * 2).unwrap();
+        let pixels = unsafe { std::mem::transmute::<PixelData, PixelMap>(pixels) };
+        pixels
     }
 
     // Returns true if interrupt is requested
