@@ -5,6 +5,11 @@ use crate::instructions::*;
 use crate::registers::RegisterState;
 use std::convert::TryInto;
 
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
+
+// Global emu struct.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct CPU {
     pub registers: RegisterState,
     pub running: bool,

@@ -20,6 +20,11 @@ pub enum Select {
     Directions,
 }
 
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
+
+// Global emu struct.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Bus {
     pub memory: [u8; 0x10000],
     pub bootrom: [u8; 0x100],

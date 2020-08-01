@@ -2,6 +2,8 @@ use crate::bus::Bus;
 use crate::cpu::CPU;
 
 extern crate wasm_bindgen;
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
 
 // Global emu struct.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

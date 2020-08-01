@@ -3,6 +3,11 @@ use crate::instructions::Register::*;
 use std::convert::TryInto;
 use std::fmt;
 
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
+
+// Global emu struct.
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Default, Debug)]
 pub struct RegisterState {
     pub a: u8,
