@@ -89,10 +89,6 @@ impl CPU {
         }
     }
 
-    fn read_location(&mut self, location: Location, bus: &mut Bus) -> u16 {
-        self.read_from(location, bus)
-    }
-
     fn write_into(&mut self, into: Location, from_value: u16, bus: &mut Bus) -> CpuResult<()> {
         let get_u8 = || -> Result<u8, String> {
             from_value
@@ -146,7 +142,7 @@ impl CPU {
     }
 
     fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
-        let from_value = self.read_location(from, bus);
+        let from_value = self.read_from(from, bus);
         self.write_into(into, from_value, bus)
     }
 
@@ -247,7 +243,7 @@ impl CPU {
                 Ok(())
             }
             Instr::CP(location) => {
-                let value = self.read_location(location, bus).try_into().unwrap();
+                let value = self.read_from(location, bus).try_into().unwrap();
                 self.registers.set_zf(self.registers.a == value);
                 self.registers.set_nf(true);
                 //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu.rs#L156
@@ -257,7 +253,7 @@ impl CPU {
                 Ok(())
             }
             Instr::ADD(location) => {
-                let value = self.read_location(location, bus).try_into().unwrap();
+                let value = self.read_from(location, bus).try_into().unwrap();
                 let (result, carry) = self.registers.a.overflowing_add(value);
                 //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
                 let half_carry = (self.registers.a & 0x0f)
@@ -271,7 +267,7 @@ impl CPU {
                 Ok(())
             }
             Instr::SUB(location) => {
-                let value = self.read_location(location, bus).try_into().unwrap();
+                let value = self.read_from(location, bus).try_into().unwrap();
                 self.registers.a = self.registers.a.wrapping_sub(value);
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(true);
@@ -284,7 +280,7 @@ impl CPU {
                 Ok(())
             }
             Instr::ADC(location) => {
-                let value = self.read_location(location, bus).try_into().unwrap();
+                let value = self.read_from(location, bus).try_into().unwrap();
                 let carry = self.registers.flg_c() as u8;
                 let result = self.registers.a.wrapping_add(value).wrapping_add(carry);
                 self.registers.a = result;
@@ -299,7 +295,7 @@ impl CPU {
             }
             Instr::ADDHL(location) => {
                 let old = self.registers.hl();
-                let value = self.read_location(location, bus);
+                let value = self.read_from(location, bus);
                 let (value, overflow) = old.overflowing_add(value);
                 let [h, l] = value.to_be_bytes();
                 self.registers.h = h;
@@ -311,7 +307,7 @@ impl CPU {
                 Ok(())
             }
             Instr::AND(location) => {
-                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                let value: u8 = self.read_from(location, bus).try_into().unwrap();
                 self.registers.a &= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
@@ -320,7 +316,7 @@ impl CPU {
                 Ok(())
             }
             Instr::XOR(location) => {
-                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                let value: u8 = self.read_from(location, bus).try_into().unwrap();
                 self.registers.a ^= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
@@ -329,7 +325,7 @@ impl CPU {
                 Ok(())
             }
             Instr::OR(location) => {
-                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                let value: u8 = self.read_from(location, bus).try_into().unwrap();
                 self.registers.a |= value;
                 self.registers.set_zf(self.registers.a == 0);
                 self.registers.set_nf(false);
@@ -338,7 +334,7 @@ impl CPU {
                 Ok(())
             }
             Instr::NOT(location) => {
-                let value: u8 = self.read_location(location, bus).try_into().unwrap();
+                let value: u8 = self.read_from(location, bus).try_into().unwrap();
                 self.registers.a = !value;
                 self.registers.set_nf(true);
                 self.registers.set_hf(true);
@@ -367,6 +363,7 @@ impl CPU {
             }
             Instr::JR(jump_type) => {
                 let offset = self.next_u8(bus) as i8;
+
                 self.handle_jump(
                     self.registers.pc.wrapping_add(offset as u16),
                     jump_type,
@@ -507,7 +504,7 @@ impl CPU {
                 Ok(())
             }
             Instr::INC(l) => {
-                let n: u8 = self.read_location(l, bus).try_into().unwrap();
+                let n: u8 = self.read_from(l, bus).try_into().unwrap();
                 let half_carry = (n & 0x0f) == 0x0f;
                 let n = n.wrapping_add(1);
                 self.registers.set_zf(n == 0);
@@ -518,7 +515,7 @@ impl CPU {
             Instr::UNIMPLEMENTED => unimplemented!(),
             Instr::SBC(l) => {
                 let a = self.registers.a;
-                let value: u8 = self.read_location(l, bus).try_into().unwrap();
+                let value: u8 = self.read_from(l, bus).try_into().unwrap();
                 let value = value.wrapping_add(self.registers.c as u8);
                 let result = a.wrapping_sub(value);
                 self.registers.a = result;
@@ -570,15 +567,15 @@ impl CPU {
         match jt {
             JumpType::If(flag) => {
                 if self.check_flag(flag) {
-                    self.registers = self.registers.jump(address)?;
+                    self.registers.pc = address;
                 }
             }
             JumpType::Always => {
-                self.registers = self.registers.jump(address)?;
+                self.registers.pc = address;
             }
             JumpType::To(location) => {
-                let address = self.read_location(location, bus);
-                self.registers = self.registers.jump(address)?;
+                let addr = self.read_from(location, bus);
+                self.registers.pc = addr;
             }
         }
         Ok(())
