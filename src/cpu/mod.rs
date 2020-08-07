@@ -117,7 +117,7 @@ impl CPU {
                 self.set_byte(0xFF00 + next as u16, value, bus)?;
             }
             Location::MemOffsetRegister(r) => {
-                let offset = self.registers.fetch_u8(r)?;
+                let offset = self.registers.fetch_u8(r);
                 let value = get_u8()?;
                 self.set_byte(0xFF00 + offset as u16, value, bus)?;
             }
