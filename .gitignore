@@ -3,3 +3,8 @@
 roms
 SDL2*
 .cache
+www
+dist
+*gb
+*bin
+*log
