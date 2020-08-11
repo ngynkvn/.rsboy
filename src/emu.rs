@@ -1,5 +1,6 @@
 use crate::bus::Bus;
 use crate::cpu::CPU;
+use log::info;
 
 extern crate wasm_bindgen;
 #[allow(unused_imports)]
@@ -10,16 +11,27 @@ use wasm_bindgen::prelude::*;
 pub struct Emu {
     pub cpu: CPU,
     pub bus: Bus,
+    prev: CPU,
 }
 
 impl Emu {
     pub fn cycle(&mut self) -> Result<usize, String> {
-        self.cpu.cycle(&mut self.bus)
+        self.prev = self.cpu.clone();
+        let result = self.cpu.cycle(&mut self.bus);
+        if (self.prev.registers.pc != 0x0210
+            && (self.prev.registers.pc as i32 - self.cpu.registers.pc as i32).abs() > 10000)
+        {
+            info!("{}", self.prev.registers);
+            info!("{:#?}", self.cpu);
+            panic!();
+        }
+        result
     }
 
     pub fn new(rom: Vec<u8>) -> Emu {
         let cpu = CPU::new();
         let bus = Bus::new(rom);
-        Emu { cpu, bus }
+        let prev = cpu.clone();
+        Emu { cpu, bus, prev }
     }
 }

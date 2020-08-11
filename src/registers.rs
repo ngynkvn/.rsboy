@@ -8,7 +8,7 @@ use wasm_bindgen::prelude::*;
 
 // Global emu struct.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct RegisterState {
     pub a: u8,
     pub b: u8,
@@ -109,9 +109,7 @@ macro_rules! SRL {
 
 impl RegisterState {
     pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
+        Default::default()
     }
 
     pub fn set_cf(&mut self, b: bool) {

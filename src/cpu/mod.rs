@@ -10,6 +10,7 @@ use wasm_bindgen::prelude::*;
 
 // Global emu struct.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[derive(Debug,Clone)]
 pub struct CPU {
     pub registers: RegisterState,
     pub running: bool,
