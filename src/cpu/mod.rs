@@ -405,11 +405,21 @@ impl CPU {
                 self.set_byte(address, result, bus)?;
                 self.registers.set_zf(result == 0);
                 self.registers.set_nf(true);
-                self.registers.set_hf(value == 0);
+                self.registers.set_hf(result & 0x0f == 0x0f);
                 Ok(())
             }
             Instr::DEC(Location::Register(r)) => {
                 self.registers.dec(r);
+                Ok(())
+            }
+            Instr::INC(Location::Memory(r)) => {
+                let address = self.registers.fetch_u16(r);
+                let value = self.read_byte(address, bus);
+                let result = value.wrapping_add(1);
+                self.set_byte(address, result, bus)?;
+                self.registers.set_zf(result == 0);
+                self.registers.set_nf(false);
+                self.registers.set_hf(value & 0x0f == 0x0f);
                 Ok(())
             }
             Instr::INC(Location::Register(r)) => {
@@ -514,15 +524,6 @@ impl CPU {
             }
             Instr::DisableInterrupts => {
                 bus.disable_interrupts();
-                Ok(())
-            }
-            Instr::INC(l) => {
-                let n: u8 = self.read_from(l, bus).try_into().unwrap();
-                let half_carry = (n & 0x0f) == 0x0f;
-                let n = n.wrapping_add(1);
-                self.registers.set_zf(n == 0);
-                self.registers.set_nf(true);
-                self.registers.set_hf(half_carry);
                 Ok(())
             }
             Instr::UNIMPLEMENTED => unimplemented!(),
@@ -706,6 +707,20 @@ impl CPU {
                     self.registers.set_zf(check_zero);
                     self.registers.set_nf(false);
                     self.registers.set_hf(true);
+                } else {
+                    unreachable!()
+                }
+            }
+            0xC0..=0xFF => {
+                // SET
+                let target = CPU::cb_location(opcode);
+                let mut bit_index = (((opcode & 0xF0) >> 4) - 0xC) * 2;
+                if opcode & 0x08 != 0 {
+                    bit_index += 1;
+                }
+                if let U8(value) = self.read_from(target, bus) {
+                    let result = value | (1 << bit_index);
+                    self.write_into(target, U8(result), bus)?;
                 } else {
                     unreachable!()
                 }
