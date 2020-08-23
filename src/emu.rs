@@ -18,13 +18,6 @@ impl Emu {
     pub fn cycle(&mut self) -> Result<usize, String> {
         self.prev = self.cpu.clone();
         let result = self.cpu.cycle(&mut self.bus);
-        if (self.prev.registers.pc != 0x0210
-            && (self.prev.registers.pc as i32 - self.cpu.registers.pc as i32).abs() > 10000)
-        {
-            info!("{}", self.prev.registers);
-            info!("{:#?}", self.cpu);
-            panic!();
-        }
         result
     }
 

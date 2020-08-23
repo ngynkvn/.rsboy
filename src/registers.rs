@@ -60,26 +60,19 @@ macro_rules! TEST_BIT {
 
 macro_rules! INC {
     ($self: ident, $r1: ident) => {{
-        let n = $self.$r1;
-        let half_carry = (n & 0x0f) == 0x0f;
-        let n = n.wrapping_add(1);
-        RegisterState {
-            $r1: n,
-            f: flags(n == 0, false, half_carry, $self.flg_c()),
-            ..(*$self)
-        }
+        let prev = $self.$r1;
+        let result = prev.wrapping_add(1);
+        $self.f = flags(result == 0, false, (prev & 0x0f) == 0x0f, $self.flg_c());
+        $self.$r1 = result;
     }};
 }
 
 macro_rules! DEC {
     ($self: ident, $r1: ident) => {{
-        let old = $self.$r1;
-        let n = old.wrapping_sub(1);
-        RegisterState {
-            $r1: n,
-            f: flags(n == 0, true, old == 0x00, $self.flg_c()),
-            ..(*$self)
-        }
+        let prev = $self.$r1;
+        let result = prev.wrapping_sub(1);
+        $self.f = flags(result == 0, true, result & 0x0f == 0x0f, $self.flg_c());
+        $self.$r1 = result;
     }};
 }
 
@@ -226,27 +219,29 @@ impl RegisterState {
         }
     }
 
-    pub fn inc(&self, reg: Register) -> Self {
+    pub fn inc(&mut self, reg: Register) {
         match reg {
             HL => {
                 let n = self.hl().wrapping_add(1);
                 let [h, l] = n.to_be_bytes();
-                Self { h, l, ..(*self) }
+                self.h = h;
+                self.l = l;
             }
             BC => {
                 let n = self.bc().wrapping_add(1);
                 let [b, c] = n.to_be_bytes();
-                Self { b, c, ..(*self) }
+                self.b = b;
+                self.c = c;
             }
             DE => {
                 let n = self.de().wrapping_add(1);
                 let [d, e] = n.to_be_bytes();
-                Self { d, e, ..(*self) }
+                self.d = d;
+                self.e = e;
             }
-            SP => Self {
-                sp: self.sp().wrapping_add(1),
-                ..(*self)
-            },
+            SP => {
+                self.sp = self.sp().wrapping_add(1);
+            }
             A => INC!(self, a),
             B => INC!(self, b),
             C => INC!(self, c),
@@ -258,22 +253,29 @@ impl RegisterState {
         }
     }
 
-    pub fn dec(&self, reg: Register) -> Self {
+    pub fn dec(&mut self, reg: Register) {
         match reg {
             HL => {
                 let n = self.hl().wrapping_sub(1);
                 let [h, l] = n.to_be_bytes();
-                Self { h, l, ..(*self) }
+                self.h = h;
+                self.l = l;
             }
             BC => {
                 let n = self.bc().wrapping_sub(1);
                 let [b, c] = n.to_be_bytes();
-                Self { b, c, ..(*self) }
+                self.b = b;
+                self.c = c;
             }
-            SP => Self {
-                sp: self.sp().wrapping_sub(1),
-                ..(*self)
-            },
+            DE => {
+                let n = self.de().wrapping_sub(1);
+                let [d, e] = n.to_be_bytes();
+                self.d = d;
+                self.e = e;
+            }
+            SP => {
+                self.sp = self.sp().wrapping_sub(1);
+            }
             A => DEC!(self, a),
             B => DEC!(self, b),
             C => DEC!(self, c),
