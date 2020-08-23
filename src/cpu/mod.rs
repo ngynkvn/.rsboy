@@ -285,9 +285,9 @@ impl CPU {
                 Ok(())
             }
             Instr::SUB(location) => {
-                let value = self.read_from(location, bus).try_into().unwrap();
-                self.registers.a = self.registers.a.wrapping_sub(value);
-                self.registers.set_zf(self.registers.a == 0);
+                let value = self.read_from(location, bus).into();
+                let result = self.registers.a.wrapping_sub(value);
+                self.registers.set_zf(result == 0);
                 self.registers.set_nf(true);
                 self.registers.set_hf(
                     // Mooneye
@@ -295,20 +295,21 @@ impl CPU {
                 );
                 self.registers
                     .set_cf((self.registers.a as u16) < (value as u16));
+                self.registers.a = result;
                 Ok(())
             }
             Instr::ADC(location) => {
-                let value = self.read_from(location, bus).try_into().unwrap();
+                let value = self.read_from(location, bus).into();
                 let carry = self.registers.flg_c() as u8;
                 let result = self.registers.a.wrapping_add(value).wrapping_add(carry);
-                self.registers.a = result;
-                self.registers.set_zf(self.registers.a == 0);
+                self.registers.set_zf(result == 0);
                 self.registers.set_nf(false);
                 // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
                 self.registers
                     .set_hf((self.registers.a & 0xf) + (value & 0xf) + carry > 0xf);
                 self.registers
                     .set_cf(self.registers.a as u16 + value as u16 + carry as u16 > 0xff);
+                self.registers.a = result;
                 Ok(())
             }
             Instr::ADDHL(location) => {
@@ -537,19 +538,18 @@ impl CPU {
             Instr::UNIMPLEMENTED => unimplemented!(),
             Instr::SBC(l) => {
                 let a = self.registers.a;
-                let value: u8 = self.read_from(l, bus).try_into().unwrap();
-                let value = value.wrapping_add(self.registers.c as u8);
-                let result = a.wrapping_sub(value);
-                self.registers.a = result;
-                self.registers.set_zf(self.registers.a == 0);
+                let value: u8 = self.read_from(l, bus).into();
+                let cy = self.registers.flg_c() as u8;
+                let result = a.wrapping_sub(value).wrapping_sub(cy);
+                self.registers.set_zf(result == 0);
                 self.registers.set_nf(true);
                 self.registers.set_hf(
                     // Mooneye
-                    (self.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
+                    (self.registers.a & 0xf).wrapping_sub(value & 0xf).wrapping_sub(cy) & (0xf + 1) != 0,
                 );
                 self.registers
-                    .set_cf((self.registers.a as u16) < (value as u16));
-
+                    .set_cf((self.registers.a as u16) < (value as u16) + (cy as u16));
+                self.registers.a = result;
                 Ok(())
             }
             _ => unreachable!(),
