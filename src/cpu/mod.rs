@@ -1,5 +1,9 @@
+pub mod value; 
+
 use crate::bus::Bus;
 use crate::bus::Memory;
+use value::Value;
+use value::Value::*;
 use crate::instructions::Register::*;
 use crate::instructions::*;
 use crate::registers::RegisterState;
@@ -16,6 +20,7 @@ pub struct CPU {
     pub running: bool,
     pub clock: usize,
 }
+
 
 type CpuResult<T> = Result<T, String>;
 
@@ -70,37 +75,37 @@ impl CPU {
         Ok(())
     }
 
-    fn read_from(&mut self, location: Location, bus: &mut Bus) -> u16 {
+    fn read_from(&mut self, location: Location, bus: &mut Bus) -> Value {
         match location {
-            Location::Immediate(1) => self.next_u8(bus).into(),
-            Location::Immediate(2) => self.next_u16(bus),
+            Location::Immediate(1) => U8(self.next_u8(bus)),
+            Location::Immediate(2) => U16(self.next_u16(bus)),
             Location::Immediate(_) => panic!(),
             Location::MemoryImmediate => {
                 let address = self.next_u16(bus);
-                self.read_byte(address, bus).into()
+                U8(self.read_byte(address, bus))
             }
             Location::Register(r) => self.registers.fetch(r),
-            Location::Memory(r) => self.read_byte(self.registers.fetch(r), bus).into(),
+            Location::Memory(r) => U8(self.read_byte(self.registers.fetch(r), bus)),
             Location::MemOffsetImm => {
                 let next = self.next_u8(bus);
-                self.read_io(next as u16, bus).into()
+                U8(self.read_io(next as u16, bus))
             }
-            Location::MemOffsetRegister(r) => self.read_io(self.registers.fetch(r), bus).into(),
-            Location::Literal(byte) => byte,
+            Location::MemOffsetRegister(r) => U8(self.read_io(self.registers.fetch(r).into(), bus)),
+            Location::Literal(byte) => U16(byte),
         }
     }
 
-    fn write_into(&mut self, into: Location, from_value: u16, bus: &mut Bus) -> CpuResult<()> {
-        let get_u8 = || -> Result<u8, String> {
-            from_value
-                .try_into()
-                .or_else(|_| Err(format!("into: {:?}, value: {}", into, from_value)))
-        };
+    fn write_into(&mut self, into: Location, from_value: Value, bus: &mut Bus) -> CpuResult<()> {
         match into {
             Location::Immediate(2) => {
                 let address = self.next_u16(bus);
-                let value = get_u8()?;
-                self.set_byte(address, value, bus)?;
+                if let U8(value) = from_value {
+                    self.set_byte(address, value, bus)?;
+                } else if let U16(from_value) = from_value {
+                    let [lo, hi] = from_value.to_le_bytes();
+                    self.set_byte(address, lo, bus)?;
+                    self.set_byte(address + 1, hi, bus)?;
+                }
             }
             Location::Register(r) => {
                 self.registers = self.registers.put(from_value, r)?;
@@ -127,7 +132,7 @@ impl CPU {
                 if let Ok(value) = get_u8() {
                     self.set_byte(address, value, bus)?;
                 } else {
-                    let [lo, hi] = from_value.to_be_bytes();
+                    let [lo, hi] = from_value.to_le_bytes();
                     self.set_byte(address, lo, bus)?;
                     self.set_byte(address + 1, hi, bus)?;
                 }

@@ -1,6 +1,7 @@
+use crate::cpu::value::Value;
+use crate::cpu::value::Value::*;
 use crate::instructions::Register;
 use crate::instructions::Register::*;
-use std::convert::TryInto;
 use std::fmt;
 
 #[allow(unused_imports)]
@@ -170,57 +171,58 @@ impl RegisterState {
         }
     }
 
-    pub fn put(&self, value: u16, reg: Register) -> Result<Self, String> {
-        match reg {
-            A => Ok(Self {
-                a: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            B => Ok(Self {
-                b: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            C => Ok(Self {
-                c: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            D => Ok(Self {
-                d: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            E => Ok(Self {
-                e: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            H => Ok(Self {
-                h: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            L => Ok(Self {
-                l: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            SP => Ok(Self {
-                sp: value,
-                ..(*self)
-            }),
-            HL => {
-                let [h, l] = value.to_be_bytes();
-                Ok(Self { h, l, ..(*self) })
-            }
-            DE => {
-                let [d, e] = value.to_be_bytes();
-                Ok(Self { d, e, ..(*self) })
-            }
-            BC => {
-                let [b, c] = value.to_be_bytes();
-                Ok(Self { b, c, ..(*self) })
-            }
-            AF => {
-                let [a, f] = (value & 0b1111_1111_1111_0000).to_be_bytes();
-                Ok(Self { a, f, ..(*self) })
-            }
-            _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),
+    pub fn put(&mut self, value: Value, reg: Register) {
+        match value {
+            U8(value) => match reg {
+                A => {
+                    self.a = value;
+                }
+                B => {
+                    self.b = value;
+                }
+                C => {
+                    self.c = value;
+                }
+                D => {
+                    self.d = value;
+                }
+                E => {
+                    self.e = value;
+                }
+                H => {
+                    self.h = value;
+                }
+                L => {
+                    self.l = value;
+                }
+                _ => unreachable!(),
+            },
+            U16(value) => match reg {
+                SP => {
+                    self.sp = value;
+                }
+                HL => {
+                    let [h, l] = value.to_be_bytes();
+                    self.h = h;
+                    self.l = l;
+                }
+                DE => {
+                    let [d, e] = value.to_be_bytes();
+                    self.d = d;
+                    self.e = e;
+                }
+                BC => {
+                    let [b, c] = value.to_be_bytes();
+                    self.b = b;
+                    self.c = c;
+                }
+                AF => {
+                    let [a, f] = (value & 0b1111_1111_1111_0000).to_be_bytes();
+                    self.a = a;
+                    self.f = f;
+                }
+                _ => unreachable!(),
+            },
         }
     }
 
@@ -241,6 +243,10 @@ impl RegisterState {
                 let [d, e] = n.to_be_bytes();
                 Self { d, e, ..(*self) }
             }
+            SP => Self {
+                sp: self.sp().wrapping_add(1),
+                ..(*self)
+            },
             A => INC!(self, a),
             B => INC!(self, b),
             C => INC!(self, c),
@@ -264,6 +270,10 @@ impl RegisterState {
                 let [b, c] = n.to_be_bytes();
                 Self { b, c, ..(*self) }
             }
+            SP => Self {
+                sp: self.sp().wrapping_sub(1),
+                ..(*self)
+            },
             A => DEC!(self, a),
             B => DEC!(self, b),
             C => DEC!(self, c),
@@ -311,22 +321,22 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch(&self, reg: Register) -> u16 {
+    pub fn fetch(&self, reg: Register) -> Value {
         match reg {
-            A => self.a.into(),
-            B => self.b.into(),
-            C => self.c.into(),
-            D => self.d.into(),
-            E => self.e.into(),
-            F => self.f.into(),
-            H => self.h.into(),
-            L => self.l.into(),
-            BC => self.bc(),
-            DE => self.de(),
-            HL => self.hl(),
-            AF => self.af(),
-            SP => self.sp,
-            PC => self.pc,
+            A => U8(self.a),
+            B => U8(self.b),
+            C => U8(self.c),
+            D => U8(self.d),
+            E => U8(self.e),
+            F => U8(self.f),
+            H => U8(self.h),
+            L => U8(self.l),
+            BC => U16(self.bc()),
+            DE => U16(self.de()),
+            HL => U16(self.hl()),
+            AF => U16(self.af()),
+            SP => U16(self.sp),
+            PC => U16(self.pc),
         }
     }
     // TODO See if swapping these makes a difference..
