@@ -134,16 +134,6 @@ impl GPU {
             (mapx, mapy),
             &self.vram[Tile::range(tile)],
         );
-        // let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(tile)]);
-        // for row in 0..8 {
-        //     for col in 0..8 {
-        //         let t = col + row * 8;
-
-        //         //Find offset from map x and y
-        //         let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
-        //         pixels[location] = tile.texture[t];
-        //     }
-        // }
     }
 
     fn blit_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
@@ -170,6 +160,7 @@ impl GPU {
         // Need to emulate scanline, and priority rendering
         for sprite_attributes in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
             if let [flags, pattern, x, y] = sprite_attributes {
+                let flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
                 let screen_x = (*x).wrapping_sub(8);
