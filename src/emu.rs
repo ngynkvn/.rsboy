@@ -1,6 +1,5 @@
 use crate::bus::Bus;
-use crate::cpu::CPU;
-use log::info;
+use crate::{gpu::PixelData, cpu::CPU};
 
 extern crate wasm_bindgen;
 #[allow(unused_imports)]
@@ -11,6 +10,7 @@ use wasm_bindgen::prelude::*;
 pub struct Emu {
     pub cpu: CPU,
     pub bus: Bus,
+    pub framebuffer: Box<PixelData>,
     prev: CPU,
 }
 
@@ -25,6 +25,11 @@ impl Emu {
         let cpu = CPU::new();
         let bus = Bus::new(rom);
         let prev = cpu.clone();
-        Emu { cpu, bus, prev }
+        Emu {
+            cpu,
+            bus,
+            framebuffer: Box::new([0; 256* 256]),
+            prev,
+        }
     }
 }

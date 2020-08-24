@@ -134,8 +134,9 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
             Err(s) => panic!(s),
         }
     }
-    let data = emu.bus.gpu.render();
-    texture.update(None, &data, 256 * 2).unwrap();
+    emu.bus.gpu.render(&mut emu.framebuffer);
+    let (_, data, _) = unsafe {emu.framebuffer.align_to::<u8>()};
+    texture.update(None, data, 256 * 2).unwrap();
     let (h, v) = emu.bus.gpu.scroll();
     canvas
         .copy(

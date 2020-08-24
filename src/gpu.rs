@@ -153,16 +153,17 @@ impl GPU {
 
                 //Find offset from map x and y
                 let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
-                pixels[location] = tile.texture[t];
+                if location < pixels.len() {
+                    pixels[location] = tile.texture[t];
+                }
             }
         }
     }
 
-    pub fn render(&self) -> PixelMap {
-        let mut pixels: PixelData = [0; 256 * 256];
+    pub fn render(&self, pixels: &mut PixelData) {
         let start = time::Instant::now();
         for i in MAP_DATA_RANGE {
-            self.blit_tile(&mut pixels, i);
+            self.blit_tile(pixels, i);
         }
 
         // TODO
@@ -171,13 +172,12 @@ impl GPU {
             if let [flags, pattern, x, y] = sprite_attributes {
                 let idx = *pattern as usize * 16;
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
-                let screen_x = *x;
-                let screen_y = *y;
-                self.blit_texture(&mut pixels, screen_x as usize, screen_y as usize, tile);
+                let screen_x = (*x).wrapping_sub(8);
+                let screen_y = (*y).wrapping_sub(16);
+                self.blit_texture(pixels, screen_x as usize, screen_y as usize, tile);
             }
         }
-        let pixels = unsafe { std::mem::transmute::<PixelData, PixelMap>(pixels) };
-        pixels
+        println!("{:?}", time::Instant::now().saturating_duration_since(start));
     }
 
     // Returns true if interrupt is requested
