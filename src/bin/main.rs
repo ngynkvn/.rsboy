@@ -88,7 +88,7 @@ fn sdl_main() -> std::io::Result<()> {
     let mut canvas = window.into_canvas().build().unwrap();
     let tex_creator = canvas.texture_creator();
     let mut texture = tex_creator
-        .create_texture_streaming(PixelFormatEnum::RGB565, 256, 256)
+        .create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)
         .unwrap();
 
     // let mut event_pump = context.event_pump().unwrap();
@@ -121,10 +121,13 @@ fn sdl_main() -> std::io::Result<()> {
         "It took {:?} seconds.",
         Instant::now().duration_since(boot_timer)
     );
-    vram_viewer(&context, emu.bus.gpu.vram).unwrap();
-    map_viewer(&context, emu.bus.gpu).unwrap();
+    // vram_viewer(&context, emu.bus.gpu.vram).unwrap();
+    map_viewer(&context, emu).unwrap();
     Ok(())
 }
+
+const WINDOW_HEIGHT: u32 = 144;
+const WINDOW_WIDTH: u32 = 160;
 
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
@@ -135,13 +138,24 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
         }
     }
     emu.bus.gpu.render(&mut emu.framebuffer);
-    let (_, data, _) = unsafe {emu.framebuffer.align_to::<u8>()};
-    texture.update(None, data, 256 * 2).unwrap();
     let (h, v) = emu.bus.gpu.scroll();
+    texture.with_lock(None, |buffer, _| {
+        let mut i = 0;
+        for y in v..v+WINDOW_HEIGHT {
+            let y = y % 256;
+            for x in h..h+WINDOW_WIDTH {
+                let x = x % 256;
+                let [lo, hi] = emu.framebuffer[y as usize][x as usize].to_le_bytes();
+                buffer[i] = lo;
+                buffer[i + 1] = hi;
+                i += 2;
+            }
+        }
+    }).unwrap();
     canvas
         .copy(
             &texture,
-            Rect::from((h as i32, v as i32, (h + 160) as u32, (v + 144) as u32)),
+            None,
             None,
         )
         .unwrap();
@@ -160,19 +174,19 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
 fn create_window(context: &sdl2::Sdl) -> Window {
     let video = context.video().unwrap();
     video
-        .window("Window", 500, 500)
+        .window("Window", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
         .position_centered()
         .build()
         .unwrap()
 }
 
-fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
+fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
+    let gpu = emu.bus.gpu;
     let background = gpu.background();
     let video_subsystem = sdl_context.video()?;
     let (w, h) = background.pixel_dims();
-    let scale = 2;
     let window = video_subsystem
-        .window("Map Viewer", (scale * w) as u32, (scale * h) as u32)
+        .window("Map Viewer", w as u32,  h as u32)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
@@ -195,6 +209,9 @@ fn map_viewer(sdl_context: &sdl2::Sdl, gpu: gpu::GPU) -> Result<(), String> {
         .update(None, &(background.texture()), 256 * 2)
         .map_err(|e| e.to_string())?;
     canvas.copy(&texture, None, None)?;
+    let (h, v) = gpu.scroll();
+    println!("{} {}", h, v);
+    canvas.draw_rect(Rect::from((h as i32, v as i32, WINDOW_WIDTH, WINDOW_HEIGHT))).unwrap();
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
 
