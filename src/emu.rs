@@ -28,7 +28,7 @@ impl Emu {
         Emu {
             cpu,
             bus,
-            framebuffer: Box::new([0; 256* 256]),
+            framebuffer: Box::new([[0; 256]; 256]),
             prev,
         }
     }

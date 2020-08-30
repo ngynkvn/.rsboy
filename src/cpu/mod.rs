@@ -56,7 +56,6 @@ impl CPU {
     }
     fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
-        self.tick(bus);
         let lo = self.next_u8(bus);
         let hi = self.next_u8(bus);
         u16::from_le_bytes([lo, hi])
@@ -548,7 +547,7 @@ impl CPU {
     }
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
-        if bus.interrupts_enabled {
+        if bus.ime != 0 {
             //&& bus.int_enabled != 0 && bus.int_flags != 0{
             let fired = bus.int_enabled & bus.int_flags;
             if fired & 0x01 != 0 {

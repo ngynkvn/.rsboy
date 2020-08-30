@@ -32,7 +32,7 @@ pub struct Bus {
     pub int_enabled: u8,
     pub int_flags: u8,
     pub clock: usize,
-    pub interrupts_enabled: bool,
+    pub ime: u8,
     pub joypad_io: Select,
     pub gpu: GPU,
     pub rom_start_signal: bool,
@@ -57,7 +57,7 @@ impl Bus {
         Bus {
             memory,
             bootrom,
-            interrupts_enabled: false,
+            ime: 0,
             in_bios: 0,
             int_enabled: 0,
             int_flags: 0,
@@ -69,15 +69,15 @@ impl Bus {
     }
 
     pub fn enable_interrupts(&mut self) {
-        self.interrupts_enabled = true;
+        self.ime = 1;
     }
 
     pub fn disable_interrupts(&mut self) {
-        self.interrupts_enabled = false;
+        self.ime = 0;
     }
 
     pub fn handle_vblank(&mut self) {
-        self.interrupts_enabled = false;
+        self.ime = 0;
         self.int_flags &= !1;
     }
 

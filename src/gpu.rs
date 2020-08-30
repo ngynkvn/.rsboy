@@ -44,7 +44,7 @@ pub struct GPU {
 const END_HBLANK: u8 = 143;
 const END_VBLANK: u8 = 153;
 
-pub type PixelData = [u16; 256 * 256];
+pub type PixelData = [[u16; 256]; 256];
 pub type PixelMap = [u8; 256 * 256 * 2];
 
 struct SpriteAttribute {
@@ -62,8 +62,6 @@ impl From<u8> for SpriteAttribute {
         }
     }
 }
-
-type SpriteEntry = (u8, u8, u8, SpriteAttribute);
 
 impl GPU {
     pub fn new() -> Self {
@@ -143,8 +141,10 @@ impl GPU {
 
                 //Find offset from map x and y
                 let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
+                let x = mapx * 8 + col;
+                let y = mapy * 8 + row;
                 if location < pixels.len() {
-                    pixels[location] = tile.texture[t];
+                    pixels[y][x] = tile.texture[t];
                 }
             }
         }
@@ -168,7 +168,7 @@ impl GPU {
                 self.blit_texture(pixels, screen_x as usize, screen_y as usize, tile);
             }
         }
-        println!("{:?}", time::Instant::now().saturating_duration_since(start));
+        // println!("{:?}", time::Instant::now().saturating_duration_since(start));
     }
 
     // Returns true if interrupt is requested
