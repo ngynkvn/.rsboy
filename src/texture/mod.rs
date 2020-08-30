@@ -42,15 +42,17 @@ impl Tile {
         let (mapx, mapy) = location;
         for (y, d) in tile_data.chunks_exact(2).enumerate() {
             //Each row in tile is pair of 2 bytes.
+            let y = mapy * 8 + y;
+            let pixels = &mut pixels[y];
             if let [mut lo, mut hi] = d {
-                for x in (0..8).rev() {
+                let x = mapx * 8;
+                for x in (x..x+8).rev() {
                     let lo_b = lo & 1;
                     let hi_b = hi & 1;
                     let index = (hi_b << 2) | lo_b << 1;
                     let color = (palette >> index) & 0b11;
                     let c = pixel(color);
-                    let location = mapx * 8 + x + mapy * 8 * 256 + y * 256;
-                    pixels[location] = c;
+                    pixels[x] = c;
                     lo = lo >> 1;
                     hi = hi >> 1;
                 }
