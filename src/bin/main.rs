@@ -49,16 +49,6 @@ fn main() {
     // decompiler();
 }
 
-fn decompiler() -> std::io::Result<()> {
-    let args: Vec<String> = env::args().collect();
-
-    let mut file = File::open(args[1].to_string())?;
-    let mut rom = Vec::new();
-    file.read_to_end(&mut rom)?;
-    disassembly::print_all(&rom);
-    Ok(())
-}
-
 fn init() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -72,13 +62,6 @@ fn init() -> Result<Emu, std::io::Error> {
     file.read_to_end(&mut rom)?;
     let emu = Emu::new(rom);
     Ok(emu)
-}
-
-fn just_cpu() {
-    let mut emu = init().unwrap();
-    loop {
-        let cpu_cycles = emu.cycle().unwrap();
-    }
 }
 
 fn sdl_main() -> std::io::Result<()> {
@@ -234,11 +217,12 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String> {
     // 0x8000-0x87ff
     let mut tiles: Vec<Tile> = vec![];
     for i in (0..0x7ff).step_by(16) {
-        let tile_data = &vram[i..(i + 16)];
+        let tile_data = &vram[Tile::range(i)];
         tiles.push(Tile::construct(228, tile_data));
     }
     let video_subsystem = sdl_context.video()?;
@@ -297,44 +281,6 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String
             }
         }
 
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-        // The rest of the game loop goes here...
-    }
-
-    Ok(())
-}
-
-fn run() -> Result<(), String> {
-    let sdl_context = sdl2::init()?;
-    let video_subsystem = sdl_context.video()?;
-
-    let window = video_subsystem
-        .window("rust-sdl2 demo: Video", 800, 600)
-        .position_centered()
-        .opengl()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-
-    canvas.clear();
-    canvas.present();
-    let mut event_pump = sdl_context.event_pump()?;
-
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
-            }
-        }
-
-        canvas.clear();
-        canvas.present();
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
         // The rest of the game loop goes here...
     }
