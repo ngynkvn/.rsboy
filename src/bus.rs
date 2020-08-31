@@ -1,4 +1,5 @@
 use crate::gpu::GPU;
+use crate::cpu;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
 use std::fs::File;
@@ -74,14 +75,16 @@ impl Bus {
         self.ime = 0;
     }
 
-    pub fn handle_vblank(&mut self) {
+    pub fn handle_interrupt(&mut self, flag: u8) {
         self.ime = 0;
-        self.int_flags &= !1;
+        self.int_flags &= !flag;
     }
 
     fn tick_timer_counter(&mut self) {
+        if self.clock % 256 == 0 {
+            self.memory[DIVIDER_REGISTER] = self.memory[DIVIDER_REGISTER].wrapping_add(1);
+        }
         let control = self.memory[TIMER_CONTROL];
-        let enabled = control & 0b100 != 0;
         let clock_select = control & 0b11;
         let clock_speed = match clock_select {
             0b00 => 1024,
@@ -92,17 +95,16 @@ impl Bus {
         };
         if self.clock % clock_speed == 0 {
             let (value, overflow) = self.memory[TIMER_COUNTER].overflowing_add(1);
-            self.memory[TIMER_COUNTER] = value;
             if overflow {
-                self.int_flags |= 1 << 2;
+                self.int_flags |= cpu::TIMER;
+                self.memory[TIMER_COUNTER] = self.memory[TIMER_MODULO]
+            } else {
+                self.memory[TIMER_COUNTER] = value;
             }
         }
     }
     fn tick(&mut self) {
         self.clock += 1;
-        if self.clock % 256 == 0 {
-            self.memory[DIVIDER_REGISTER] = self.memory[DIVIDER_REGISTER].wrapping_add(1);
-        }
         self.tick_timer_counter();
     }
 
@@ -189,6 +191,7 @@ impl Memory for Bus {
                 }
                 self.memory[address as usize] = value;
             }
+            DIVIDER_REGISTER=> self.memory[DIVIDER_REGISTER] = 0,
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
             _ => self.memory[address as usize] = value,
         }

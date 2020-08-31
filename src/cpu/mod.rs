@@ -22,6 +22,12 @@ pub struct CPU {
 
 type CpuResult<T> = Result<T, String>;
 
+pub const VBLANK: u8 = 0b1;
+pub const LCDSTAT: u8 = 0b10;
+pub const TIMER: u8 = 0b100;
+pub const SERIAL: u8 = 0b1000;
+pub const JOYPAD: u8 = 0b10000;
+
 #[inline]
 fn swapped_nibbles(byte: u8) -> u8 {
     let [hi, lo] = [byte >> 4, byte & 0xF];
@@ -549,18 +555,53 @@ impl CPU {
         }
     }
 
-    fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
+    fn handle_interrupts(&mut self, bus: &mut Bus) -> CpuResult<bool> {
         if bus.ime != 0 {
-            //&& bus.int_enabled != 0 && bus.int_flags != 0{
             let fired = bus.int_enabled & bus.int_flags;
-            if fired & 0x01 != 0 {
-                bus.handle_vblank();
-                return self.perform_instruction(Instr::RST(0x40), bus);
+            if fired & VBLANK != 0 {
+                bus.handle_interrupt(VBLANK);
+                self.perform_instruction(Instr::RST(0x40), bus)?;
             }
+            else if fired & LCDSTAT != 0 {
+                bus.handle_interrupt(LCDSTAT);
+                self.perform_instruction(Instr::RST(0x48), bus)?;
+            }
+            else if fired & TIMER != 0 {
+                bus.handle_interrupt(TIMER);
+                self.perform_instruction(Instr::RST(0x50), bus)?;
+            }
+            else if fired & SERIAL != 0 {
+                bus.handle_interrupt(SERIAL);
+                self.perform_instruction(Instr::RST(0x58), bus)?;
+            }
+            else if fired & JOYPAD != 0 {
+                bus.handle_interrupt(JOYPAD);
+                self.perform_instruction(Instr::RST(0x60), bus)?;
+            } else {
+                return Ok(false)
+            }
+            Ok(true)
+        } else {
+            Ok(false)
         }
+    }
+
+    fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
+        if self.handle_interrupts(bus)? {
+            return Ok(())
+        }
+        let mut c = self.registers.pc == 0x50;
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
-        self.perform_instruction(*instruction, bus)
+        if c {
+            self.dump_state();
+            println!("{:?}", instruction);
+        }
+        let r = self.perform_instruction(*instruction, bus);
+        if c {
+            self.dump_state();
+        }
+        return r
     }
 
     fn check_flag(&mut self, flag: Flag) -> bool {
