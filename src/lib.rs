@@ -1,6 +1,8 @@
 extern crate wasm_bindgen;
 
+use js_sys::Uint16Array;
 use wasm_bindgen::prelude::*;
+
 pub mod bus;
 pub mod cpu;
 pub mod disassembly;
@@ -17,12 +19,29 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-pub fn greet(name: &str) {
-    unsafe {
-        alert(&format!("Hello, {}!", name));
-    }
+pub struct WasmEmu {
+    emu: Emu,
 }
 
-pub fn tetris(rom: Vec<u8>) -> Emu {
-    Emu::new(rom)
+// #[wasm_bindgen]
+// pub fn frame(w: &mut WasmEmu) -> Uint16Array {
+//     let mut i = 0;
+//     while i < 17476 {
+//         match w.emu.cycle() {
+//             Ok(c) => i += c,
+//             Err(s) => panic!(s),
+//         }
+//     }
+//     w.emu.bus.gpu.render(&mut w.emu.framebuffer);
+//     unsafe {
+//         let b = std::mem::transmute(w.emu.framebuffer);
+//         Uint16Array::view(b)
+//     }
+// }
+
+#[wasm_bindgen]
+pub fn init_emu() -> WasmEmu {
+    WasmEmu {
+        emu: Emu::new(vec![]),
+    }
 }

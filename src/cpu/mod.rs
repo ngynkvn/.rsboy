@@ -13,7 +13,6 @@ use value::Value::*;
 use wasm_bindgen::prelude::*;
 
 // Global emu struct.
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Clone)]
 pub struct CPU {
     pub registers: RegisterState,
@@ -535,7 +534,11 @@ impl CPU {
                 self.registers.set_nf(true);
                 self.registers.set_hf(
                     // Mooneye
-                    (self.registers.a & 0xf).wrapping_sub(value & 0xf).wrapping_sub(cy) & (0xf + 1) != 0,
+                    (self.registers.a & 0xf)
+                        .wrapping_sub(value & 0xf)
+                        .wrapping_sub(cy)
+                        & (0xf + 1)
+                        != 0,
                 );
                 self.registers
                     .set_cf((self.registers.a as u16) < (value as u16) + (cy as u16));
@@ -650,7 +653,6 @@ impl CPU {
                 } else {
                     unreachable!()
                 }
-
             }
             0x10..=0x17 => {
                 //RL

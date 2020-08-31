@@ -1,12 +1,11 @@
 use crate::bus::Bus;
-use crate::{gpu::PixelData, cpu::CPU};
+use crate::{cpu::CPU, gpu::PixelData};
 
 extern crate wasm_bindgen;
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
 
 // Global emu struct.
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Emu {
     pub cpu: CPU,
     pub bus: Bus,

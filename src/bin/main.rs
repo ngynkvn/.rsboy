@@ -14,6 +14,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
+use gpu::PixelData;
 use rust_emu::emu::Emu;
 use rust_emu::texture::{Map, Tile};
 use rust_emu::*;
@@ -39,17 +40,15 @@ fn setup_logger() -> Result<(), fern::InitError> {
     Ok(())
 }
 
-// #[cfg(not(sdl))]
 fn main() {
     // just_cpu();
     info!("Setup logging");
     setup_logger().unwrap();
     info!("Running SDL Main");
     sdl_main().unwrap();
-    // decompiler();
 }
 
-fn init() -> Result<Emu, std::io::Error> {
+fn initEmu() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
@@ -65,7 +64,7 @@ fn init() -> Result<Emu, std::io::Error> {
 }
 
 fn sdl_main() -> std::io::Result<()> {
-    let mut emu = init().unwrap();
+    let mut emu = initEmu().unwrap();
     let context = sdl2::init().unwrap();
     let window = create_window(&context);
     let mut canvas = window.into_canvas().build().unwrap();
@@ -112,6 +111,28 @@ fn sdl_main() -> std::io::Result<()> {
 const WINDOW_HEIGHT: u32 = 144;
 const WINDOW_WIDTH: u32 = 160;
 
+trait GBWindow {
+    fn copy_window(&mut self, h: u32, v: u32, buffer: &PixelData);
+}
+impl GBWindow for Texture<'_> {
+    fn copy_window(&mut self, h: u32, v: u32, framebuffer: &PixelData) {
+        self.with_lock(None, |buffer, _| {
+            let mut i = 0;
+            for y in v..v + WINDOW_HEIGHT {
+                let y = (y % 256) as usize;
+                for x in h..h + WINDOW_WIDTH {
+                    let x = (x % 256) as usize;
+                    let [lo, hi] = framebuffer[y][x].to_le_bytes();
+                    buffer[i] = lo;
+                    buffer[i + 1] = hi;
+                    i += 2;
+                }
+            }
+        })
+        .unwrap();
+    }
+}
+
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
     while i < 17476 {
@@ -122,21 +143,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     }
     emu.bus.gpu.render(&mut emu.framebuffer);
     let (h, v) = emu.bus.gpu.scroll();
-    texture
-        .with_lock(None, |buffer, _| {
-            let mut i = 0;
-            for y in v..v + WINDOW_HEIGHT {
-                let y = (y % 256) as usize;
-                for x in h..h + WINDOW_WIDTH {
-                    let x = (x % 256) as usize;
-                    let [lo, hi] = emu.framebuffer[y][x].to_le_bytes();
-                    buffer[i] = lo;
-                    buffer[i + 1] = hi;
-                    i += 2;
-                }
-            }
-        })
-        .unwrap();
+    texture.copy_window(h, v, &emu.framebuffer);
     canvas.copy(&texture, None, None).unwrap();
     canvas.present();
     Ok(())

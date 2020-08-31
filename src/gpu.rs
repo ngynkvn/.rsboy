@@ -23,7 +23,6 @@ enum GpuMode {
 use wasm_bindgen::prelude::*;
 
 // Global emu struct.
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct GPU {
     mode: GpuMode,
     clock: usize,

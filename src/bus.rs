@@ -1,7 +1,6 @@
 use crate::gpu::GPU;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
-use log::warn;
 use std::fs::File;
 use std::io::Read;
 
@@ -24,7 +23,6 @@ pub enum Select {
 use wasm_bindgen::prelude::*;
 
 // Global emu struct.
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Bus {
     pub memory: [u8; 0x10000],
     pub bootrom: [u8; 0x100],
@@ -187,7 +185,7 @@ impl Memory for Bus {
             }
             0xff02 => {
                 if value == 0x81 {
-                    warn!("{}", char::from(self.memory[0xff01]));
+                    // warn!("{}", char::from(self.memory[0xff01]));
                 }
                 self.memory[address as usize] = value;
             }
