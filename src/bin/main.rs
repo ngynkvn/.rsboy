@@ -122,26 +122,22 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     }
     emu.bus.gpu.render(&mut emu.framebuffer);
     let (h, v) = emu.bus.gpu.scroll();
-    texture.with_lock(None, |buffer, _| {
-        let mut i = 0;
-        for y in v..v+WINDOW_HEIGHT {
-            let y = y % 256;
-            for x in h..h+WINDOW_WIDTH {
-                let x = x % 256;
-                let [lo, hi] = emu.framebuffer[y as usize][x as usize].to_le_bytes();
-                buffer[i] = lo;
-                buffer[i + 1] = hi;
-                i += 2;
+    texture
+        .with_lock(None, |buffer, _| {
+            let mut i = 0;
+            for y in v..v + WINDOW_HEIGHT {
+                let y = (y % 256) as usize;
+                for x in h..h + WINDOW_WIDTH {
+                    let x = (x % 256) as usize;
+                    let [lo, hi] = emu.framebuffer[y][x].to_le_bytes();
+                    buffer[i] = lo;
+                    buffer[i + 1] = hi;
+                    i += 2;
+                }
             }
-        }
-    }).unwrap();
-    canvas
-        .copy(
-            &texture,
-            None,
-            None,
-        )
+        })
         .unwrap();
+    canvas.copy(&texture, None, None).unwrap();
     canvas.present();
     Ok(())
 }
@@ -169,7 +165,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
     let video_subsystem = sdl_context.video()?;
     let (w, h) = background.pixel_dims();
     let window = video_subsystem
-        .window("Map Viewer", w as u32,  h as u32)
+        .window("Map Viewer", w as u32, h as u32)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
@@ -194,7 +190,14 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
     canvas.copy(&texture, None, None)?;
     let (h, v) = gpu.scroll();
     println!("{} {}", h, v);
-    canvas.draw_rect(Rect::from((h as i32, v as i32, WINDOW_WIDTH, WINDOW_HEIGHT))).unwrap();
+    canvas
+        .draw_rect(Rect::from((
+            h as i32,
+            v as i32,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+        )))
+        .unwrap();
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
 
