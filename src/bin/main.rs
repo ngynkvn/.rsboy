@@ -135,7 +135,7 @@ impl GBWindow for Texture<'_> {
 
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
-    while i < 17476 {
+    while i < (69905/4) {
         match emu.cycle() {
             Ok(c) => i += c,
             Err(s) => panic!(s),

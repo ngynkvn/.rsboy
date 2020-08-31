@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::Read;
 
 const DIVIDER_REGISTER: usize = 0xFF04;
-const TIMER_COUNTER: usize = 0xFF06;
+const TIMER_REG: usize = 0xFF05;
 const TIMER_CONTROL: usize = 0xFF07;
 const TIMER_MODULO: usize = 0xFF06;
 
@@ -87,19 +87,19 @@ impl Bus {
         let control = self.memory[TIMER_CONTROL];
         let clock_select = control & 0b11;
         let clock_speed = match clock_select {
-            0b00 => 1024,
-            0b01 => 16,
-            0b10 => 64,
-            0b11 => 256,
+            0b00 => 256,
+            0b01 => 4,
+            0b10 => 16,
+            0b11 => 64,
             _ => unreachable!(),
         };
         if self.clock % clock_speed == 0 {
-            let (value, overflow) = self.memory[TIMER_COUNTER].overflowing_add(1);
+            let (value, overflow) = self.memory[TIMER_REG].overflowing_add(1);
             if overflow {
                 self.int_flags |= cpu::TIMER;
-                self.memory[TIMER_COUNTER] = self.memory[TIMER_MODULO]
+                self.memory[TIMER_REG] = self.memory[TIMER_MODULO]
             } else {
-                self.memory[TIMER_COUNTER] = value;
+                self.memory[TIMER_REG] = value;
             }
         }
     }
@@ -109,10 +109,7 @@ impl Bus {
     }
 
     pub fn cycle(&mut self) {
-        // IRQ requested
-        if self.gpu.cycle() {
-            self.int_flags |= 1;
-        }
+        self.gpu.cycle(&mut self.int_flags);
         self.tick();
     }
 }

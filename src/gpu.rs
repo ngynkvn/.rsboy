@@ -1,4 +1,4 @@
-use crate::texture::*;
+use crate::{cpu, texture::*};
 use std::{
     ops::{Index, Range},
     time,
@@ -93,12 +93,12 @@ impl GPU {
     }
 
     // Returns true if IRQ is requested.
-    pub fn cycle(&mut self) -> bool {
+    pub fn cycle(&mut self, flag :&mut u8) {
         if !self.is_on() {
-            return false;
+            return
         }
         self.clock += 1;
-        self.step()
+        self.step(flag)
     }
 
     pub fn scroll(&self) -> (u32, u32) {
@@ -171,7 +171,7 @@ impl GPU {
     }
 
     // Returns true if interrupt is requested
-    pub fn step(&mut self) -> bool {
+    pub fn step(&mut self, flag: &mut u8) {
         match self.mode {
             GpuMode::OAM => {
                 if self.clock >= 80 {
@@ -192,7 +192,7 @@ impl GPU {
                     if self.scanline == END_HBLANK {
                         self.mode = GpuMode::VBlank;
                         //Might be wrong position to trigger interrupt
-                        return true;
+                        *flag |= cpu::VBLANK;
                     }
                 }
             }
@@ -207,7 +207,6 @@ impl GPU {
                 }
             }
         }
-        false
     }
 }
 
