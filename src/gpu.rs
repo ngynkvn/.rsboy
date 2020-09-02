@@ -93,9 +93,9 @@ impl GPU {
     }
 
     // Returns true if IRQ is requested.
-    pub fn cycle(&mut self, flag :&mut u8) {
+    pub fn cycle(&mut self, flag: &mut u8) {
         if !self.is_on() {
-            return
+            return;
         }
         self.clock += 1;
         self.step(flag)
@@ -103,15 +103,6 @@ impl GPU {
 
     pub fn scroll(&self) -> (u32, u32) {
         (self.hscroll as u32, self.vscroll as u32)
-    }
-
-    pub fn background(&self) -> Map {
-        Map {
-            width: 32,
-            height: 32,
-            tile_set: self.tiles(),
-            map: &self.vram[MAP_DATA_RANGE],
-        }
     }
 
     pub fn tiles(&self) -> Vec<Tile> {
@@ -136,14 +127,11 @@ impl GPU {
     fn blit_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
         for row in 0..8 {
             for col in 0..8 {
-                let t = col + row * 8;
-
                 //Find offset from map x and y
-                let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
                 let x = mapx * 8 + col;
                 let y = mapy * 8 + row;
-                if location < pixels.len() {
-                    pixels[y][x] = tile.texture[t];
+                if y < pixels.len() && x < pixels[0].len() {
+                    pixels[y][x] = tile.texture[row][col];
                 }
             }
         }
@@ -159,7 +147,7 @@ impl GPU {
         // Need to emulate scanline, and priority rendering
         for sprite_attributes in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
             if let [flags, pattern, x, y] = sprite_attributes {
-                let flags = SpriteAttribute::from(*flags);
+                // let _flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
                 let screen_x = (*x).wrapping_sub(8);

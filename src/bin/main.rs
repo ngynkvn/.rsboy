@@ -14,9 +14,8 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 
-use gpu::PixelData;
+use gpu::{PixelData, PixelMap};
 use rust_emu::emu::Emu;
-use rust_emu::texture::{Map, Tile};
 use rust_emu::*;
 
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
@@ -48,7 +47,7 @@ fn main() {
     sdl_main().unwrap();
 }
 
-fn initEmu() -> Result<Emu, std::io::Error> {
+fn init_emu() -> Result<Emu, std::io::Error> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
@@ -64,7 +63,7 @@ fn initEmu() -> Result<Emu, std::io::Error> {
 }
 
 fn sdl_main() -> std::io::Result<()> {
-    let mut emu = initEmu().unwrap();
+    let mut emu = init_emu().unwrap();
     let context = sdl2::init().unwrap();
     let window = create_window(&context);
     let mut canvas = window.into_canvas().build().unwrap();
@@ -113,6 +112,7 @@ const WINDOW_WIDTH: u32 = 160;
 
 trait GBWindow {
     fn copy_window(&mut self, h: u32, v: u32, buffer: &PixelData);
+    fn copy_map(&mut self, buffer: &PixelData);
 }
 impl GBWindow for Texture<'_> {
     fn copy_window(&mut self, h: u32, v: u32, framebuffer: &PixelData) {
@@ -131,11 +131,15 @@ impl GBWindow for Texture<'_> {
         })
         .unwrap();
     }
+    fn copy_map(&mut self, buffer: &PixelData) {
+        let (_, buffer, _) = unsafe { buffer.align_to::<u8>() };
+        self.update(None, buffer, 256 * 2).unwrap()
+    }
 }
 
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
     let mut i = 0;
-    while i < (69905/4) {
+    while i < (69905 / 4) {
         match emu.cycle() {
             Ok(c) => i += c,
             Err(s) => panic!(s),
@@ -168,9 +172,8 @@ fn create_window(context: &sdl2::Sdl) -> Window {
 
 fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
     let gpu = emu.bus.gpu;
-    let background = gpu.background();
     let video_subsystem = sdl_context.video()?;
-    let (w, h) = background.pixel_dims();
+    let (w, h) = (32 * 8, 32 * 8);
     let window = video_subsystem
         .window("Map Viewer", w as u32, h as u32)
         .position_centered()
@@ -179,8 +182,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
 
     let texture_creator = canvas.texture_creator();
-    //Texture width = map_w * tile_w
-    let (map_w, map_h) = background.dimensions();
+    let (map_w, map_h) = (32, 32);
     let tile_w = 8;
     let mut texture = texture_creator
         .create_texture_static(
@@ -191,8 +193,9 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     // Pitch = n_bytes(3) * map_w * tile_w
+    let buffer = unsafe { std::mem::transmute::<PixelData, PixelMap>(*emu.framebuffer) };
     texture
-        .update(None, &(background.texture()), 256 * 2)
+        .update(None, &buffer, 256 * 2)
         .map_err(|e| e.to_string())?;
     canvas.copy(&texture, None, None)?;
     let (h, v) = gpu.scroll();
@@ -205,77 +208,6 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
             WINDOW_HEIGHT,
         )))
         .unwrap();
-    canvas.present();
-    let mut event_pump = sdl_context.event_pump()?;
-
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
-            }
-        }
-
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-        // The rest of the game loop goes here...
-    }
-
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn vram_viewer(sdl_context: &sdl2::Sdl, vram: [u8; 0x2000]) -> Result<(), String> {
-    // 0x8000-0x87ff
-    let mut tiles: Vec<Tile> = vec![];
-    for i in (0..0x7ff).step_by(16) {
-        let tile_data = &vram[Tile::range(i)];
-        tiles.push(Tile::construct(228, tile_data));
-    }
-    let video_subsystem = sdl_context.video()?;
-
-    let scale = 8;
-    let mut map = vec![0; tiles.len()];
-    for i in 0..tiles.len() {
-        let (x, y) = (i % 16, i / 16);
-        map[x + y * 16] = i as u8;
-    }
-    let map = Map {
-        width: 16,
-        height: 10,
-        tile_set: tiles,
-        map: map.as_slice(),
-    };
-    let (w, h) = map.pixel_dims();
-    let window = video_subsystem
-        .window("VRAM Viewer", (scale * w) as u32, (scale * h) as u32)
-        .position_centered()
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-
-    let texture_creator = canvas.texture_creator();
-    //Texture width = map_w * tile_w
-    let (map_w, map_h) = map.dimensions();
-    let tile_w = 8;
-    let mut texture = texture_creator
-        .create_texture_static(
-            PixelFormatEnum::RGB565,
-            (map_w * tile_w) as u32,
-            (map_h * tile_w) as u32,
-        )
-        .map_err(|e| e.to_string())?;
-
-    // Pitch = n_bytes(3) * map_w * tile_w
-    texture
-        .update(None, &(map.texture()), map.pitch())
-        .map_err(|e| e.to_string())?;
-    canvas
-        .copy(&texture, None, None)
-        .map_err(|e| e.to_string())?;
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
 
