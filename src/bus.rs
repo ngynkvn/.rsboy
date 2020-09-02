@@ -1,5 +1,5 @@
-use crate::gpu::GPU;
 use crate::cpu;
+use crate::gpu::GPU;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
 use std::fs::File;
@@ -87,10 +87,10 @@ impl Bus {
         let control = self.memory[TIMER_CONTROL];
         let clock_select = control & 0b11;
         let clock_speed = match clock_select {
-            0b00 => 256,
-            0b01 => 4,
-            0b10 => 16,
-            0b11 => 64,
+            0b00 => 1024,
+            0b01 => 16,
+            0b10 => 4,
+            0b11 => 8,
             _ => unreachable!(),
         };
         if self.clock % clock_speed == 0 {
@@ -188,7 +188,6 @@ impl Memory for Bus {
                 }
                 self.memory[address as usize] = value;
             }
-            DIVIDER_REGISTER=> self.memory[DIVIDER_REGISTER] = 0,
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
             _ => self.memory[address as usize] = value,
         }
