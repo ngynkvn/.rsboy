@@ -163,61 +163,6 @@ impl RegisterState {
         }
     }
 
-    pub fn put(&mut self, value: Value, reg: Register) {
-        match value {
-            U8(value) => match reg {
-                A => {
-                    self.a = value;
-                }
-                B => {
-                    self.b = value;
-                }
-                C => {
-                    self.c = value;
-                }
-                D => {
-                    self.d = value;
-                }
-                E => {
-                    self.e = value;
-                }
-                H => {
-                    self.h = value;
-                }
-                L => {
-                    self.l = value;
-                }
-                _ => unreachable!(),
-            },
-            U16(value) => match reg {
-                SP => {
-                    self.sp = value;
-                }
-                HL => {
-                    let [h, l] = value.to_be_bytes();
-                    self.h = h;
-                    self.l = l;
-                }
-                DE => {
-                    let [d, e] = value.to_be_bytes();
-                    self.d = d;
-                    self.e = e;
-                }
-                BC => {
-                    let [b, c] = value.to_be_bytes();
-                    self.b = b;
-                    self.c = c;
-                }
-                AF => {
-                    let [a, f] = (value & 0b1111_1111_1111_0000).to_be_bytes();
-                    self.a = a;
-                    self.f = f;
-                }
-                _ => unreachable!(),
-            },
-        }
-    }
-
     pub fn inc(&mut self, reg: Register) {
         match reg {
             HL => {

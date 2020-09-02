@@ -1,8 +1,6 @@
 use crate::gpu::PixelData;
 use std::ops::Range;
 
-const TILE_WIDTH: usize = 8;
-
 fn pixel(value: u8) -> u16 {
     match value {
         0b00 => 0xE7DA,

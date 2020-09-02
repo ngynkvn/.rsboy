@@ -8,6 +8,7 @@ use crate::registers::RegisterState;
 use std::convert::TryInto;
 use value::Value;
 use value::Value::*;
+use value::Writable;
 
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
@@ -102,60 +103,46 @@ impl CPU {
         }
     }
 
-    fn write_into(&mut self, into: Location, from_value: Value, bus: &mut Bus) -> CpuResult<()> {
+    fn ticky<F>(&mut self, bus: &mut Bus, f: F) -> &mut Self
+    where
+        F: FnMut(),
+    {
+        self.clock += 1;
+        // f();
+        bus.cycle();
+        return self;
+    }
+
+    fn write_into<T>(&mut self, into: Location, from_value: T, bus: &mut Bus)
+    where
+        T: Writable,
+    {
         match into {
             Location::Immediate(2) => {
                 let address = self.next_u16(bus);
-                if let U8(value) = from_value {
-                    self.set_byte(address, value, bus)?;
-                } else if let U16(from_value) = from_value {
-                    let [lo, hi] = from_value.to_le_bytes();
-                    self.set_byte(address, lo, bus)?;
-                    self.set_byte(address + 1, hi, bus)?;
-                }
-            }
-            Location::Register(r) => {
-                self.registers.put(from_value, r);
-            }
-            Location::Memory(r) => match self.registers.get_dual_reg(r) {
-                Some(address) => {
-                    if let U8(value) = from_value {
-                        self.set_byte(address, value, bus)?
-                    } else {
-                        unreachable!()
-                    }
-                }
-                None => return Err(String::from("I tried to access a u8 as a bus address.")),
-            },
-            Location::MemOffsetImm => {
-                let next = self.next_u8(bus);
-                if let U8(value) = from_value {
-                    self.set_byte(0xFF00 + next as u16, value, bus)?;
-                } else {
-                    unreachable!()
-                }
-            }
-            Location::MemOffsetRegister(r) => {
-                let offset = self.registers.fetch_u8(r);
-                if let U8(value) = from_value {
-                    self.set_byte(0xFF00 + offset as u16, value, bus)?;
-                } else {
-                    unreachable!()
-                }
+                from_value.to_memory_address(self, address, bus);
             }
             Location::MemoryImmediate => {
                 let address = self.next_u16(bus);
-                if let U8(value) = from_value {
-                    self.set_byte(address, value, bus)?;
-                } else if let U16(value) = from_value {
-                    let [lo, hi] = value.to_le_bytes();
-                    self.set_byte(address, lo, bus)?;
-                    self.set_byte(address + 1, hi, bus)?;
+                from_value.to_memory_address(self, address, bus);
+            }
+            Location::Register(r) => from_value.to_register(self, r),
+            Location::Memory(r) => match self.registers.get_dual_reg(r) {
+                Some(address) => {
+                    from_value.to_memory_address(self, address, bus);
                 }
+                None => panic!("I tried to access a u8 as a bus address."),
+            },
+            Location::MemOffsetImm => {
+                let next = self.next_u8(bus);
+                from_value.to_memory_address(self, 0xFF00 + next as u16, bus);
+            }
+            Location::MemOffsetRegister(r) => {
+                let offset = self.registers.fetch_u8(r);
+                from_value.to_memory_address(self, 0xFF00 + offset as u16, bus);
             }
             _ => unimplemented!("{:?}", into),
         };
-        Ok(())
     }
 
     fn tick(&mut self, bus: &mut Bus) {
@@ -163,7 +150,7 @@ impl CPU {
         bus.cycle();
     }
 
-    fn load(&mut self, into: Location, from: Location, bus: &mut Bus) -> CpuResult<()> {
+    fn load(&mut self, into: Location, from: Location, bus: &mut Bus) {
         let from_value = self.read_from(from, bus);
         self.write_into(into, from_value, bus)
     }
@@ -217,19 +204,15 @@ impl CPU {
 
     fn perform_instruction(&mut self, instruction: Instr, bus: &mut Bus) -> CpuResult<()> {
         match instruction {
-            Instr::LD(into, from) => self
-                .load(into, from, bus)
-                .or_else(|x| return Err(format!("{:#}\n{}", self.registers, x))),
+            Instr::LD(into, from) => Ok(self.load(into, from, bus)),
             Instr::LDD(into, from) => {
-                self.load(into, from, bus)
-                    .or_else(|x| return Err(format!("{:#}\n{}", self.registers, x)))?;
+                self.load(into, from, bus);
                 self.registers.dec(Register::HL);
                 self.tick(bus);
                 Ok(())
             }
             Instr::LDI(into, from) => {
-                self.load(into, from, bus)
-                    .or_else(|x| return Err(format!("{:#}\n{}", self.registers, x)))?;
+                self.load(into, from, bus);
                 self.registers.inc(Register::HL);
                 self.tick(bus);
                 Ok(())
@@ -239,7 +222,7 @@ impl CPU {
                 let result = self.registers.sp.wrapping_add(offset); // todo ?
                 let half_carry = (self.registers.sp & 0x0F).wrapping_add(offset & 0x0F) > 0x0F;
                 let carry = (self.registers.sp & 0xFF).wrapping_add(offset & 0xFF) > 0xFF;
-                self.write_into(Location::Register(HL), U16(result), bus)?;
+                self.write_into(Location::Register(HL), U16(result), bus);
                 self.registers.set_zf(false);
                 self.registers.set_nf(false);
                 self.registers.set_hf(half_carry);
@@ -437,7 +420,7 @@ impl CPU {
             }
             Instr::POP(Location::Register(r)) => {
                 let addr = self.pop_stack(bus)?;
-                self.registers.put(U16(addr), r);
+                addr.to_register(self, r);
                 Ok(())
             }
             Instr::RET(jump_type) => {
@@ -561,24 +544,20 @@ impl CPU {
             if fired & VBLANK != 0 {
                 bus.handle_interrupt(VBLANK);
                 self.perform_instruction(Instr::RST(0x40), bus)?;
-            }
-            else if fired & LCDSTAT != 0 {
+            } else if fired & LCDSTAT != 0 {
                 bus.handle_interrupt(LCDSTAT);
                 self.perform_instruction(Instr::RST(0x48), bus)?;
-            }
-            else if fired & TIMER != 0 {
+            } else if fired & TIMER != 0 {
                 bus.handle_interrupt(TIMER);
                 self.perform_instruction(Instr::RST(0x50), bus)?;
-            }
-            else if fired & SERIAL != 0 {
+            } else if fired & SERIAL != 0 {
                 bus.handle_interrupt(SERIAL);
                 self.perform_instruction(Instr::RST(0x58), bus)?;
-            }
-            else if fired & JOYPAD != 0 {
+            } else if fired & JOYPAD != 0 {
                 bus.handle_interrupt(JOYPAD);
                 self.perform_instruction(Instr::RST(0x60), bus)?;
             } else {
-                return Ok(false)
+                return Ok(false);
             }
             Ok(true)
         } else {
@@ -588,20 +567,13 @@ impl CPU {
 
     fn read_instruction(&mut self, bus: &mut Bus) -> CpuResult<()> {
         if self.handle_interrupts(bus)? {
-            return Ok(())
+            return Ok(());
         }
-        let mut c = self.registers.pc == 0x50;
         let curr_byte = self.next_u8(bus);
         let instruction = &INSTR_TABLE[curr_byte as usize];
-        if c {
-            self.dump_state();
-            println!("{:?}", instruction);
-        }
+        self.tick(bus);
         let r = self.perform_instruction(*instruction, bus);
-        if c {
-            self.dump_state();
-        }
-        return r
+        return r;
     }
 
     fn check_flag(&mut self, flag: Flag) -> bool {
@@ -675,7 +647,7 @@ impl CPU {
                     self.registers.set_hf(false);
                     self.registers.set_nf(false);
                     self.registers.set_cf(carry);
-                    self.write_into(target, U8(result), bus)?;
+                    self.write_into(target, U8(result), bus);
                 } else {
                     unreachable!()
                 }
@@ -690,7 +662,7 @@ impl CPU {
                     self.registers.set_hf(false);
                     self.registers.set_nf(false);
                     self.registers.set_cf(carry);
-                    self.write_into(target, U8(result), bus)?;
+                    self.write_into(target, U8(result), bus);
                 } else {
                     unreachable!()
                 }
@@ -704,7 +676,7 @@ impl CPU {
                     self.registers.set_nf(false);
                     self.registers.set_hf(false);
                     self.registers.set_cf(value & 0x80 != 0);
-                    self.write_into(target, U8(result), bus)?;
+                    self.write_into(target, U8(result), bus);
                 } else {
                     unreachable!()
                 }
@@ -718,7 +690,7 @@ impl CPU {
                     self.registers.set_nf(false);
                     self.registers.set_hf(false);
                     self.registers.set_cf(value & 0x01 != 0);
-                    self.write_into(target, U8(result), bus)?;
+                    self.write_into(target, U8(result), bus);
                 } else {
                     unreachable!()
                 }
@@ -728,7 +700,7 @@ impl CPU {
                 let target = CPU::cb_location(opcode);
                 if let U8(value) = self.read_from(target, bus) {
                     let value = swapped_nibbles(value);
-                    self.write_into(target, U8(value), bus)?;
+                    self.write_into(target, U8(value), bus);
                     self.registers.set_zf(value == 0);
                     self.registers.set_nf(false);
                     self.registers.set_hf(false);
@@ -762,7 +734,7 @@ impl CPU {
                 }
                 if let U8(value) = self.read_from(target, bus) {
                     let result = value | (1 << bit_index);
-                    self.write_into(target, U8(result), bus)?;
+                    self.write_into(target, U8(result), bus);
                 } else {
                     unreachable!()
                 }
@@ -793,7 +765,7 @@ impl CPU {
                     self.registers.set_nf(false);
                     self.registers.set_hf(false);
                     self.registers.set_cf(value & 0x80 != 0);
-                    self.write_into(target, U8(result), bus)?;
+                    self.write_into(target, U8(result), bus);
                 } else {
                     unreachable!()
                 }
@@ -807,7 +779,7 @@ impl CPU {
                     self.registers.set_nf(false);
                     self.registers.set_hf(false);
                     self.registers.set_cf(value & 0x1 != 0);
-                    self.write_into(target, U8(result), bus)?;
+                    self.write_into(target, U8(result), bus);
                 } else {
                     unreachable!()
                 }
@@ -820,7 +792,7 @@ impl CPU {
                 let target = CPU::cb_location(opcode);
                 if let U8(mut n) = self.read_from(target, bus) {
                     n &= !(1 << bit_index);
-                    self.write_into(target, U8(n), bus)?;
+                    self.write_into(target, U8(n), bus);
                 } else {
                     unreachable!()
                 }

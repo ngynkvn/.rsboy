@@ -86,14 +86,15 @@ impl Bus {
         }
         let control = self.memory[TIMER_CONTROL];
         let clock_select = control & 0b11;
+        let enable = (control & 0b100) != 0;
         let clock_speed = match clock_select {
-            0b00 => 1024,
-            0b01 => 16,
-            0b10 => 4,
-            0b11 => 8,
+            0b00 => 256,
+            0b01 => 4,
+            0b10 => 16,
+            0b11 => 64,
             _ => unreachable!(),
         };
-        if self.clock % clock_speed == 0 {
+        if enable && self.clock % clock_speed == 0 {
             let (value, overflow) = self.memory[TIMER_REG].overflowing_add(1);
             if overflow {
                 self.int_flags |= cpu::TIMER;
