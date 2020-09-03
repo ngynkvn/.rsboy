@@ -1,7 +1,7 @@
 use super::CPU;
 use crate::{
     bus::{Bus, Memory},
-    instructions::{self, Register},
+    instructions::Register,
 };
 
 pub enum Value {
@@ -9,6 +9,11 @@ pub enum Value {
     U8(u8),
 }
 
+impl From<u8> for Value {
+    fn from(v: u8) -> Self {
+        Value::U8(v)
+    }
+}
 impl Into<u8> for Value {
     fn into(self) -> u8 {
         if let Value::U8(value) = self {
@@ -19,6 +24,11 @@ impl Into<u8> for Value {
     }
 }
 
+impl From<u16> for Value {
+    fn from(v: u16) -> Self {
+        Value::U16(v)
+    }
+}
 impl Into<u16> for Value {
     fn into(self) -> u16 {
         if let Value::U16(value) = self {

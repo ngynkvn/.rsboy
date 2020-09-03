@@ -269,20 +269,20 @@ impl RegisterState {
 
     pub fn fetch(&self, reg: Register) -> Value {
         match reg {
-            A => U8(self.a),
-            B => U8(self.b),
-            C => U8(self.c),
-            D => U8(self.d),
-            E => U8(self.e),
-            F => U8(self.f),
-            H => U8(self.h),
-            L => U8(self.l),
-            BC => U16(self.bc()),
-            DE => U16(self.de()),
-            HL => U16(self.hl()),
-            AF => U16(self.af()),
-            SP => U16(self.sp),
-            PC => U16(self.pc),
+            A => Value::from(self.a),
+            B => Value::from(self.b),
+            C => Value::from(self.c),
+            D => Value::from(self.d),
+            E => Value::from(self.e),
+            F => Value::from(self.f),
+            H => Value::from(self.h),
+            L => Value::from(self.l),
+            BC => Value::from(self.bc()),
+            DE => Value::from(self.de()),
+            HL => Value::from(self.hl()),
+            AF => Value::from(self.af()),
+            SP => Value::from(self.sp),
+            PC => Value::from(self.pc),
         }
     }
     // TODO See if swapping these makes a difference..
