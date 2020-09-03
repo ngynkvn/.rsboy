@@ -50,8 +50,8 @@ impl Tile {
                     let color = (palette >> index) & 0b11;
                     let c = pixel(color);
                     pixels[x] = c;
-                    lo = lo >> 1;
-                    hi = hi >> 1;
+                    lo >>= 1;
+                    hi >>= 1;
                 }
             }
         }
@@ -59,7 +59,7 @@ impl Tile {
 
     // Size of a tile
     pub fn range(i: usize) -> Range<usize> {
-        return i..i + 16;
+        i..i + 16
     }
 
     pub fn texture(&self) -> &[[u16; 8]; 8] {

@@ -1,9 +1,10 @@
-use super::CPU;
+use super::{CPU};
 use crate::{
     bus::{Bus, Memory},
-    instructions::Register,
+    instructions::Register, registers::RegisterState,
 };
 
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Value {
     U16(u16),
     U8(u8),
@@ -48,47 +49,46 @@ impl Writable for Value {
         }
     }
 
-    fn to_register(self, cpu: &mut CPU, r: Register) {
+    fn to_register(self, registers: &mut RegisterState, r: Register) {
         if let Value::U16(value) = self {
-            value.to_register(cpu, r);
+            value.to_register(registers, r);
         } else if let Value::U8(value) = self {
-            value.to_register(cpu, r);
+            value.to_register(registers, r);
         }
     }
 }
 
 pub trait Writable {
     fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus);
-    fn to_register(self, cpu: &mut CPU, r: Register);
+    fn to_register(self, registers: &mut RegisterState, r: Register);
 }
 impl Writable for u8 {
     fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus) {
-        b.write(address, self);
-        cpu.tick(b);
+        b.write_cycle(address, self);
     }
 
-    fn to_register(self, cpu: &mut CPU, r: Register) {
+    fn to_register(self, registers: &mut RegisterState, r: Register) {
         match r {
             Register::A => {
-                cpu.registers.a = self;
+                registers.a = self;
             }
             Register::B => {
-                cpu.registers.b = self;
+                registers.b = self;
             }
             Register::C => {
-                cpu.registers.c = self;
+                registers.c = self;
             }
             Register::D => {
-                cpu.registers.d = self;
+                registers.d = self;
             }
             Register::E => {
-                cpu.registers.e = self;
+                registers.e = self;
             }
             Register::H => {
-                cpu.registers.h = self;
+                registers.h = self;
             }
             Register::L => {
-                cpu.registers.l = self;
+                registers.l = self;
             }
             _ => unreachable!(),
         }
@@ -97,36 +97,34 @@ impl Writable for u8 {
 impl Writable for u16 {
     fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus) {
         let [lo, hi] = self.to_le_bytes();
-        b.write(address, lo);
-        cpu.tick(b);
-        b.write(address + 1, hi);
-        cpu.tick(b);
+        b.write_cycle(address, lo);
+        b.write_cycle(address + 1, hi);
     }
 
-    fn to_register(self, cpu: &mut CPU, r: Register) {
+    fn to_register(self, registers: &mut RegisterState, r: Register) {
         match r {
             Register::SP => {
-                cpu.registers.sp = self;
+                registers.sp = self;
             }
             Register::HL => {
                 let [h, l] = self.to_be_bytes();
-                cpu.registers.h = h;
-                cpu.registers.l = l;
+                registers.h = h;
+                registers.l = l;
             }
             Register::DE => {
                 let [d, e] = self.to_be_bytes();
-                cpu.registers.d = d;
-                cpu.registers.e = e;
+                registers.d = d;
+                registers.e = e;
             }
             Register::BC => {
                 let [b, c] = self.to_be_bytes();
-                cpu.registers.b = b;
-                cpu.registers.c = c;
+                registers.b = b;
+                registers.c = c;
             }
             Register::AF => {
                 let [a, f] = (self & 0b1111_1111_1111_0000).to_be_bytes();
-                cpu.registers.a = a;
-                cpu.registers.f = f;
+                registers.a = a;
+                registers.f = f;
             }
             _ => unreachable!(),
         }

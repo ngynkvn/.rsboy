@@ -1,8 +1,11 @@
 use self::Flag::*;
 use self::Instr::*;
-use self::JumpType::*;
 use self::Location::*;
 use self::Register::*;
+use crate::{
+    bus::Bus,
+    cpu::{value::Value, value::Value::*, value::Writable, CPU},
+};
 use std::fmt;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -39,7 +42,7 @@ pub enum Location {
     MemOffsetImm,
     MemoryImmediate,
     MemOffsetRegister(Register),
-    Literal(u16),
+    Literal(Value),
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -48,14 +51,343 @@ pub enum Direction {
     RIGHT,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum JumpType {
-    Always,
-    If(Flag),
-    To(Location),
+type Condition = Option<Flag>;
+
+pub trait Executable {
+    fn execute(self, cpu: &mut CPU, bus: &mut Bus);
 }
 
-#[derive(Debug, Copy, Clone)]
+impl Register {
+    pub fn is_dual_register(self) -> bool {
+        match self {
+            HL => true,
+            BC => true,
+            DE => true,
+            SP => true,
+            _ => false,
+        }
+    }
+}
+
+impl Location {
+    pub fn is_dual_register(self) -> bool {
+        if let Register(r) = self {
+            r.is_dual_register()
+        } else {
+            false
+        }
+    }
+}
+
+impl Executable for Instr {
+    fn execute(self, cpu: &mut CPU, bus: &mut Bus) {
+        match self {
+            LD(Register(SP), Register(HL)) => {
+                cpu.registers.sp = cpu.registers.hl();
+                bus.generic_cycle();
+            }
+            LD(into, from) => cpu.load(into, from, bus),
+            LDD(into, from) => {
+                cpu.load(into, from, bus);
+                cpu.registers.dec(Register::HL);
+            }
+            LDI(into, from) => {
+                cpu.load(into, from, bus);
+                cpu.registers.inc(Register::HL);
+            }
+            LDSP => {
+                let offset = cpu.next_u8(bus) as i8 as u16;
+                let result = cpu.registers.sp.wrapping_add(offset); // todo ?
+                let half_carry = (cpu.registers.sp & 0x0F).wrapping_add(offset & 0x0F) > 0x0F;
+                let carry = (cpu.registers.sp & 0xFF).wrapping_add(offset & 0xFF) > 0xFF;
+                cpu.write_into(Location::Register(HL), U16(result), bus);
+                bus.generic_cycle();
+                cpu.registers.set_zf(false);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(half_carry);
+                cpu.registers.set_cf(carry);
+            }
+            STOP => {
+                println!("STOP: {:04x}", cpu.registers.pc - 1); // TODO ?
+            }
+            NOOP => (),
+            RST(size) => {
+                bus.generic_cycle();
+                cpu.push_stack(cpu.registers.pc, bus);
+                cpu.registers.pc = size as u16;
+            }
+            CP(location) => {
+                let value = cpu.read_from(location, bus).into();
+                cpu.registers.set_zf(cpu.registers.a == value);
+                cpu.registers.set_nf(true);
+                //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu.rs#L156
+                cpu.registers
+                    .set_hf((cpu.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0);
+                cpu.registers.set_cf(cpu.registers.a < value);
+            }
+            ADD(location) => {
+                let value = cpu.read_from(location, bus).into();
+                let (result, carry) = cpu.registers.a.overflowing_add(value);
+                //https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
+                let half_carry = (cpu.registers.a & 0x0f).checked_add(value | 0xf0).is_none();
+                cpu.registers.a = result;
+                cpu.registers.set_zf(cpu.registers.a == 0);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(half_carry);
+                cpu.registers.set_cf(carry);
+            }
+            SUB(location) => {
+                let value = cpu.read_from(location, bus).into();
+                let result = cpu.registers.a.wrapping_sub(value);
+                cpu.registers.set_zf(result == 0);
+                cpu.registers.set_nf(true);
+                cpu.registers.set_hf(
+                    // Mooneye
+                    (cpu.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
+                );
+                cpu.registers
+                    .set_cf((cpu.registers.a as u16) < (value as u16));
+                cpu.registers.a = result;
+            }
+            ADC(location) => {
+                let value = cpu.read_from(location, bus).into();
+                let carry = cpu.registers.flg_c() as u8;
+                let result = cpu.registers.a.wrapping_add(value).wrapping_add(carry);
+                cpu.registers.set_zf(result == 0);
+                cpu.registers.set_nf(false);
+                // Maybe: See https://github.com/Gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#L55
+                cpu.registers
+                    .set_hf((cpu.registers.a & 0xf) + (value & 0xf) + carry > 0xf);
+                cpu.registers
+                    .set_cf(cpu.registers.a as u16 + value as u16 + carry as u16 > 0xff);
+                cpu.registers.a = result;
+            }
+            ADDHL(location) => {
+                let hl = cpu.registers.hl();
+                if let U16(value) = cpu.read_from(location, bus) {
+                    if location.is_dual_register() {
+                        bus.generic_cycle();
+                    }
+                    let (result, overflow) = hl.overflowing_add(value);
+                    let [h, l] = result.to_be_bytes();
+                    cpu.registers.h = h;
+                    cpu.registers.l = l;
+                    cpu.registers.set_nf(false);
+                    cpu.registers
+                        .set_hf((hl & 0xfff) + (value & 0xfff) > 0x0fff);
+                    cpu.registers.set_cf(overflow);
+                } else {
+                    unimplemented!()
+                }
+            }
+            AND(location) => {
+                let value: u8 = cpu.read_from(location, bus).into();
+                cpu.registers.a &= value;
+                cpu.registers.set_zf(cpu.registers.a == 0);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(true);
+                cpu.registers.set_cf(false);
+            }
+            XOR(location) => {
+                let value: u8 = cpu.read_from(location, bus).into();
+                cpu.registers.a ^= value;
+                cpu.registers.set_zf(cpu.registers.a == 0);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_cf(false);
+            }
+            OR(location) => {
+                let value: u8 = cpu.read_from(location, bus).into();
+                cpu.registers.a |= value;
+                cpu.registers.set_zf(cpu.registers.a == 0);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_cf(false);
+            }
+            NOT(location) => {
+                let value: u8 = cpu.read_from(location, bus).into();
+                cpu.registers.a = !value;
+                cpu.registers.set_nf(true);
+                cpu.registers.set_hf(true);
+            }
+            CCF => {
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_cf(!cpu.registers.flg_c());
+            }
+            SCF => {
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_cf(true);
+            }
+            HALT => {
+                //TODO
+            }
+            CB => cpu.handle_cb(bus),
+            JP(jump_type) => {
+                let address = cpu.next_u16(bus);
+                cpu.jumping(jump_type, bus, |cpu, _| cpu.registers.pc = address);
+            }
+            JP_HL => {
+                cpu.registers.pc = cpu.registers.hl();
+            }
+            JR(jump_type) => {
+                let offset = cpu.next_u8(bus) as i8;
+                let address = cpu.registers.pc.wrapping_add(offset as u16);
+                cpu.jumping(jump_type, bus, |cpu, _| {
+                    cpu.registers.pc = address;
+                })
+            }
+            CALL(jump_type) => {
+                let address = cpu.next_u16(bus);
+                cpu.jumping(jump_type, bus, |cpu, bus| {
+                    cpu.push_stack(cpu.registers.pc, bus);
+                    cpu.registers.pc = address;
+                });
+            }
+            DEC(Location::Memory(r)) => {
+                let address = cpu.registers.fetch_u16(r);
+                let value = bus.read_cycle(address);
+                let result = value.wrapping_sub(1);
+                bus.write_cycle(address, result);
+                cpu.registers.set_zf(result == 0);
+                cpu.registers.set_nf(true);
+                cpu.registers.set_hf(result & 0x0f == 0x0f);
+            }
+            DEC(Location::Register(r)) => {
+                cpu.registers.dec(r);
+                if r.is_dual_register() {
+                    bus.generic_cycle();
+                }
+            }
+            INC(Location::Memory(r)) => {
+                let address = cpu.registers.fetch_u16(r);
+                let value = bus.read_cycle(address);
+                let result = value.wrapping_add(1);
+                bus.write_cycle(address, result);
+                cpu.registers.set_zf(result == 0);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(value & 0x0f == 0x0f);
+            }
+            INC(Location::Register(r)) => {
+                cpu.registers.inc(r);
+                if r.is_dual_register() {
+                    bus.generic_cycle();
+                }
+            }
+            PUSH(Location::Register(r)) => {
+                let addr = cpu.registers.fetch_u16(r);
+                cpu.push_stack(addr, bus);
+                bus.generic_cycle();
+            }
+            POP(Location::Register(r)) => {
+                let addr = cpu.pop_stack(bus);
+                addr.to_register(&mut cpu.registers, r);
+            }
+            RET(None) => cpu.jumping(None, bus, |cpu, bus| {
+                cpu.registers.pc = cpu.pop_stack(bus);
+            }),
+            RET(jump_type) => {
+                cpu.jumping(jump_type, bus, |cpu, bus| {
+                    cpu.registers.pc = cpu.pop_stack(bus);
+                });
+                bus.generic_cycle();
+            }
+            RRA => {
+                let carry = cpu.registers.a & 1 != 0;
+                cpu.registers.a >>= 1;
+                if cpu.registers.flg_c() {
+                    cpu.registers.a |= 0b1000_0000;
+                }
+                cpu.registers.set_zf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_cf(carry);
+            }
+            RRCA => {
+                let carry = cpu.registers.a & 1 != 0;
+                cpu.registers.a >>= 1;
+                if carry {
+                    cpu.registers.a |= 0b1000_0000;
+                }
+                cpu.registers.set_zf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_cf(carry);
+            }
+            RLA => {
+                let overflow = cpu.registers.a & 0x80 != 0;
+                let result = cpu.registers.a << 1;
+                cpu.registers.a = result | (cpu.registers.flg_c() as u8);
+                cpu.registers.set_zf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_cf(overflow);
+            }
+            RLCA => {
+                let carry = cpu.registers.a & 0x80 != 0;
+                let result = cpu.registers.a << 1 | carry as u8;
+                cpu.registers.a = result;
+                cpu.registers.set_zf(false);
+                cpu.registers.set_hf(false);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_cf(carry);
+            }
+            ADDSP => {
+                let offset = cpu.next_u8(bus) as i8 as i16 as u16;
+                let sp = cpu.registers.sp;
+                let result = cpu.registers.sp.wrapping_add(offset);
+                bus.generic_cycle();
+                bus.generic_cycle();
+                let half_carry = ((sp & 0x0F) + (offset & 0x0F)) > 0x0F;
+                let overflow = ((sp & 0xff) + (offset & 0xff)) > 0xff;
+                cpu.registers.sp = result;
+                cpu.registers.set_zf(false);
+                cpu.registers.set_nf(false);
+                cpu.registers.set_hf(half_carry);
+                cpu.registers.set_cf(overflow);
+            }
+            RETI => {
+                bus.enable_interrupts();
+                let addr = cpu.pop_stack(bus);
+                cpu.registers.pc = addr;
+                bus.generic_cycle();
+            }
+            DAA => {
+                cpu.registers.a = cpu.bcd_adjust(cpu.registers.a);
+            }
+            EnableInterrupts => {
+                bus.enable_interrupts();
+            }
+            DisableInterrupts => {
+                bus.disable_interrupts();
+            }
+            UNIMPLEMENTED => unimplemented!(),
+            SBC(l) => {
+                let a = cpu.registers.a;
+                let value: u8 = cpu.read_from(l, bus).into();
+                let cy = cpu.registers.flg_c() as u8;
+                let result = a.wrapping_sub(value).wrapping_sub(cy);
+                cpu.registers.set_zf(result == 0);
+                cpu.registers.set_nf(true);
+                cpu.registers.set_hf(
+                    // Mooneye
+                    (cpu.registers.a & 0xf)
+                        .wrapping_sub(value & 0xf)
+                        .wrapping_sub(cy)
+                        & (0xf + 1)
+                        != 0,
+                );
+                cpu.registers
+                    .set_cf((cpu.registers.a as u16) < (value as u16) + (cy as u16));
+                cpu.registers.a = result;
+            }
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Instr {
     NOOP,
     UNIMPLEMENTED,
@@ -75,18 +407,19 @@ pub enum Instr {
     CP(Location),
     SBC(Location),
     CB,
-    JR(JumpType),
+    JR(Condition),
     STOP,
     DisableInterrupts,
     EnableInterrupts,
-    JP(JumpType),
-    RET(JumpType),
+    JP(Condition),
+    JP_HL,
+    RET(Condition),
     RETI,
     DAA,
     POP(Location),
     PUSH(Location),
     NOT(Location),
-    CALL(JumpType),
+    CALL(Condition),
     RLCA,
     RRCA,
     RLA,
@@ -123,7 +456,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Register(D)),                      //0x15
     LD(Register(D), Immediate(1)),         //0x16
     RLA,                                   //0x17
-    JR(Always),                            //0x18
+    JR(None),                              //0x18
     ADDHL(Register(DE)),                   //0x19
     LD(Register(A), Memory(DE)),           //0x1A
     DEC(Register(DE)),                     //0x1B
@@ -131,7 +464,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Register(E)),                      //0x1D
     LD(Register(E), Immediate(1)),         //0x1E
     RRA,                                   //0x1F
-    JR(If(FlagNZ)),                        //0x20
+    JR(Some(FlagNZ)),                      //0x20
     LD(Register(HL), Immediate(2)),        //0x21
     LDI(Memory(HL), Register(A)),          //0x22
     INC(Register(HL)),                     //0x23
@@ -139,7 +472,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Register(H)),                      //0x25
     LD(Register(H), Immediate(1)),         //0x26
     DAA,                                   //0x27
-    JR(If(FlagZ)),                         //0x28
+    JR(Some(FlagZ)),                       //0x28
     ADDHL(Register(HL)),                   //0x29
     LDI(Register(A), Memory(HL)),          //0x2A
     DEC(Register(HL)),                     //0x2B
@@ -147,7 +480,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Register(L)),                      //0x2D
     LD(Register(L), Immediate(1)),         //0x2E
     NOT(Register(A)),                      //0x2F
-    JR(If(FlagNC)),                        //0x30
+    JR(Some(FlagNC)),                      //0x30
     LD(Register(SP), Immediate(2)),        //0x31
     LDD(Memory(HL), Register(A)),          //0x32
     INC(Register(SP)),                     //0x33
@@ -155,7 +488,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Memory(HL)),                       //0x35
     LD(Memory(HL), Immediate(1)),          //0x36
     SCF,                                   //0x37
-    JR(If(FlagC)),                         //0x38
+    JR(Some(FlagC)),                       //0x38
     ADDHL(Register(SP)),                   //0x39
     LDD(Register(A), Memory(HL)),          //0x3A
     DEC(Register(SP)),                     //0x3B
@@ -291,35 +624,35 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CP(Register(L)),                       //0xBD
     CP(Memory(HL)),                        //0xBE
     CP(Register(A)),                       //0xBF
-    RET(If(FlagNZ)),                       //0xC0
+    RET(Some(FlagNZ)),                     //0xC0
     POP(Register(BC)),                     //0xC1
-    JP(If(FlagNZ)),                        //0xC2
-    JP(Always),                            //0xC3
-    CALL(If(FlagNZ)),                      //0xC4
+    JP(Some(FlagNZ)),                      //0xC2
+    JP(None),                              //0xC3
+    CALL(Some(FlagNZ)),                    //0xC4
     PUSH(Register(BC)),                    //0xC5
     ADD(Immediate(1)),                     //0xC6
     RST(0x0),                              //0xC7
-    RET(If(FlagZ)),                        //0xC8
-    RET(Always),                           //0xC9
-    JP(If(FlagZ)),                         //0xCA
+    RET(Some(FlagZ)),                      //0xC8
+    RET(None),                             //0xC9
+    JP(Some(FlagZ)),                       //0xCA
     CB,                                    //0xCB
-    CALL(If(FlagZ)),                       //0xCC
-    CALL(Always),                          //0xCD
+    CALL(Some(FlagZ)),                     //0xCC
+    CALL(None),                            //0xCD
     ADC(Immediate(1)),                     //0xCE
     RST(0x8),                              //0xCF
-    RET(If(FlagNC)),                       //0xD0
+    RET(Some(FlagNC)),                     //0xD0
     POP(Register(DE)),                     //0xD1
-    JP(If(FlagNC)),                        //0xD2
+    JP(Some(FlagNC)),                      //0xD2
     UNIMPLEMENTED,                         //0xD3
-    CALL(If(FlagNC)),                      //0xD4
+    CALL(Some(FlagNC)),                    //0xD4
     PUSH(Register(DE)),                    //0xD5
     SUB(Immediate(1)),                     //0xD6
     RST(0x10),                             //0xD7
-    RET(If(FlagC)),                        //0xD8
+    RET(Some(FlagC)),                      //0xD8
     RETI,                                  //0xD9
-    JP(If(FlagC)),                         //0xDA
+    JP(Some(FlagC)),                       //0xDA
     UNIMPLEMENTED,                         //0xDB
-    CALL(If(FlagC)),                       //0xDC
+    CALL(Some(FlagC)),                     //0xDC
     UNIMPLEMENTED,                         //0xDD
     SBC(Immediate(1)),                     //0xDE
     RST(0x18), //0xDF Push present address onto stack. Jump to address $0000 + n.
@@ -332,7 +665,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     AND(Immediate(1)), //0xE6
     RST(0x20), //0xE7
     ADDSP,     //0xE8
-    JP(To(Register(HL))), //0xE9
+    JP_HL,     //0xE9
     LD(MemoryImmediate, Register(A)), //0xEA
     UNIMPLEMENTED, //0xEB
     UNIMPLEMENTED, //0xEC
