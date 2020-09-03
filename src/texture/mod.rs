@@ -1,6 +1,5 @@
+use crate::gpu::PixelData;
 use std::ops::Range;
-
-const TILE_WIDTH: usize = 8;
 
 fn pixel(value: u8) -> u16 {
     match value {
@@ -13,12 +12,12 @@ fn pixel(value: u8) -> u16 {
 }
 
 pub struct Tile {
-    pub texture: [u16; 64],
+    pub texture: [[u16; 8]; 8],
 }
 
 impl Tile {
     pub fn construct(palette: u8, tile_data: &[u8]) -> Self {
-        let mut texture = [255; 64];
+        let mut texture = [[0; 8]; 8];
         // We receive in order of
         // low byte, then high byte
         for (y, d) in tile_data.chunks_exact(2).enumerate() {
@@ -29,11 +28,33 @@ impl Tile {
                 let index = (hi << 1) | lo;
                 let color = (palette >> (index << 1)) & 0b11;
                 let c = pixel(color);
-                let location = x + y * 8;
-                texture[location] = c;
+                texture[y][x] = c;
             }
         }
         Self { texture }
+    }
+
+    // PERFORMANCE ISSUE
+    pub fn write(palette: u8, pixels: &mut PixelData, location: (usize, usize), tile_data: &[u8]) {
+        let (mapx, mapy) = location;
+        for (y, d) in tile_data.chunks_exact(2).enumerate() {
+            //Each row in tile is pair of 2 bytes.
+            let y = mapy * 8 + y;
+            let pixels = &mut pixels[y];
+            if let [mut lo, mut hi] = d {
+                let x = mapx * 8;
+                for x in (x..x + 8).rev() {
+                    let lo_b = lo & 1;
+                    let hi_b = hi & 1;
+                    let index = (hi_b << 2) | lo_b << 1;
+                    let color = (palette >> index) & 0b11;
+                    let c = pixel(color);
+                    pixels[x] = c;
+                    lo = lo >> 1;
+                    hi = hi >> 1;
+                }
+            }
+        }
     }
 
     // Size of a tile
@@ -41,48 +62,7 @@ impl Tile {
         return i..i + 16;
     }
 
-    pub fn texture(&self) -> &[u16; 64] {
+    pub fn texture(&self) -> &[[u16; 8]; 8] {
         &self.texture
-    }
-}
-
-pub struct Map<'a> {
-    pub width: usize,
-    pub height: usize,
-    pub tile_set: Vec<Tile>,
-    pub map: &'a [u8],
-}
-
-impl<'a> Map<'a> {
-    pub fn pitch(&self) -> usize {
-        self.width * TILE_WIDTH * 2
-    }
-
-    pub fn texture(&self) -> Vec<u8> {
-        let mut byte_row = vec![vec![]; TILE_WIDTH * self.height];
-        for (i, row) in self.map.chunks_exact(self.width).enumerate() {
-            for &index in row {
-                // Tile index
-                for (j, tile_row) in self.tile_set[index as usize]
-                    .texture()
-                    .chunks_exact(8)
-                    .enumerate()
-                {
-                    byte_row[i * TILE_WIDTH + j].extend_from_slice(&tile_row);
-                }
-            }
-        }
-        byte_row
-            .iter()
-            .flatten()
-            .flat_map(|x| x.to_le_bytes().to_vec())
-            .collect()
-    }
-
-    pub fn dimensions(&self) -> (usize, usize) {
-        (self.width, self.height)
-    }
-    pub fn pixel_dims(&self) -> (usize, usize) {
-        (self.width * TILE_WIDTH, self.height * TILE_WIDTH)
     }
 }

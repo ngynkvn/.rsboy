@@ -1,4 +1,4 @@
-use crate::texture::*;
+use crate::{cpu, texture::*};
 use std::{
     ops::{Index, Range},
     time,
@@ -19,6 +19,10 @@ enum GpuMode {
     VRAM,   // 3
 }
 
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
+
+// Global emu struct.
 pub struct GPU {
     mode: GpuMode,
     clock: usize,
@@ -39,7 +43,8 @@ pub struct GPU {
 const END_HBLANK: u8 = 143;
 const END_VBLANK: u8 = 153;
 
-type PixelData = [u16; 256 * 256];
+pub type PixelData = [[u16; 256]; 256];
+pub type PixelMap = [u8; 256 * 256 * 2];
 
 struct SpriteAttribute {
     above: bool,
@@ -56,8 +61,6 @@ impl From<u8> for SpriteAttribute {
         }
     }
 }
-
-type SpriteEntry = (u8, u8, u8, SpriteAttribute);
 
 impl GPU {
     pub fn new() -> Self {
@@ -90,25 +93,16 @@ impl GPU {
     }
 
     // Returns true if IRQ is requested.
-    pub fn cycle(&mut self) -> bool {
+    pub fn cycle(&mut self, flag: &mut u8) {
         if !self.is_on() {
-            return false;
+            return;
         }
         self.clock += 1;
-        self.step()
+        self.step(flag)
     }
 
     pub fn scroll(&self) -> (u32, u32) {
         (self.hscroll as u32, self.vscroll as u32)
-    }
-
-    pub fn background(&self) -> Map {
-        Map {
-            width: 32,
-            height: 32,
-            tile_set: self.tiles(),
-            map: &self.vram[MAP_DATA_RANGE],
-        }
     }
 
     pub fn tiles(&self) -> Vec<Tile> {
@@ -118,65 +112,54 @@ impl GPU {
             .collect()
     }
 
-    fn render_tile(&self, pixels: &mut PixelData, vram_index: usize) {
+    fn blit_tile(&self, pixels: &mut PixelData, vram_index: usize) {
         let tile = self.vram[vram_index] as usize * 16;
-        let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(tile)]);
         let mapx = (vram_index - 0x1800) % 32;
         let mapy = (vram_index - 0x1800) / 32;
+        Tile::write(
+            self.bg_palette,
+            pixels,
+            (mapx, mapy),
+            &self.vram[Tile::range(tile)],
+        );
+    }
+
+    fn blit_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
         for row in 0..8 {
             for col in 0..8 {
-                let t = col + row * 8;
-
                 //Find offset from map x and y
-                let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
-                pixels[location] = tile.texture[t];
+                let x = mapx * 8 + col;
+                let y = mapy * 8 + row;
+                if y < pixels.len() && x < pixels[0].len() {
+                    pixels[y][x] = tile.texture[row][col];
+                }
             }
         }
     }
 
-    fn render_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
-        for row in 0..8 {
-            for col in 0..8 {
-                let t = col + row * 8;
-
-                //Find offset from map x and y
-                let location = mapx * 8 + col + mapy * 8 * 256 + row * 256;
-                pixels[location] = tile.texture[t];
-            }
-        }
-    }
-
-    pub fn render_map(&self, texture: &mut sdl2::render::Texture) {
-        let mut pixels: PixelData = [0; 256 * 256];
+    pub fn render(&self, pixels: &mut PixelData) {
         let start = time::Instant::now();
         for i in MAP_DATA_RANGE {
-            self.render_tile(&mut pixels, i);
+            self.blit_tile(pixels, i);
         }
 
         // TODO
         // Need to emulate scanline, and priority rendering
         for sprite_attributes in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
             if let [flags, pattern, x, y] = sprite_attributes {
+                // let _flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
-                let screen_x = *x;
-                let screen_y = *y;
-                self.render_texture(&mut pixels, screen_x as usize, screen_y as usize, tile);
+                let screen_x = (*x).wrapping_sub(8);
+                let screen_y = (*y).wrapping_sub(16);
+                self.blit_texture(pixels, screen_x as usize, screen_y as usize, tile);
             }
         }
-
-        // Convert u16 array to u8 for sending to sdl2
-        // TODO: Write test for this transformation
-        let pixels = unsafe { std::mem::transmute::<PixelData, [u8; 256 * 256 * 2]>(pixels) };
-        // println!(
-        //     "{:?}",
-        //     time::Instant::now().saturating_duration_since(start)
-        // );
-        texture.update(None, &pixels, 256 * 2).unwrap();
+        // println!("{:?}", time::Instant::now().saturating_duration_since(start));
     }
 
     // Returns true if interrupt is requested
-    pub fn step(&mut self) -> bool {
+    pub fn step(&mut self, flag: &mut u8) {
         match self.mode {
             GpuMode::OAM => {
                 if self.clock >= 80 {
@@ -197,7 +180,7 @@ impl GPU {
                     if self.scanline == END_HBLANK {
                         self.mode = GpuMode::VBlank;
                         //Might be wrong position to trigger interrupt
-                        return true;
+                        *flag |= cpu::VBLANK;
                     }
                 }
             }
@@ -212,7 +195,6 @@ impl GPU {
                 }
             }
         }
-        false
     }
 }
 

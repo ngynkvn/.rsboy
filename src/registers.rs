@@ -1,9 +1,14 @@
+use crate::cpu::value::Value;
+use crate::cpu::value::Value::*;
 use crate::instructions::Register;
 use crate::instructions::Register::*;
-use std::convert::TryInto;
 use std::fmt;
 
-#[derive(Default, Debug)]
+#[allow(unused_imports)]
+use wasm_bindgen::prelude::*;
+
+// Global emu struct.
+#[derive(Default, Debug, Clone)]
 pub struct RegisterState {
     pub a: u8,
     pub b: u8,
@@ -54,26 +59,19 @@ macro_rules! TEST_BIT {
 
 macro_rules! INC {
     ($self: ident, $r1: ident) => {{
-        let n = $self.$r1;
-        let half_carry = (n & 0x0f) == 0x0f;
-        let n = n.wrapping_add(1);
-        RegisterState {
-            $r1: n,
-            f: flags(n == 0, false, half_carry, $self.flg_c()),
-            ..(*$self)
-        }
+        let prev = $self.$r1;
+        let result = prev.wrapping_add(1);
+        $self.f = flags(result == 0, false, (prev & 0x0f) == 0x0f, $self.flg_c());
+        $self.$r1 = result;
     }};
 }
 
 macro_rules! DEC {
     ($self: ident, $r1: ident) => {{
-        let old = $self.$r1;
-        let n = old.wrapping_sub(1);
-        RegisterState {
-            $r1: n,
-            f: flags(n == 0, true, old == 0x00, $self.flg_c()),
-            ..(*$self)
-        }
+        let prev = $self.$r1;
+        let result = prev.wrapping_sub(1);
+        $self.f = flags(result == 0, true, result & 0x0f == 0x0f, $self.flg_c());
+        $self.$r1 = result;
     }};
 }
 
@@ -103,16 +101,8 @@ macro_rules! SRL {
 }
 
 impl RegisterState {
-    pub fn new(skip_bios: bool) -> Self {
-        if skip_bios {
-            return Self {
-                pc: 0x100,
-                ..Default::default()
-            };
-        }
-        Self {
-            ..Default::default()
-        }
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn set_cf(&mut self, b: bool) {
@@ -173,76 +163,28 @@ impl RegisterState {
         }
     }
 
-    pub fn put(&self, value: u16, reg: Register) -> Result<Self, String> {
-        match reg {
-            A => Ok(Self {
-                a: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            B => Ok(Self {
-                b: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            C => Ok(Self {
-                c: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            D => Ok(Self {
-                d: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            E => Ok(Self {
-                e: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            H => Ok(Self {
-                h: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            L => Ok(Self {
-                l: value.try_into().unwrap(),
-                ..(*self)
-            }),
-            SP => Ok(Self {
-                sp: value,
-                ..(*self)
-            }),
-            HL => {
-                let [h, l] = value.to_be_bytes();
-                Ok(Self { h, l, ..(*self) })
-            }
-            DE => {
-                let [d, e] = value.to_be_bytes();
-                Ok(Self { d, e, ..(*self) })
-            }
-            BC => {
-                let [b, c] = value.to_be_bytes();
-                Ok(Self { b, c, ..(*self) })
-            }
-            AF => {
-                let [a, f] = value.to_be_bytes();
-                Ok(Self { a, f, ..(*self) })
-            }
-            _ => Err(format!("Put: {} into {:?}", value.to_string(), reg)),
-        }
-    }
-
-    pub fn inc(&self, reg: Register) -> Self {
+    pub fn inc(&mut self, reg: Register) {
         match reg {
             HL => {
                 let n = self.hl().wrapping_add(1);
                 let [h, l] = n.to_be_bytes();
-                Self { h, l, ..(*self) }
+                self.h = h;
+                self.l = l;
             }
             BC => {
                 let n = self.bc().wrapping_add(1);
                 let [b, c] = n.to_be_bytes();
-                Self { b, c, ..(*self) }
+                self.b = b;
+                self.c = c;
             }
             DE => {
                 let n = self.de().wrapping_add(1);
                 let [d, e] = n.to_be_bytes();
-                Self { d, e, ..(*self) }
+                self.d = d;
+                self.e = e;
+            }
+            SP => {
+                self.sp = self.sp().wrapping_add(1);
             }
             A => INC!(self, a),
             B => INC!(self, b),
@@ -255,17 +197,28 @@ impl RegisterState {
         }
     }
 
-    pub fn dec(&self, reg: Register) -> Self {
+    pub fn dec(&mut self, reg: Register) {
         match reg {
             HL => {
                 let n = self.hl().wrapping_sub(1);
                 let [h, l] = n.to_be_bytes();
-                Self { h, l, ..(*self) }
+                self.h = h;
+                self.l = l;
             }
             BC => {
                 let n = self.bc().wrapping_sub(1);
                 let [b, c] = n.to_be_bytes();
-                Self { b, c, ..(*self) }
+                self.b = b;
+                self.c = c;
+            }
+            DE => {
+                let n = self.de().wrapping_sub(1);
+                let [d, e] = n.to_be_bytes();
+                self.d = d;
+                self.e = e;
+            }
+            SP => {
+                self.sp = self.sp().wrapping_sub(1);
             }
             A => DEC!(self, a),
             B => DEC!(self, b),
@@ -278,15 +231,15 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch_u8(&self, reg: Register) -> Result<u8, String> {
+    pub fn fetch_u8(&self, reg: Register) -> u8 {
         match reg {
-            A => Ok(self.a),
-            B => Ok(self.b),
-            C => Ok(self.c),
-            D => Ok(self.d),
-            E => Ok(self.e),
-            F => Ok(self.f),
-            _ => Err(format!("fetchu8 {:?}", reg)),
+            A => self.a,
+            B => self.b,
+            C => self.c,
+            D => self.d,
+            E => self.e,
+            F => self.f,
+            _ => unreachable!(),
         }
     }
 
@@ -314,22 +267,22 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch(&self, reg: Register) -> u16 {
+    pub fn fetch(&self, reg: Register) -> Value {
         match reg {
-            A => self.a.into(),
-            B => self.b.into(),
-            C => self.c.into(),
-            D => self.d.into(),
-            E => self.e.into(),
-            F => self.f.into(),
-            H => self.h.into(),
-            L => self.l.into(),
-            BC => self.bc(),
-            DE => self.de(),
-            HL => self.hl(),
-            AF => self.af(),
-            SP => self.sp,
-            PC => self.pc,
+            A => Value::from(self.a),
+            B => Value::from(self.b),
+            C => Value::from(self.c),
+            D => Value::from(self.d),
+            E => Value::from(self.e),
+            F => Value::from(self.f),
+            H => Value::from(self.h),
+            L => Value::from(self.l),
+            BC => Value::from(self.bc()),
+            DE => Value::from(self.de()),
+            HL => Value::from(self.hl()),
+            AF => Value::from(self.af()),
+            SP => Value::from(self.sp),
+            PC => Value::from(self.pc),
         }
     }
     // TODO See if swapping these makes a difference..
@@ -408,7 +361,7 @@ mod tests {
     use super::*;
     #[test]
     fn it_initalizes() {
-        let reg = RegisterState::new(false);
+        let reg = RegisterState::new();
     }
 
     #[test]
