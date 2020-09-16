@@ -1,5 +1,5 @@
 use crate::cpu::value::Value;
-use crate::cpu::value::Value::*;
+
 use crate::instructions::Register;
 use crate::instructions::Register::*;
 use std::fmt;
@@ -81,22 +81,22 @@ macro_rules! RR {
         if $self.flg_c() {
             n |= 0b1000_0000
         }
-        Ok(RegisterState {
+        RegisterState {
             $r1: n,
             f: flags(n == 0, false, false, $self.$r1 & 1 != 0),
             ..(*$self)
-        })
+        }
     }};
 }
 
 macro_rules! SRL {
     ($self: ident, $r1: ident) => {{
         let n = ($self.$r1 >> 1);
-        Ok(RegisterState {
+        RegisterState {
             $r1: n,
             f: flags(n == 0, false, false, $self.$r1 & 1 != 0),
             ..(*$self)
-        })
+        }
     }};
 }
 
@@ -118,11 +118,11 @@ impl RegisterState {
         self.f = (self.f & !(1 << 7)) | ((b as u8) << 7);
     }
 
-    pub fn jump(&self, address: u16) -> Result<Self, String> {
-        Ok(Self {
+    pub fn jump(&self, address: u16) -> Self {
+        Self {
             pc: address,
             ..(*self)
-        })
+        }
     }
 
     pub fn test_bit(&self, reg: Register, bit: usize) -> Result<Self, String> {
@@ -138,7 +138,7 @@ impl RegisterState {
         }
     }
 
-    pub fn srl(&self, reg: Register) -> Result<Self, String> {
+    pub fn srl(&self, reg: Register) -> Self {
         match reg {
             A => SRL!(self, a),
             B => SRL!(self, b),
@@ -147,10 +147,10 @@ impl RegisterState {
             E => SRL!(self, e),
             H => SRL!(self, h),
             L => SRL!(self, l),
-            _ => Err(format!("srl: {:?}", reg)),
+            _ => unimplemented!(),
         }
     }
-    pub fn rr(&self, reg: Register) -> Result<Self, String> {
+    pub fn rr(&self, reg: Register) -> Self {
         match reg {
             A => RR!(self, a),
             B => RR!(self, b),
@@ -159,7 +159,7 @@ impl RegisterState {
             E => RR!(self, e),
             H => RR!(self, h),
             L => RR!(self, l),
-            _ => Err(format!("rr: {:?}", reg)),
+            _ => unimplemented!(),
         }
     }
 
@@ -361,7 +361,7 @@ mod tests {
     use super::*;
     #[test]
     fn it_initalizes() {
-        let reg = RegisterState::new();
+        let _reg = RegisterState::new();
     }
 
     #[test]
@@ -384,22 +384,22 @@ mod tests {
 
     #[test]
     fn inc() {
-        let reg = RegisterState {
+        let mut reg = RegisterState {
             h: 0xF0,
             l: 0xFF,
             ..Default::default()
         };
-        let reg = reg.inc(Register::HL);
+        reg.inc(Register::HL);
         assert_eq!(reg.hl(), 0xF100);
     }
     #[test]
     fn dec() {
-        let reg = RegisterState {
+        let mut reg = RegisterState {
             h: 0xFF,
             l: 0x00,
             ..Default::default()
         };
-        let reg = reg.dec(Register::HL);
+        reg.dec(Register::HL);
         assert_eq!(reg.hl(), 0xFEFF);
     }
 }

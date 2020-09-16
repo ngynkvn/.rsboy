@@ -5,10 +5,11 @@ use crate::gpu::VRAM_START;
 use std::fs::File;
 use std::io::Read;
 
-const DIVIDER_REGISTER: usize = 0xFF04;
-const TIMER_REG: usize = 0xFF05;
-const TIMER_CONTROL: usize = 0xFF07;
-const TIMER_MODULO: usize = 0xFF06;
+const DIV_TIMER_HZ: usize = 16384;
+const DIV: usize = 0xFF04;
+const TIMA: usize = 0xFF05;
+const TMA: usize = 0xFF06;
+const TAC: usize = 0xFF07;
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -20,6 +21,7 @@ pub enum Select {
     Directions,
 }
 
+use cpu::GB_CYCLE_SPEED;
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
 
@@ -75,43 +77,62 @@ impl Bus {
         self.ime = 0;
     }
 
-    pub fn handle_interrupt(&mut self, flag: u8) {
+    pub fn ack_interrupt(&mut self, flag: u8) {
         self.ime = 0;
         self.int_flags &= !flag;
     }
 
+    pub fn dump_timer_info(&self) {
+        println!(
+            "DIV:{:02x}\nTIMA:{:02x}\nTMA:{:02x}\nTAC:{:02x}",
+            self.memory[DIV], self.memory[TIMA], self.memory[TMA], self.memory[TAC]
+        );
+    }
+
     fn tick_timer_counter(&mut self) {
-        if self.clock % 256 == 0 {
-            self.memory[DIVIDER_REGISTER] = self.memory[DIVIDER_REGISTER].wrapping_add(1);
+        if self.clock % DIV_TIMER_HZ == 0 {
+            self.memory[DIV] = self.memory[DIV].wrapping_add(1);
         }
-        let control = self.memory[TIMER_CONTROL];
+        let control = self.memory[TAC];
         let clock_select = control & 0b11;
         let enable = (control & 0b100) != 0;
         let clock_speed = match clock_select {
-            0b00 => 256,
-            0b01 => 4,
-            0b10 => 16,
-            0b11 => 64,
+            0b00 => 1024,
+            0b01 => 16,
+            0b10 => 64,
+            0b11 => 256,
             _ => unreachable!(),
         };
         if enable && self.clock % clock_speed == 0 {
-            let (value, overflow) = self.memory[TIMER_REG].overflowing_add(1);
+            let (value, overflow) = self.memory[TIMA].overflowing_add(1);
             if overflow {
                 self.int_flags |= cpu::TIMER;
-                self.memory[TIMER_REG] = self.memory[TIMER_MODULO]
+                self.memory[TIMA] = self.memory[TMA]
             } else {
-                self.memory[TIMER_REG] = value;
+                self.memory[TIMA] = value;
             }
         }
     }
-    fn tick(&mut self) {
-        self.clock += 1;
+
+    pub fn generic_cycle(&mut self) {
+        self.gpu.cycle(&mut self.int_flags);
         self.tick_timer_counter();
+        self.clock += 1;
     }
 
-    pub fn cycle(&mut self) {
-        self.gpu.cycle(&mut self.int_flags);
-        self.tick();
+    pub fn read_cycle(&mut self, addr: u16) -> u8 {
+        self.generic_cycle();
+        self.read(addr)
+    }
+
+    pub fn read_cycle_high(&mut self, addr: u8) -> u8 {
+        self.generic_cycle();
+        self.read(0xFF00 | (addr as u16))
+    }
+
+    pub fn write_cycle(&mut self, addr: u16, value: u8) {
+        self.generic_cycle();
+        self.write(addr, value)
     }
 }
 
@@ -132,11 +153,9 @@ impl Memory for Bus {
             0xff00 => {
                 match self.joypad_io {
                     Select::Buttons => {
-                        return 0xff; //Todo
+                        0xff //Todo
                     }
-                    Select::Directions => {
-                        return 0xff;
-                    }
+                    Select::Directions => 0xff,
                 }
             }
             // 0xFFFF => &self.gpu.,
@@ -149,7 +168,8 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
-            DIVIDER_REGISTER => self.memory[DIVIDER_REGISTER] = 0,
+            DIV => self.memory[DIV] = 0,
+            TAC => self.memory[TAC] = 0b11111_000 | value,
             0xff40 => self.gpu.lcdc = value,
             0xff41 => self.gpu.lcdstat = value,
             0xff42 => self.gpu.vscroll = value,

@@ -138,7 +138,7 @@ impl GPU {
     }
 
     pub fn render(&self, pixels: &mut PixelData) {
-        let start = time::Instant::now();
+        let _start = time::Instant::now();
         for i in MAP_DATA_RANGE {
             self.blit_tile(pixels, i);
         }
@@ -146,7 +146,7 @@ impl GPU {
         // TODO
         // Need to emulate scanline, and priority rendering
         for sprite_attributes in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
-            if let [flags, pattern, x, y] = sprite_attributes {
+            if let [_flags, pattern, x, y] = sprite_attributes {
                 // let _flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
@@ -162,19 +162,19 @@ impl GPU {
     pub fn step(&mut self, flag: &mut u8) {
         match self.mode {
             GpuMode::OAM => {
-                if self.clock >= 80 {
+                if self.clock >= 20 {
                     self.clock = 0;
                     self.mode = GpuMode::VRAM
                 }
             }
             GpuMode::VRAM => {
-                if self.clock >= 172 {
+                if self.clock >= 43 {
                     self.clock = 0;
                     self.mode = GpuMode::HBlank
                 }
             }
             GpuMode::HBlank => {
-                if self.clock >= 204 {
+                if self.clock >= 51 {
                     self.clock = 0;
                     self.scanline += 1;
                     if self.scanline == END_HBLANK {
@@ -185,7 +185,7 @@ impl GPU {
                 }
             }
             GpuMode::VBlank => {
-                if self.clock >= 456 {
+                if self.clock >= 114 {
                     self.clock = 0;
                     self.scanline += 1;
                     if self.scanline == END_VBLANK {
