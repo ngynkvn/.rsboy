@@ -14,11 +14,9 @@ pub struct Emu {
 }
 
 impl Emu {
-    pub fn emulate_step(&mut self) -> usize {
+    pub fn emulate_step(&mut self) {
         self.prev = self.cpu.clone();
-        let cycles = self.bus.clock;
         self.cpu.step(&mut self.bus);
-        self.bus.clock - cycles
     }
 
     pub fn new(rom: Vec<u8>) -> Emu {

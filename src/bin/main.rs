@@ -1,11 +1,11 @@
 //SDL
-use sdl2::event::Event;
 use cpu::GB_CYCLE_SPEED;
+use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture};
-use sdl2::video::{Window};
+use sdl2::video::Window;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -63,20 +63,18 @@ fn init_emu() -> Result<Emu, std::io::Error> {
     let emu = Emu::new(rom);
     Ok(emu)
 }
-fn create_window(context: &sdl2::Sdl) -> Canvas<Window>  {
+fn create_window(context: &sdl2::Sdl) -> Canvas<Window> {
     let video = context.video().unwrap();
     video
         .window("Window", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
         .position_centered()
         .build()
-        .map(|window| {
-            window.into_canvas().build().expect("")
-        }).expect("")
+        .map(|window| window.into_canvas().build().expect(""))
+        .expect("")
 }
 
 macro_rules! pump_loop {
     ($e: expr, $body:block) => {
-
         'running: loop {
             for event in $e.poll_iter() {
                 match event {
@@ -90,7 +88,7 @@ macro_rules! pump_loop {
             }
             $body;
         }
-    }
+    };
 }
 
 fn sdl_main() -> std::io::Result<()> {
@@ -99,7 +97,9 @@ fn sdl_main() -> std::io::Result<()> {
     let context = sdl2::init().unwrap();
     let mut canvas = create_window(&context);
     let tc = canvas.texture_creator();
-    let mut texture = tc.create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT).unwrap();
+    let mut texture = tc
+        .create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)
+        .unwrap();
 
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
@@ -156,9 +156,8 @@ impl GBWindow for Texture<'_> {
 }
 
 fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
-    let mut i = 0;
-    while i < CYCLES_PER_FRAME {
-        i += emu.emulate_step()
+    for _ in 0..(CYCLES_PER_FRAME / 4) {
+        emu.emulate_step();
     }
     emu.bus.gpu.render(&mut emu.framebuffer);
     let (h, v) = emu.bus.gpu.scroll();

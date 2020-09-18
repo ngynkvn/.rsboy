@@ -101,26 +101,26 @@ impl CPU {
         match into {
             Location::Immediate(2) => {
                 let address = self.next_u16(bus);
-                write_value.to_memory_address(self, address, bus);
+                write_value.to_memory_address(address, bus);
             }
             Location::MemoryImmediate => {
                 let address = self.next_u16(bus);
-                write_value.to_memory_address(self, address, bus);
+                write_value.to_memory_address(address, bus);
             }
             Location::Register(r) => write_value.to_register(&mut self.registers, r),
             Location::Memory(r) => match self.registers.get_dual_reg(r) {
                 Some(address) => {
-                    write_value.to_memory_address(self, address, bus);
+                    write_value.to_memory_address(address, bus);
                 }
                 None => panic!("I tried to access a u8 as a bus address."),
             },
             Location::MemOffsetImm => {
                 let next = self.next_u8(bus);
-                write_value.to_memory_address(self, 0xFF00 + next as u16, bus);
+                write_value.to_memory_address(0xFF00 + next as u16, bus);
             }
             Location::MemOffsetRegister(r) => {
                 let offset = self.registers.fetch_u8(r);
-                write_value.to_memory_address(self, 0xFF00 + offset as u16, bus);
+                write_value.to_memory_address(0xFF00 + offset as u16, bus);
             }
             _ => unimplemented!("{:?}", into),
         };
@@ -200,6 +200,7 @@ impl CPU {
             self.registers.pc = 0x50;
             self.dump_state();
             bus.dump_timer_info();
+            panic!();
             let opcode = self.next_u8(bus);
             self.opcode = &INSTR_TABLE[opcode as usize];
         } else if fired & SERIAL != 0 {
@@ -326,7 +327,9 @@ impl CPU {
                     self.registers.set_zf(check_zero);
                     self.registers.set_nf(false);
                     self.registers.set_hf(true);
-                    bus.generic_cycle();
+                    if let Location::Memory(_) = target {
+                        bus.generic_cycle();
+                    }
                 }
                 0xC0..=0xFF => {
                     // SET

@@ -1,7 +1,8 @@
-use super::{CPU};
+use super::CPU;
 use crate::{
     bus::{Bus, Memory},
-    instructions::Register, registers::RegisterState,
+    instructions::Register,
+    registers::RegisterState,
 };
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -41,11 +42,11 @@ impl Into<u16> for Value {
 }
 
 impl Writable for Value {
-    fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus) {
+    fn to_memory_address(self, address: u16, b: &mut Bus) {
         if let Value::U16(value) = self {
-            value.to_memory_address(cpu, address, b)
+            value.to_memory_address(address, b)
         } else if let Value::U8(value) = self {
-            value.to_memory_address(cpu, address, b)
+            value.to_memory_address(address, b)
         }
     }
 
@@ -59,11 +60,11 @@ impl Writable for Value {
 }
 
 pub trait Writable {
-    fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus);
+    fn to_memory_address(self, address: u16, b: &mut Bus);
     fn to_register(self, registers: &mut RegisterState, r: Register);
 }
 impl Writable for u8 {
-    fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus) {
+    fn to_memory_address(self, address: u16, b: &mut Bus) {
         b.write_cycle(address, self);
     }
 
@@ -95,7 +96,7 @@ impl Writable for u8 {
     }
 }
 impl Writable for u16 {
-    fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus) {
+    fn to_memory_address(self, address: u16, b: &mut Bus) {
         let [lo, hi] = self.to_le_bytes();
         b.write_cycle(address, lo);
         b.write_cycle(address + 1, hi);
