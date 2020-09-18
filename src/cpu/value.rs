@@ -1,9 +1,4 @@
-use super::CPU;
-use crate::{
-    bus::{Bus, Memory},
-    instructions::Register,
-    registers::RegisterState,
-};
+use crate::{bus::Bus, instructions::Register, registers::RegisterState};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Value {

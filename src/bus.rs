@@ -21,7 +21,6 @@ pub enum Select {
     Directions,
 }
 
-use cpu::GB_CYCLE_SPEED;
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
 
