@@ -147,13 +147,6 @@ impl CPU {
         u16::from_le_bytes([lo, hi])
     }
 
-    #[allow(dead_code)]
-    pub fn peek_stack(&mut self, bus: &mut Bus) -> u16 {
-        let lo = bus.memory[self.registers.sp as usize];
-        let hi = bus.memory[(self.registers.sp + 1) as usize];
-        u16::from_le_bytes([lo, hi])
-    }
-
     pub fn bcd_adjust(&mut self, value: u8) -> u8 {
         let mut value = value;
         if self.registers.flg_nn() {
