@@ -19,7 +19,7 @@ use std::io::Read;
 use gpu::{PixelData, PixelMap};
 use rust_emu::emu::Emu;
 
-use rust_emu::tui;
+use rust_emu::tui::Tui;
 
 
 use rust_emu::*;
@@ -112,11 +112,13 @@ fn sdl_main() -> std::io::Result<()> {
     let mut timer = Instant::now();
     let mut event_pump = context.event_pump().unwrap();
 
-    tui::clear();
+    let mut tui = Tui::new();
+    tui.init();
+    tui.clear();
 
     pump_loop!(event_pump, {
         let f = frame(&mut emu, &mut texture, &mut canvas);
-        tui::print_state(&emu);
+        tui.print_state(&emu);
         if f.is_err() {
             break;
         }
