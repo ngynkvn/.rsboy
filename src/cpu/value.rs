@@ -1,4 +1,4 @@
-use super::{CPU};
+use crate::cpu::CPU;
 use crate::{
     bus::{Bus, Memory},
     instructions::Register, registers::RegisterState,

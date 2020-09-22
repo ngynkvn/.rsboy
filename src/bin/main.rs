@@ -1,4 +1,5 @@
 //SDL
+use std::io::{stdout, BufWriter};
 use sdl2::event::Event;
 use cpu::GB_CYCLE_SPEED;
 use sdl2::keyboard::Keycode;
@@ -17,6 +18,10 @@ use std::io::Read;
 
 use gpu::{PixelData, PixelMap};
 use rust_emu::emu::Emu;
+
+use rust_emu::tui;
+
+
 use rust_emu::*;
 
 pub const CYCLES_PER_FRAME: usize = GB_CYCLE_SPEED / 60;
@@ -40,6 +45,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
         .apply()?;
     Ok(())
 }
+
 
 fn main() {
     // just_cpu();
@@ -93,6 +99,7 @@ macro_rules! pump_loop {
     }
 }
 
+
 fn sdl_main() -> std::io::Result<()> {
     let mut emu = init_emu().unwrap();
 
@@ -105,8 +112,11 @@ fn sdl_main() -> std::io::Result<()> {
     let mut timer = Instant::now();
     let mut event_pump = context.event_pump().unwrap();
 
+    tui::clear();
+
     pump_loop!(event_pump, {
         let f = frame(&mut emu, &mut texture, &mut canvas);
+        tui::print_state(&emu);
         if f.is_err() {
             break;
         }

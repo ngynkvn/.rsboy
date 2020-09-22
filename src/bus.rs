@@ -22,8 +22,6 @@ pub enum Select {
 }
 
 use cpu::GB_CYCLE_SPEED;
-#[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
 
 // Global emu struct.
 pub struct Bus {

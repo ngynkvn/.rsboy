@@ -9,9 +9,6 @@ use value::Value;
 use value::Value::*;
 use value::Writable;
 
-#[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-
 pub const GB_CYCLE_SPEED: usize = 4194304;
 #[derive(Debug, Clone)]
 pub enum CPUState {

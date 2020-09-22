@@ -19,9 +19,6 @@ enum GpuMode {
     VRAM,   // 3
 }
 
-#[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-
 // Global emu struct.
 pub struct GPU {
     mode: GpuMode,
