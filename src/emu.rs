@@ -1,5 +1,15 @@
+use crate::instructions::Instr;
+use std::ops::Range;
+use std::iter::Zip;
 use crate::bus::Bus;
 use crate::{cpu::CPU, gpu::PixelData};
+
+
+pub struct IL {
+    pub ty: Instr,
+    pub data: Option<u16>,
+    pub addr: u16,
+}
 
 // Global emu struct.
 pub struct Emu {
@@ -28,5 +38,4 @@ impl Emu {
             prev,
         }
     }
-
 }
