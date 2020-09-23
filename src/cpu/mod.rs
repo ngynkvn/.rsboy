@@ -326,7 +326,9 @@ impl CPU {
                     self.registers.set_zf(check_zero);
                     self.registers.set_nf(false);
                     self.registers.set_hf(true);
-                    bus.generic_cycle();
+                    if let Location::Memory(_) = target {
+                        bus.generic_cycle();
+                    }
                 }
                 0xC0..=0xFF => {
                     // SET
