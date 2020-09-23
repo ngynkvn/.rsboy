@@ -1,6 +1,6 @@
 use crate::cpu::CPU;
 use crate::{
-    bus::{Bus, Memory},
+    bus::{Bus},
     instructions::Register, registers::RegisterState,
 };
 
@@ -63,7 +63,7 @@ pub trait Writable {
     fn to_register(self, registers: &mut RegisterState, r: Register);
 }
 impl Writable for u8 {
-    fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus) {
+    fn to_memory_address(self, _cpu: &mut CPU, address: u16, b: &mut Bus) {
         b.write_cycle(address, self);
     }
 
@@ -95,7 +95,7 @@ impl Writable for u8 {
     }
 }
 impl Writable for u16 {
-    fn to_memory_address(self, cpu: &mut CPU, address: u16, b: &mut Bus) {
+    fn to_memory_address(self, _cpu: &mut CPU, address: u16, b: &mut Bus) {
         let [lo, hi] = self.to_le_bytes();
         b.write_cycle(address, lo);
         b.write_cycle(address + 1, hi);

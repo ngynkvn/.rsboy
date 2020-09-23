@@ -1,6 +1,6 @@
 //SDL
 use std::error::Error;
-use std::io::{stdout, BufWriter};
+
 use sdl2::event::Event;
 use cpu::GB_CYCLE_SPEED;
 use sdl2::keyboard::Keycode;
@@ -78,7 +78,7 @@ fn create_window(context: &sdl2::Sdl) -> Result<Canvas<Window>, Box<dyn Error>> 
         .build()?
         .into_canvas()
         .build()
-        .or(Err("Unable to build window".into()))
+        .or_else(|_| Err("Unable to build window".into()))
 }
 
 macro_rules! pump_loop {

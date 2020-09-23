@@ -46,7 +46,7 @@ fn time_instr(instr: Instr, cpu: &mut CPU, bus: &mut Bus) -> usize {
     bus.generic_cycle();
     instr.execute(cpu, bus);
     let after = bus.clock;
-    return after - before;
+    after - before
 }
 
 fn time<F: FnOnce(&mut CPU, &mut Bus)>(cpu: &mut CPU, bus: &mut Bus, f: F) -> usize {
@@ -54,7 +54,7 @@ fn time<F: FnOnce(&mut CPU, &mut Bus)>(cpu: &mut CPU, bus: &mut Bus, f: F) -> us
     bus.generic_cycle();
     f(cpu, bus);
     let after = bus.clock;
-    return after - before;
+    after - before
 }
 
 #[test]

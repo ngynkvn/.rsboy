@@ -1,7 +1,7 @@
 pub mod value;
 
 use crate::bus::Bus;
-use crate::bus::Memory;
+
 use crate::instructions::Register::*;
 use crate::instructions::*;
 use crate::registers::RegisterState;
