@@ -54,18 +54,19 @@ impl Tui {
             .execute(MoveTo(20, 0))
             .and_then(|std| {
                 let view = emu.view();
-                for (pc, op) in view {
+                for il in view {
                     std.execute(SavePosition)
                         .and_then(|std| {
-                            if pc == emu.cpu.registers.pc.into() {
+                            if il.addr == emu.cpu.op_addr.into() {
                                 std.execute(crossterm::style::SetBackgroundColor(Green))?;
                             } else {
                                 std.execute(crossterm::style::SetBackgroundColor(Black))?;
                             }
                             std.execute(Print(format!(
-                                "{:04x}: {:?}                         ",
-                                pc,
-                                INSTR_TABLE[*op as usize]
+                                "{:04x}: {:?} {:04x}                     ",
+                                il.addr,
+                                il.instr,
+                                il.data.unwrap_or(0),
                             )))
                         })?
                         .execute(RestorePosition)?

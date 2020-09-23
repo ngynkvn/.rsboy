@@ -22,6 +22,7 @@ pub struct CPU {
     pub registers: RegisterState,
     pub state: CPUState,
     pub opcode: &'static Instr,
+    pub op_addr: u16,
 }
 
 pub const VBLANK: u8 = 0b1;
@@ -42,6 +43,7 @@ impl CPU {
         Self {
             registers: RegisterState::new(),
             opcode: &Instr::NOOP,
+            op_addr: 0,
             state: CPUState::Running,
         }
     }
@@ -49,6 +51,7 @@ impl CPU {
     pub fn prefetch_op(&mut self, bus: &mut Bus, addr: u16) -> CPUState {
         let opcode = bus.read_cycle(addr);
         self.opcode = &INSTR_TABLE[opcode as usize];
+        self.op_addr = addr;
         if self.interrupt_detected(bus) {
             return CPUState::Interrupted;
         }

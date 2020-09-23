@@ -81,6 +81,7 @@ impl Location {
 
 impl Executable for Instr {
     fn execute(self, cpu: &mut CPU, bus: &mut Bus) {
+        // println!("{} {:?}", cpu.registers.pc, cpu.opcode);
         match self {
             LD(Register(SP), Register(HL)) => {
                 cpu.registers.sp = cpu.registers.hl();
@@ -236,7 +237,7 @@ impl Executable for Instr {
                 let address = cpu.registers.pc.wrapping_add(offset as u16);
                 cpu.jumping(jump_type, bus, |cpu, _| {
                     cpu.registers.pc = address;
-                })
+                });
             }
             CALL(jump_type) => {
                 let address = cpu.next_u16(bus);
@@ -690,7 +691,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RST(0x38),                             //0xFF
 ];
 
-pub const INSTR_LENGTHS: [usize; 256] = [
+pub const INSTR_DATA_LENGTHS: [usize; 256] = [
     0, // 0x00
     2, // 0x01
     0, // 0x02
