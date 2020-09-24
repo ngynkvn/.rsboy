@@ -1,4 +1,6 @@
 //SDL
+use std::error::Error;
+
 use cpu::GB_CYCLE_SPEED;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -17,6 +19,9 @@ use std::io::Read;
 
 use gpu::{PixelData, PixelMap};
 use rust_emu::emu::Emu;
+
+use rust_emu::tui::Tui;
+
 use rust_emu::*;
 
 pub const CYCLES_PER_FRAME: usize = GB_CYCLE_SPEED / 60;
@@ -41,12 +46,12 @@ fn setup_logger() -> Result<(), fern::InitError> {
     Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     // just_cpu();
     info!("Setup logging");
-    setup_logger().unwrap();
+    setup_logger()?;
     info!("Running SDL Main");
-    sdl_main().unwrap();
+    sdl_main()
 }
 
 fn init_emu() -> Result<Emu, std::io::Error> {
@@ -63,14 +68,15 @@ fn init_emu() -> Result<Emu, std::io::Error> {
     let emu = Emu::new(rom);
     Ok(emu)
 }
-fn create_window(context: &sdl2::Sdl) -> Canvas<Window> {
+fn create_window(context: &sdl2::Sdl) -> Result<Canvas<Window>, Box<dyn Error>> {
     let video = context.video().unwrap();
     video
         .window("Window", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
         .position_centered()
+        .build()?
+        .into_canvas()
         .build()
-        .map(|window| window.into_canvas().build().expect(""))
-        .expect("")
+        .or_else(|_| Err("Unable to build window".into()))
 }
 
 macro_rules! pump_loop {
@@ -91,22 +97,25 @@ macro_rules! pump_loop {
     };
 }
 
-fn sdl_main() -> std::io::Result<()> {
+fn sdl_main() -> Result<(), Box<dyn Error>> {
     let mut emu = init_emu().unwrap();
 
     let context = sdl2::init().unwrap();
-    let mut canvas = create_window(&context);
+    let mut canvas = create_window(&context)?;
     let tc = canvas.texture_creator();
-    let mut texture = tc
-        .create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)
-        .unwrap();
+    let mut texture =
+        tc.create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
     let boot_timer = Instant::now();
     let mut timer = Instant::now();
-    let mut event_pump = context.event_pump().unwrap();
+    let mut event_pump = context.event_pump()?;
+
+    let mut tui = Tui::new();
+    tui.init()?;
 
     pump_loop!(event_pump, {
         let f = frame(&mut emu, &mut texture, &mut canvas);
+        tui.print_state(&emu)?;
         if f.is_err() {
             break;
         }
@@ -120,7 +129,7 @@ fn sdl_main() -> std::io::Result<()> {
         Instant::now().duration_since(boot_timer)
     );
     // vram_viewer(&context, emu.bus.gpu.vram).unwrap();
-    map_viewer(&context, emu).unwrap();
+    map_viewer(&context, emu)?;
     Ok(())
 }
 

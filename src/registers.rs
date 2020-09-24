@@ -4,9 +4,6 @@ use crate::instructions::Register;
 use crate::instructions::Register::*;
 use std::fmt;
 
-#[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-
 // Global emu struct.
 #[derive(Default, Debug, Clone)]
 pub struct RegisterState {

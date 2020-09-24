@@ -46,7 +46,7 @@ fn time_instr(instr: Instr, cpu: &mut CPU, bus: &mut Bus) -> usize {
     bus.generic_cycle();
     instr.execute(cpu, bus);
     let after = bus.clock;
-    return after - before;
+    after - before
 }
 
 #[test]
@@ -128,6 +128,20 @@ fn ld() {
     assert_eq!(cpu.registers.a, 0x5);
     Instr::LD(Register(A), Register(B)).execute(&mut cpu, &mut bus);
     assert_eq!(cpu.registers.a, 0x8);
+}
+
+#[test]
+fn jr() {
+    let mut cpu = CPU::new();
+    cpu.registers.pc = 0x000A;
+    let mut bus = Bus::new(vec![]);
+    bus.bootrom[0x0007] = 0x76;
+    bus.bootrom[0x000A] = 0x20;
+    bus.bootrom[0x000B] = 0xFB;
+    cpu.prefetch_op(&mut bus, 0x000A);
+    cpu.step(&mut bus);
+    assert_eq!(cpu.opcode, &Instr::HALT);
+    assert_eq!(cpu.op_addr, 0x0007);
 }
 
 #[test]

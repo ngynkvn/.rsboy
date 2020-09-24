@@ -81,6 +81,7 @@ impl Location {
 
 impl Executable for Instr {
     fn execute(self, cpu: &mut CPU, bus: &mut Bus) {
+        // println!("{} {:?}", cpu.registers.pc, cpu.opcode);
         match self {
             LD(Register(SP), Register(HL)) => {
                 cpu.registers.sp = cpu.registers.hl();
@@ -236,7 +237,7 @@ impl Executable for Instr {
                 let address = cpu.registers.pc.wrapping_add(offset as u16);
                 cpu.jumping(jump_type, bus, |cpu, _| {
                     cpu.registers.pc = address;
-                })
+                });
             }
             CALL(jump_type) => {
                 let address = cpu.next_u16(bus);
@@ -655,46 +656,296 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CALL(Some(FlagC)),                     //0xDC
     UNIMPLEMENTED,                         //0xDD
     SBC(Immediate(1)),                     //0xDE
-    RST(0x18), //0xDF Push present address onto stack. Jump to address $0000 + n.
-    LD(MemOffsetImm, Register(A)), //0xE0
-    POP(Register(HL)), //0xE1
+    RST(0x18),                             //0xDF
+    LD(MemOffsetImm, Register(A)),         //0xE0
+    POP(Register(HL)),                     //0xE1
     LD(MemOffsetRegister(C), Register(A)), //0xE2
-    UNIMPLEMENTED, //0xE3
-    UNIMPLEMENTED, //0xE4
-    PUSH(Register(HL)), //0xE5
-    AND(Immediate(1)), //0xE6
-    RST(0x20), //0xE7
-    ADDSP,     //0xE8
-    JP_HL,     //0xE9
-    LD(MemoryImmediate, Register(A)), //0xEA
-    UNIMPLEMENTED, //0xEB
-    UNIMPLEMENTED, //0xEC
-    UNIMPLEMENTED, //0xED
-    XOR(Immediate(1)), //0xEE
-    RST(0x28), //0xEF
-    LD(Register(A), MemOffsetImm), //0xF0
-    POP(Register(AF)), //0xF1
+    UNIMPLEMENTED,                         //0xE3
+    UNIMPLEMENTED,                         //0xE4
+    PUSH(Register(HL)),                    //0xE5
+    AND(Immediate(1)),                     //0xE6
+    RST(0x20),                             //0xE7
+    ADDSP,                                 //0xE8
+    JP_HL,                                 //0xE9
+    LD(MemoryImmediate, Register(A)),      //0xEA
+    UNIMPLEMENTED,                         //0xEB
+    UNIMPLEMENTED,                         //0xEC
+    UNIMPLEMENTED,                         //0xED
+    XOR(Immediate(1)),                     //0xEE
+    RST(0x28),                             //0xEF
+    LD(Register(A), MemOffsetImm),         //0xF0
+    POP(Register(AF)),                     //0xF1
     LD(Register(A), MemOffsetRegister(C)), //0xF2
-    DisableInterrupts, //0xF3
-    UNIMPLEMENTED, //0xF4
-    PUSH(Register(AF)), //0xF5
-    OR(Immediate(1)), //0xF6
-    RST(0x30), //0xF7
-    LDSP,      //0xF8
-    LD(Register(SP), Register(HL)), //0xF9
-    LD(Register(A), MemoryImmediate), //0xFA
-    EnableInterrupts, //0xFB
-    UNIMPLEMENTED, //0xFC
-    UNIMPLEMENTED, //0xFD
-    CP(Immediate(1)), //0xFE
-    RST(0x38), //0xFF
+    DisableInterrupts,                     //0xF3
+    UNIMPLEMENTED,                         //0xF4
+    PUSH(Register(AF)),                    //0xF5
+    OR(Immediate(1)),                      //0xF6
+    RST(0x30),                             //0xF7
+    LDSP,                                  //0xF8
+    LD(Register(SP), Register(HL)),        //0xF9
+    LD(Register(A), MemoryImmediate),      //0xFA
+    EnableInterrupts,                      //0xFB
+    UNIMPLEMENTED,                         //0xFC
+    UNIMPLEMENTED,                         //0xFD
+    CP(Immediate(1)),                      //0xFE
+    RST(0x38),                             //0xFF
 ];
-// (InstrLen, ASM String)
-#[derive(Debug, Copy, Clone)]
-pub struct Instruction(pub usize, pub &'static str);
 
-impl fmt::Display for Instruction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.1)
-    }
-}
+pub const INSTR_DATA_LENGTHS: [usize; 256] = [
+    0, // 0x00
+    2, // 0x01
+    0, // 0x02
+    0, // 0x03
+    0, // 0x04
+    0, // 0x05
+    1, // 0x06
+    0, // 0x07
+    2, // 0x08
+    0, // 0x09
+    0, // 0x0a
+    0, // 0x0b
+    0, // 0x0c
+    0, // 0x0d
+    1, // 0x0e
+    0, // 0x0f
+    1, // 0x10
+    2, // 0x11
+    0, // 0x12
+    0, // 0x13
+    0, // 0x14
+    0, // 0x15
+    1, // 0x16
+    0, // 0x17
+    1, // 0x18
+    0, // 0x19
+    0, // 0x1a
+    0, // 0x1b
+    0, // 0x1c
+    0, // 0x1d
+    1, // 0x1e
+    0, // 0x1f
+    1, // 0x20
+    2, // 0x21
+    0, // 0x22
+    0, // 0x23
+    0, // 0x24
+    0, // 0x25
+    1, // 0x26
+    0, // 0x27
+    1, // 0x28
+    0, // 0x29
+    0, // 0x2a
+    0, // 0x2b
+    0, // 0x2c
+    0, // 0x2d
+    1, // 0x2e
+    0, // 0x2f
+    1, // 0x30
+    2, // 0x31
+    0, // 0x32
+    0, // 0x33
+    0, // 0x34
+    0, // 0x35
+    1, // 0x36
+    0, // 0x37
+    1, // 0x38
+    0, // 0x39
+    0, // 0x3a
+    0, // 0x3b
+    0, // 0x3c
+    0, // 0x3d
+    1, // 0x3e
+    0, // 0x3f
+    0, // 0x40
+    0, // 0x41
+    0, // 0x42
+    0, // 0x43
+    0, // 0x44
+    0, // 0x45
+    0, // 0x46
+    0, // 0x47
+    0, // 0x48
+    0, // 0x49
+    0, // 0x4a
+    0, // 0x4b
+    0, // 0x4c
+    0, // 0x4d
+    0, // 0x4e
+    0, // 0x4f
+    0, // 0x50
+    0, // 0x51
+    0, // 0x52
+    0, // 0x53
+    0, // 0x54
+    0, // 0x55
+    0, // 0x56
+    0, // 0x57
+    0, // 0x58
+    0, // 0x59
+    0, // 0x5a
+    0, // 0x5b
+    0, // 0x5c
+    0, // 0x5d
+    0, // 0x5e
+    0, // 0x5f
+    0, // 0x60
+    0, // 0x61
+    0, // 0x62
+    0, // 0x63
+    0, // 0x64
+    0, // 0x65
+    0, // 0x66
+    0, // 0x67
+    0, // 0x68
+    0, // 0x69
+    0, // 0x6a
+    0, // 0x6b
+    0, // 0x6c
+    0, // 0x6d
+    0, // 0x6e
+    0, // 0x6f
+    0, // 0x70
+    0, // 0x71
+    0, // 0x72
+    0, // 0x73
+    0, // 0x74
+    0, // 0x75
+    0, // 0x76
+    0, // 0x77
+    0, // 0x78
+    0, // 0x79
+    0, // 0x7a
+    0, // 0x7b
+    0, // 0x7c
+    0, // 0x7d
+    0, // 0x7e
+    0, // 0x7f
+    0, // 0x80
+    0, // 0x81
+    0, // 0x82
+    0, // 0x83
+    0, // 0x84
+    0, // 0x85
+    0, // 0x86
+    0, // 0x87
+    0, // 0x88
+    0, // 0x89
+    0, // 0x8a
+    0, // 0x8b
+    0, // 0x8c
+    0, // 0x8d
+    0, // 0x8e
+    0, // 0x8f
+    0, // 0x90
+    0, // 0x91
+    0, // 0x92
+    0, // 0x93
+    0, // 0x94
+    0, // 0x95
+    0, // 0x96
+    0, // 0x97
+    0, // 0x98
+    0, // 0x99
+    0, // 0x9a
+    0, // 0x9b
+    0, // 0x9c
+    0, // 0x9d
+    0, // 0x9e
+    0, // 0x9f
+    0, // 0xa0
+    0, // 0xa1
+    0, // 0xa2
+    0, // 0xa3
+    0, // 0xa4
+    0, // 0xa5
+    0, // 0xa6
+    0, // 0xa7
+    0, // 0xa8
+    0, // 0xa9
+    0, // 0xaa
+    0, // 0xab
+    0, // 0xac
+    0, // 0xad
+    0, // 0xae
+    0, // 0xaf
+    0, // 0xb0
+    0, // 0xb1
+    0, // 0xb2
+    0, // 0xb3
+    0, // 0xb4
+    0, // 0xb5
+    0, // 0xb6
+    0, // 0xb7
+    0, // 0xb8
+    0, // 0xb9
+    0, // 0xba
+    0, // 0xbb
+    0, // 0xbc
+    0, // 0xbd
+    0, // 0xbe
+    0, // 0xbf
+    0, // 0xc0
+    0, // 0xc1
+    2, // 0xc2
+    2, // 0xc3
+    2, // 0xc4
+    0, // 0xc5
+    1, // 0xc6
+    0, // 0xc7
+    0, // 0xc8
+    0, // 0xc9
+    2, // 0xca
+    1, // 0xcb
+    2, // 0xcc
+    2, // 0xcd
+    1, // 0xce
+    0, // 0xcf
+    0, // 0xd0
+    0, // 0xd1
+    2, // 0xd2
+    0, // 0xd3
+    2, // 0xd4
+    0, // 0xd5
+    1, // 0xd6
+    0, // 0xd7
+    0, // 0xd8
+    0, // 0xd9
+    2, // 0xda
+    0, // 0xdb
+    2, // 0xdc
+    0, // 0xdd
+    1, // 0xde
+    0, // 0xdf
+    1, // 0xe0
+    0, // 0xe1
+    0, // 0xe2
+    0, // 0xe3
+    0, // 0xe4
+    0, // 0xe5
+    1, // 0xe6
+    0, // 0xe7
+    1, // 0xe8
+    0, // 0xe9
+    2, // 0xea
+    0, // 0xeb
+    0, // 0xec
+    0, // 0xed
+    1, // 0xee
+    0, // 0xef
+    1, // 0xf0
+    0, // 0xf1
+    0, // 0xf2
+    0, // 0xf3
+    0, // 0xf4
+    0, // 0xf5
+    1, // 0xf6
+    0, // 0xf7
+    1, // 0xf8
+    0, // 0xf9
+    2, // 0xfa
+    0, // 0xfb
+    0, // 0xfc
+    0, // 0xfd
+    1, // 0xfe
+    0, // 0xff
+];

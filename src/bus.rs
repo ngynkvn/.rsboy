@@ -21,9 +21,6 @@ pub enum Select {
     Directions,
 }
 
-#[allow(unused_imports)]
-use wasm_bindgen::prelude::*;
-
 // Global emu struct.
 pub struct Bus {
     pub memory: [u8; 0x10000],
@@ -168,7 +165,7 @@ impl Memory for Bus {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
             DIV => self.memory[DIV] = 0,
-            TAC => self.memory[TAC] = 0b11111_000 | value,
+            TAC => self.memory[TAC] = 0b1111_1000 | value,
             0xff40 => self.gpu.lcdc = value,
             0xff41 => self.gpu.lcdstat = value,
             0xff42 => self.gpu.vscroll = value,
