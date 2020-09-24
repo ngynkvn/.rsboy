@@ -49,14 +49,6 @@ fn time_instr(instr: Instr, cpu: &mut CPU, bus: &mut Bus) -> usize {
     after - before
 }
 
-fn time<F: FnOnce(&mut CPU, &mut Bus)>(cpu: &mut CPU, bus: &mut Bus, f: F) -> usize {
-    let before = bus.clock;
-    bus.generic_cycle();
-    f(cpu, bus);
-    let after = bus.clock;
-    after - before
-}
-
 #[test]
 fn ticks_cb_instr() {
     for instr in 0x00..=0xFF {

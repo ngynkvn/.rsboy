@@ -43,17 +43,6 @@ macro_rules! u8_reg {
         }
     };
 }
-
-macro_rules! TEST_BIT {
-    ($self: ident, $reg: ident, $bit: expr) => {{
-        let r = $self.$reg & (1 << ($bit)) == 0;
-        Ok(RegisterState {
-            f: flags(r, false, true, $self.flg_c()),
-            ..(*$self)
-        })
-    }};
-}
-
 macro_rules! INC {
     ($self: ident, $r1: ident) => {{
         let prev = $self.$r1;
@@ -69,31 +58,6 @@ macro_rules! DEC {
         let result = prev.wrapping_sub(1);
         $self.f = flags(result == 0, true, result & 0x0f == 0x0f, $self.flg_c());
         $self.$r1 = result;
-    }};
-}
-
-macro_rules! RR {
-    ($self: ident, $r1: ident) => {{
-        let mut n = ($self.$r1 >> 1);
-        if $self.flg_c() {
-            n |= 0b1000_0000
-        }
-        RegisterState {
-            $r1: n,
-            f: flags(n == 0, false, false, $self.$r1 & 1 != 0),
-            ..(*$self)
-        }
-    }};
-}
-
-macro_rules! SRL {
-    ($self: ident, $r1: ident) => {{
-        let n = ($self.$r1 >> 1);
-        RegisterState {
-            $r1: n,
-            f: flags(n == 0, false, false, $self.$r1 & 1 != 0),
-            ..(*$self)
-        }
     }};
 }
 
@@ -119,44 +83,6 @@ impl RegisterState {
         Self {
             pc: address,
             ..(*self)
-        }
-    }
-
-    pub fn test_bit(&self, reg: Register, bit: usize) -> Result<Self, String> {
-        match reg {
-            A => TEST_BIT!(self, a, bit),
-            B => TEST_BIT!(self, b, bit),
-            C => TEST_BIT!(self, c, bit),
-            D => TEST_BIT!(self, d, bit),
-            E => TEST_BIT!(self, e, bit),
-            H => TEST_BIT!(self, h, bit),
-            L => TEST_BIT!(self, l, bit),
-            _ => Err(format!("swap_nibble: {:?}", reg)),
-        }
-    }
-
-    pub fn srl(&self, reg: Register) -> Self {
-        match reg {
-            A => SRL!(self, a),
-            B => SRL!(self, b),
-            C => SRL!(self, c),
-            D => SRL!(self, d),
-            E => SRL!(self, e),
-            H => SRL!(self, h),
-            L => SRL!(self, l),
-            _ => unimplemented!(),
-        }
-    }
-    pub fn rr(&self, reg: Register) -> Self {
-        match reg {
-            A => RR!(self, a),
-            B => RR!(self, b),
-            C => RR!(self, c),
-            D => RR!(self, d),
-            E => RR!(self, e),
-            H => RR!(self, h),
-            L => RR!(self, l),
-            _ => unimplemented!(),
         }
     }
 

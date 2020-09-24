@@ -103,26 +103,26 @@ impl CPU {
         match into {
             Location::Immediate(2) => {
                 let address = self.next_u16(bus);
-                write_value.to_memory_address(self, address, bus);
+                write_value.to_memory_address(address, bus);
             }
             Location::MemoryImmediate => {
                 let address = self.next_u16(bus);
-                write_value.to_memory_address(self, address, bus);
+                write_value.to_memory_address(address, bus);
             }
             Location::Register(r) => write_value.to_register(&mut self.registers, r),
             Location::Memory(r) => match self.registers.get_dual_reg(r) {
                 Some(address) => {
-                    write_value.to_memory_address(self, address, bus);
+                    write_value.to_memory_address(address, bus);
                 }
                 None => panic!("I tried to access a u8 as a bus address."),
             },
             Location::MemOffsetImm => {
                 let next = self.next_u8(bus);
-                write_value.to_memory_address(self, 0xFF00 + next as u16, bus);
+                write_value.to_memory_address(0xFF00 + next as u16, bus);
             }
             Location::MemOffsetRegister(r) => {
                 let offset = self.registers.fetch_u8(r);
-                write_value.to_memory_address(self, 0xFF00 + offset as u16, bus);
+                write_value.to_memory_address(0xFF00 + offset as u16, bus);
             }
             _ => unimplemented!("{:?}", into),
         };
@@ -146,13 +146,6 @@ impl CPU {
         self.registers.sp = self.registers.sp.wrapping_add(1);
         let hi = bus.read_cycle(self.registers.sp);
         self.registers.sp = self.registers.sp.wrapping_add(1);
-        u16::from_le_bytes([lo, hi])
-    }
-
-    #[allow(dead_code)]
-    pub fn peek_stack(&mut self, bus: &mut Bus) -> u16 {
-        let lo = bus.memory[self.registers.sp as usize];
-        let hi = bus.memory[(self.registers.sp + 1) as usize];
         u16::from_le_bytes([lo, hi])
     }
 
@@ -202,6 +195,7 @@ impl CPU {
             self.registers.pc = 0x50;
             self.dump_state();
             bus.dump_timer_info();
+            panic!();
             let opcode = self.next_u8(bus);
             self.opcode = &INSTR_TABLE[opcode as usize];
         } else if fired & SERIAL != 0 {

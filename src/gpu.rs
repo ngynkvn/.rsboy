@@ -155,42 +155,32 @@ impl GPU {
         // println!("{:?}", time::Instant::now().saturating_duration_since(start));
     }
 
-    // Returns true if interrupt is requested
+    fn check_clock<F: FnOnce(&mut Self)>(&mut self, criteria: usize, f: F) {
+        if self.clock >= criteria {
+            self.clock = 0;
+            f(self);
+        }
+    }
+
     pub fn step(&mut self, flag: &mut u8) {
         match self.mode {
-            GpuMode::OAM => {
-                if self.clock >= 20 {
-                    self.clock = 0;
-                    self.mode = GpuMode::VRAM
+            GpuMode::OAM => self.check_clock(80, |gpu| gpu.mode = GpuMode::VRAM),
+            GpuMode::VRAM => self.check_clock(172, |gpu| gpu.mode = GpuMode::HBlank),
+            GpuMode::HBlank => self.check_clock(204, |gpu| {
+                gpu.scanline += 1;
+                if gpu.scanline == END_HBLANK {
+                    gpu.mode = GpuMode::VBlank;
+                    //Might be wrong position to trigger interrupt
+                    *flag |= cpu::VBLANK;
                 }
-            }
-            GpuMode::VRAM => {
-                if self.clock >= 43 {
-                    self.clock = 0;
-                    self.mode = GpuMode::HBlank
+            }),
+            GpuMode::VBlank => self.check_clock(456, |gpu| {
+                gpu.scanline += 1;
+                if gpu.scanline == END_VBLANK {
+                    gpu.mode = GpuMode::OAM;
+                    gpu.scanline = 0;
                 }
-            }
-            GpuMode::HBlank => {
-                if self.clock >= 51 {
-                    self.clock = 0;
-                    self.scanline += 1;
-                    if self.scanline == END_HBLANK {
-                        self.mode = GpuMode::VBlank;
-                        //Might be wrong position to trigger interrupt
-                        *flag |= cpu::VBLANK;
-                    }
-                }
-            }
-            GpuMode::VBlank => {
-                if self.clock >= 114 {
-                    self.clock = 0;
-                    self.scanline += 1;
-                    if self.scanline == END_VBLANK {
-                        self.mode = GpuMode::OAM;
-                        self.scanline = 0;
-                    }
-                }
-            }
+            }),
         }
     }
 }

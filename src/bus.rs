@@ -21,8 +21,6 @@ pub enum Select {
     Directions,
 }
 
-
-
 // Global emu struct.
 pub struct Bus {
     pub memory: [u8; 0x10000],
