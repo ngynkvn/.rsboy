@@ -6,10 +6,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("Emu step", |b| {
         b.iter(|| {
             let mut emu = Emu::new(vec![]);
+            let mut bus = emu.bus;
+            bus.in_bios = 1;
             for instr in INSTR_TABLE.iter() {
                 emu.cpu.opcode = instr;
+                emu.cpu.step(&mut bus);
             }
-            emu.emulate_step();
         })
     });
 }

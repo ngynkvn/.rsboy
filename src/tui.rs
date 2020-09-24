@@ -57,7 +57,7 @@ impl Tui {
                 for il in view {
                     std.execute(SavePosition)
                         .and_then(|std| {
-                            if il.addr == emu.cpu.op_addr.into() {
+                            if il.addr == emu.cpu.op_addr {
                                 std.execute(crossterm::style::SetBackgroundColor(Green))?;
                             } else {
                                 std.execute(crossterm::style::SetBackgroundColor(Black))?;

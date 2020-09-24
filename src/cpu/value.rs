@@ -37,6 +37,10 @@ impl Into<u16> for Value {
     }
 }
 
+trait Incrementable {
+    fn wrapping_add<T: Copy>(a: T, b: T) -> T;
+}
+
 impl Writable for Value {
     fn to_memory_address(self, address: u16, b: &mut Bus) {
         if let Value::U16(value) = self {
@@ -87,7 +91,7 @@ impl Writable for u8 {
             Register::L => {
                 registers.l = self;
             }
-            _ => unreachable!(),
+            _ => unreachable!("{:?}", r),
         }
     }
 }
