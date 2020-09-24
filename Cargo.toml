@@ -18,3 +18,10 @@ fern = "0.6.0"
 log = "0.4.8"
 crossterm = "0.17.7"
 arraydeque = "0.4.5"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "emu"
+harness = false
