@@ -23,6 +23,7 @@ pub struct CPU {
     pub state: CPUState,
     pub opcode: &'static Instr,
     pub op_addr: u16,
+    pub halt: bool,
 }
 
 pub const VBLANK: u8 = 0b1;
@@ -45,6 +46,7 @@ impl CPU {
             opcode: &Instr::NOOP,
             op_addr: 0,
             state: CPUState::Running,
+            halt: false,
         }
     }
 

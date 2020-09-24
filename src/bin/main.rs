@@ -114,12 +114,12 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
     let mut timer = Instant::now();
     let mut event_pump = context.event_pump()?;
 
-    let mut tui = Tui::new();
-    tui.init()?;
+    // let mut tui = Tui::new();
+    // tui.init()?;
 
     pump_loop!(event_pump, {
         let f = frame(&mut emu, &mut texture, &mut canvas);
-        tui.print_state(&emu)?;
+        // tui.print_state(&emu)?;
         if f.is_err() {
             break;
         }

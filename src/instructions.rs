@@ -223,6 +223,8 @@ impl Executable for Instr {
             }
             HALT => {
                 //TODO
+                panic!();
+                cpu.halt = true;
             }
             CB => cpu.handle_cb(bus),
             JP(jump_type) => {
