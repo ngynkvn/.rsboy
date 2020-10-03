@@ -181,7 +181,6 @@ impl CPU {
     }
     pub fn halt(&mut self, bus: &mut Bus) {
         //todo
-        // panic!();
         self.halt = true;
     }
     pub fn jumping<F: FnOnce(&mut Self, &mut Bus)>(
@@ -190,72 +189,34 @@ impl CPU {
         bus: &mut Bus,
         f: F,
     ) {
-        match jt {
-            Some(flag) => {
-                if self.check_flag(flag) {
-                    f(self, bus);
-                    bus.generic_cycle();
-                }
-            }
-            None => {
-                f(self, bus);
-                bus.generic_cycle();
-            }
+        if let Some(false) = jt.map(|flag| self.check_flag(flag)) {
+            return;
         }
+        f(self, bus);
+        bus.generic_cycle();
+
     }
     pub fn jp(&mut self, jump_type: Option<Flag>, bus: &mut Bus) {
         let address = self.next_u16(bus);
-        // if let Some(false) = jump_type.map(|flag| self.check_flag(flag)) {
-        //     return;
-        // }
-        // self.registers.pc = address;
-        // bus.generic_cycle();
         self.jumping(jump_type, bus, |cpu, _| cpu.registers.pc = address);
     }
     pub fn jp_hl(&mut self, bus: &mut Bus) {
         self.registers.pc = self.registers.hl();
     }
     pub fn jr(&mut self, jump_type: Option<Flag>, bus: &mut Bus) {
-        // if let Some(false) = jump_type.map(|flag| self.check_flag(flag)) {
-        //     return;
-        // }
         let offset = self.next_u8(bus) as i8;
         let address = self.registers.pc.wrapping_add(offset as u16);
         self.jumping(jump_type, bus, |cpu, _| {
             cpu.registers.pc = address;
         });
-        // self.registers.pc = address;
-        // bus.generic_cycle();
     }
     pub fn call(&mut self, jump_type: Option<Flag>, bus: &mut Bus) {
         let address = self.next_u16(bus);
-        // if let Some(false) = jump_type.map(|flag| self.check_flag(flag)) {
-        //     return;
-        // }
         self.jumping(jump_type, bus, |cpu, bus| {
             cpu.push_stack(cpu.registers.pc, bus);
             cpu.registers.pc = address;
         });
-        // self.push_stack(self.registers.pc, bus);
-        // bus.generic_cycle();
-        // self.registers.pc = address;
     }
-    // inc(location::memory(r)) => {
-    //     let address = self.registers.fetch_u16(r);
-    //     let value = bus.read_cycle(address);
-    //     let result = value.wrapping_add(1);
-    //     bus.write_cycle(address, result);
-    //     self.registers.set_zf(result == 0);
-    //     self.registers.set_nf(false);
-    //     self.registers.set_hf(value & 0x0f == 0x0f);
-    // }
-    // inc(location::register(r)) => {
-    //     self.registers.inc(r);
-    //     if r.is_dual_register() {
-    //         bus.generic_cycle();
-    //     }
-    // }
-
     pub fn push(&mut self, register: Register, bus: &mut Bus) {
         let value = self.registers.fetch_u16(register);
         self.push_stack(value, bus);

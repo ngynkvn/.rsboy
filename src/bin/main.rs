@@ -114,13 +114,11 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
     // tui.init()?;
 
     pump_loop!(event_pump, {
-        let f = frame(&mut emu, &mut texture, &mut canvas);
+        frame(&mut emu, &mut texture, &mut canvas);
         // tui.print_state(&emu)?;
-        if f.is_err() {
-            break;
-        }
         delay_min(FRAME_TIME, &timer);
-        timer = Instant::now();
+        let now = Instant::now();
+        timer = now;
     });
     std::mem::drop(event_pump);
 
@@ -164,8 +162,9 @@ impl GBWindow for Texture<'_> {
     }
 }
 
-fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> Result<(), ()> {
-    for _ in 0..(CYCLES_PER_FRAME / 4) {
+fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) {
+    let before = emu.bus.clock;
+    while emu.bus.clock < before + CYCLES_PER_FRAME {
         emu.emulate_step();
     }
     emu.bus.gpu.render(&mut emu.framebuffer);
@@ -173,7 +172,6 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) -> R
     texture.copy_window(h, v, &emu.framebuffer);
     canvas.copy(&texture, None, None).unwrap();
     canvas.present();
-    Ok(())
 }
 
 fn delay_min(min_dur: Duration, timer: &Instant) {
@@ -181,7 +179,6 @@ fn delay_min(min_dur: Duration, timer: &Instant) {
     if time < min_dur {
         ::std::thread::sleep(min_dur - time);
     }
-    // println!("Frame time: {}", timer.elapsed().as_secs_f64());
 }
 
 fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {

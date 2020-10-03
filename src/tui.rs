@@ -15,12 +15,13 @@ type EmuHook = dyn Fn(&Emu) -> Option<String>;
 
 pub struct Tui {
     hooks: Vec<Box<EmuHook>>,
+    clock: usize,
 }
 
 const CLOCK: &str = "🕒";
 impl Tui {
     pub fn new() -> Self {
-        Tui { hooks: vec![] }
+        Tui { hooks: vec![], clock: 0 }
     }
 
     pub fn add_hook<F: 'static + Fn(&Emu) -> Option<String>>(&mut self, f: F) {
@@ -28,7 +29,6 @@ impl Tui {
     }
 
     pub fn init(&mut self) -> crossterm::Result<()> {
-        // self.add_hook(|_emu| Some("A problem was encountered.".to_string()));
         stdout()
             .execute(Clear(All))?
             .execute(Hide)?
