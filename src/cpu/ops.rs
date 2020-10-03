@@ -322,4 +322,124 @@ impl CPU {
             .set_cf((self.registers.a as u16) < (value as u16) + (cy as u16));
         self.registers.a = result;
     }
+
+    pub fn handle_cb(&mut self, bus: &mut Bus) {
+        let opcode = self.next_u8(bus);
+        let target = CPU::cb_location(opcode);
+        if let U8(value) = self.read_from(target, bus) {
+            match opcode {
+                0x00..=0x07 => {
+                    //RLC
+                    let carry = value & 0x80 != 0;
+                    let result = value << 1 | carry as u8;
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_hf(false);
+                    self.registers.set_nf(false);
+                    self.registers.set_cf(carry);
+                    self.write_into(target, result, bus);
+                }
+                0x08..=0x0F => {
+                    //RRC
+                    let carry = value & 0x01 != 0;
+                    let result = ((carry as u8) << 7) | (value >> 1);
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_hf(false);
+                    self.registers.set_nf(false);
+                    self.registers.set_cf(carry);
+                    self.write_into(target, result, bus);
+                }
+                0x10..=0x17 => {
+                    //RL
+                    let result = value << 1 | self.registers.flg_c() as u8;
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_nf(false);
+                    self.registers.set_hf(false);
+                    self.registers.set_cf(value & 0x80 != 0);
+                    self.write_into(target, result, bus);
+                }
+                0x18..=0x1F => {
+                    //RR
+                    let result = (value >> 1) | ((self.registers.flg_c() as u8) << 7);
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_nf(false);
+                    self.registers.set_hf(false);
+                    self.registers.set_cf(value & 0x01 != 0);
+                    self.write_into(target, result, bus);
+                }
+                0x30..=0x37 => {
+                    // SWAP
+                    let result = swapped_nibbles(value);
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_nf(false);
+                    self.registers.set_hf(false);
+                    self.registers.set_cf(false);
+                    self.write_into(target, result, bus);
+                }
+                0x40..=0x7F => {
+                    // BIT
+                    let mut bit_index = (((opcode & 0xF0) >> 4) - 4) * 2;
+                    if opcode & 0x08 != 0 {
+                        bit_index += 1;
+                    }
+                    let check_zero = value & (1 << bit_index) == 0;
+                    self.registers.set_zf(check_zero);
+                    self.registers.set_nf(false);
+                    self.registers.set_hf(true);
+                }
+                0xC0..=0xFF => {
+                    // SET
+                    let mut bit_index = (((opcode & 0xF0) >> 4) - 0xC) * 2;
+                    if opcode & 0x08 != 0 {
+                        bit_index += 1;
+                    }
+                    let result = value | (1 << bit_index);
+                    self.write_into(target, result, bus);
+                }
+                0x38..=0x3F => {
+                    let result = value >> 1;
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_nf(false);
+                    self.registers.set_hf(false);
+                    self.registers.set_cf(value & 1 != 0);
+                    self.write_into(target, result, bus);
+                }
+                0x20..=0x27 => {
+                    // SLA
+                    let result = value << 1;
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_nf(false);
+                    self.registers.set_hf(false);
+                    self.registers.set_cf(value & 0x80 != 0);
+                    self.write_into(target, result, bus);
+                }
+                0x28..=0x2F => {
+                    // SRA
+                    let result = value >> 1 | (value & 0x80);
+                    self.registers.set_zf(result == 0);
+                    self.registers.set_nf(false);
+                    self.registers.set_hf(false);
+                    self.registers.set_cf(value & 0x1 != 0);
+                    self.write_into(target, result, bus);
+                }
+                0x80..=0xBF => {
+                    // RES
+                    let mut bit_index = (((opcode & 0xF0) >> 4) - 8) * 2;
+                    if opcode & 0x08 != 0 {
+                        bit_index += 1;
+                    }
+                    let result = value & !(1 << bit_index);
+                    self.write_into(target, result, bus);
+                }
+            };
+        } else {
+            unreachable!();
+        }
+    }
+
+}
+
+#[inline]
+pub fn swapped_nibbles(byte: u8) -> u8 {
+    let [hi, lo] = [byte >> 4, byte & 0xF];
+    (lo << 4) | hi
 }

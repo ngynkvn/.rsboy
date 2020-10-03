@@ -114,10 +114,12 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
     // tui.init()?;
 
     pump_loop!(event_pump, {
+        // let b = emu.bus.gpu._vblank_count;
         frame(&mut emu, &mut texture, &mut canvas);
         // tui.print_state(&emu)?;
         delay_min(FRAME_TIME, &timer);
         let now = Instant::now();
+        // println!("{:?} {}", now.duration_since(timer), (emu.bus.gpu._vblank_count - b) as f64 / now.duration_since(timer).as_secs_f64());
         timer = now;
     });
     std::mem::drop(event_pump);

@@ -35,10 +35,11 @@ pub struct GPU {
     pub windowx: u8, //
     pub windowy: u8, //
     pub bg_palette: u8,
+    pub _vblank_count: usize,
 }
 
-const END_HBLANK: u8 = 143;
-const END_VBLANK: u8 = 153;
+const END_HBLANK: u8 = 144;
+const END_VBLANK: u8 = 154;
 
 pub type PixelData = [[u16; 256]; 256];
 pub type PixelMap = [u8; 256 * 256 * 2];
@@ -62,7 +63,7 @@ impl From<u8> for SpriteAttribute {
 impl GPU {
     pub fn new() -> Self {
         Self {
-            mode: GpuMode::HBlank,
+            mode: GpuMode::OAM,
             clock: 0,
             scanline: 0,
             lcdc: 0,
@@ -75,6 +76,7 @@ impl GPU {
             windowx: 0,
             windowy: 0,
             bg_palette: 0,
+            _vblank_count: 0,
             vram: [0; 0x2000],
         }
     }
@@ -157,8 +159,8 @@ impl GPU {
 
     fn check_clock<F: FnOnce(&mut Self)>(&mut self, criteria: usize, f: F) {
         if self.clock >= criteria {
-            self.clock = 0;
             f(self);
+            self.clock = 0;
         }
     }
 
@@ -169,9 +171,11 @@ impl GPU {
             GpuMode::HBlank => self.check_clock(204, |gpu| {
                 gpu.scanline += 1;
                 if gpu.scanline == END_HBLANK {
-                    gpu.mode = GpuMode::VBlank;
-                    //Might be wrong position to trigger interrupt
+                    gpu._vblank_count += 1;
                     *flag |= cpu::VBLANK;
+                    gpu.mode = GpuMode::VBlank;
+                } else {
+                    gpu.mode = GpuMode::OAM;
                 }
             }),
             GpuMode::VBlank => self.check_clock(456, |gpu| {
