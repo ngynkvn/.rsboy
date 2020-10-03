@@ -44,8 +44,8 @@ fn ticks_expected() {
 fn time_instr(instr: Instr, cpu: &mut CPU, bus: &mut Bus) -> usize {
     let before = bus.clock;
     bus.generic_cycle();
-    let opcode = INSTR_TABLE.iter().position(|&x| x == instr).unwrap();
-    cpu.opcode2 = opcode as u8;
+    let opcode = instr.into();
+    cpu.opcode = opcode;
     cpu.execute_op(bus);
     let after = bus.clock;
     after - before
@@ -61,8 +61,7 @@ fn ticks_cb_instr() {
         bus.in_bios = 1;
         bus.memory[0x00] = instr;
         bus.generic_cycle();
-        let opcode = INSTR_TABLE.iter().position(|&x| x == Instr::CB).unwrap();
-        cpu.opcode2 = opcode as u8;
+        cpu.opcode = Instr::CB.into();
         cpu.execute_op(&mut bus);
         let after = bus.clock;
         if let Location::Register(_) = CPU::cb_location(instr) {
@@ -130,11 +129,8 @@ fn ld() {
     cpu.registers.b = 8;
     let mut bus = Bus::new(vec![]);
     assert_eq!(cpu.registers.a, 0x5);
-    let opcode = INSTR_TABLE
-        .iter()
-        .position(|&x| x == Instr::LD(Register(A), Register(B)))
-        .unwrap() as u8;
-    cpu.opcode2 = opcode;
+    let opcode = Instr::LD(Register(A), Register(B)).into();
+    cpu.opcode = opcode;
     cpu.execute_op(&mut bus);
     assert_eq!(cpu.registers.a, 0x8);
 }
@@ -149,7 +145,7 @@ fn jr() {
     bus.bootrom[0x000B] = 0xFB;
     cpu.prefetch_op(&mut bus, 0x000A);
     cpu.step(&mut bus);
-    assert_eq!(cpu.opcode, &Instr::HALT);
+    assert_eq!(cpu.opcode, 0x76);
     assert_eq!(cpu.op_addr, 0x0007);
 }
 
@@ -162,54 +158,33 @@ fn pop_af() {
     cpu.registers.h = 0xF0;
     for i in 0..0xFF {
         // -    push bc
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::PUSH(Register(BC)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::PUSH(Register(BC)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
         //      pop  af
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::POP(Register(AF)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::POP(Register(AF)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
         //      push af
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::PUSH(Register(AF)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::PUSH(Register(AF)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
         //      pop  de
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::POP(Register(DE)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::POP(Register(DE)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
         //      ld   a,c
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::LD(Register(A), Register(C)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::LD(Register(A), Register(C)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
         //      and  $F0
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::AND(Register(H)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::AND(Register(H)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
         cpu.dump_state();
         //      cp   e
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::CP(Register(E)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::CP(Register(E)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
         assert!(
             !cpu.registers.flg_nz(),
@@ -217,17 +192,11 @@ fn pop_af() {
             i,
             cpu.registers
         );
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::INC(Register(B)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::INC(Register(B)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
-        let opcode = INSTR_TABLE
-            .iter()
-            .position(|&x| x == Instr::INC(Register(C)))
-            .unwrap();
-        cpu.opcode2 = opcode as u8;
+        let opcode = Instr::INC(Register(C)).into();
+        cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
     }
 }
