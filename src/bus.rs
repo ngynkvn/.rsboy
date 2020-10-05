@@ -1,15 +1,10 @@
-use crate::cpu;
 use crate::gpu::GPU;
+use crate::timer::Timer;
+use crate::timer;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
 use std::fs::File;
 use std::io::Read;
-
-const DIV_TIMER_HZ: usize = 16384;
-const DIV: usize = 0xFF04;
-const TIMA: usize = 0xFF05;
-const TMA: usize = 0xFF06;
-const TAC: usize = 0xFF07;
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -33,6 +28,7 @@ pub struct Bus {
     pub joypad_io: Select,
     pub gpu: GPU,
     pub rom_start_signal: bool,
+    pub timer: Timer,
 }
 
 fn load_bootrom() -> Vec<u8> {
@@ -58,10 +54,11 @@ impl Bus {
             in_bios: 0,
             int_enabled: 0,
             int_flags: 0,
+            rom_start_signal: false,
             clock: 0,
             joypad_io: Select::Buttons,
             gpu: GPU::new(),
-            rom_start_signal: false,
+            timer: Timer::new(),
         }
     }
 
@@ -78,41 +75,9 @@ impl Bus {
         self.int_flags &= !flag;
     }
 
-    pub fn dump_timer_info(&self) {
-        println!(
-            "DIV:{:02x}\nTIMA:{:02x}\nTMA:{:02x}\nTAC:{:02x}",
-            self.memory[DIV], self.memory[TIMA], self.memory[TMA], self.memory[TAC]
-        );
-    }
-
-    fn tick_timer_counter(&mut self) {
-        if self.clock % DIV_TIMER_HZ == 0 {
-            self.memory[DIV] = self.memory[DIV].wrapping_add(1);
-        }
-        let control = self.memory[TAC];
-        let clock_select = control & 0b11;
-        let enable = (control & 0b100) != 0;
-        let clock_speed = match clock_select {
-            0b00 => 1024,
-            0b01 => 16,
-            0b10 => 64,
-            0b11 => 256,
-            _ => unreachable!(),
-        };
-        if enable && self.clock % clock_speed == 0 {
-            let (value, overflow) = self.memory[TIMA].overflowing_add(1);
-            if overflow {
-                self.int_flags |= cpu::TIMER;
-                self.memory[TIMA] = self.memory[TMA]
-            } else {
-                self.memory[TIMA] = value;
-            }
-        }
-    }
-
     pub fn generic_cycle(&mut self) {
         self.gpu.cycle(&mut self.int_flags);
-        self.tick_timer_counter();
+        self.timer.tick_timer_counter(&mut self.int_flags);
         self.clock += 1;
     }
 
@@ -136,6 +101,10 @@ impl Memory for Bus {
     fn read(&self, address: u16) -> u8 {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => self.bootrom[address as usize],
+            timer::DIV => self.timer.div,
+            timer::TAC => self.timer.tac,
+            timer::TMA => self.timer.tma,
+            timer::TIMA => self.timer.tima,
             0xFF40 => self.gpu.lcdc,
             0xFF41 => self.gpu.lcdstat,
             0xFF42 => self.gpu.vscroll,
@@ -164,8 +133,10 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
-            DIV => self.memory[DIV] = 0,
-            TAC => self.memory[TAC] = 0b1111_1000 | value,
+            timer::DIV => self.timer.div = 0,
+            timer::TAC => self.timer.tac = 0b1111_1000 | value,
+            timer::TIMA => self.timer.tima = value,
+            timer::TMA => self.timer.tma = value,
             0xff40 => self.gpu.lcdc = value,
             0xff41 => self.gpu.lcdstat = value,
             0xff42 => self.gpu.vscroll = value,
@@ -179,7 +150,7 @@ impl Memory for Bus {
                 self.int_flags |= value;
             }
             0xff50 => {
-                if value != 0 {
+                if value != 0 && self.rom_start_signal == false {
                     self.rom_start_signal = true;
                 }
                 self.in_bios = value

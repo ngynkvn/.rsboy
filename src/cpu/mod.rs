@@ -449,7 +449,7 @@ impl CPU {
             bus.ack_interrupt(TIMER);
             self.registers.pc = 0x50;
             self.dump_state();
-            bus.dump_timer_info();
+            bus.timer.dump_timer_info();
             // panic!();
             let opcode = self.next_u8(bus);
             self.opcode = opcode;
