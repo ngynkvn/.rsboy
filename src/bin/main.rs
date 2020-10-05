@@ -113,13 +113,66 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
     // let mut tui = Tui::new();
     // tui.init()?;
 
+    use crossterm::cursor::MoveTo;
+    use crossterm::{
+        cursor::*,
+        event, execute,
+        style::{Color::*, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+        terminal::ClearType::All,
+        terminal::*,
+        ExecutableCommand,
+    };
+    use std::io::stdout;
+
+    type EmuState = (usize, usize, Duration);
+    let (tx, rx) = std::sync::mpsc::channel::<EmuState>();
+
+    std::thread::spawn(move || -> Result<(), crossterm::ErrorKind> {
+        let mut std = stdout();
+        loop {
+            if let Ok((b, c, duration)) = rx.recv() {
+                let duration_relative_error = ((duration.as_secs_f64() - FRAME_TIME.as_secs_f64())
+                    / FRAME_TIME.as_secs_f64())
+                    * 100.0;
+                let cpu_hz = c as f64 / duration.as_secs_f64();
+                let cpu_relative_error = ((cpu_hz - cpu::GB_CYCLE_SPEED as f64)
+                    / cpu::GB_CYCLE_SPEED as f64) as f64
+                    * 100.0;
+                std.execute(MoveTo(0, 0))?
+                    .execute(Clear(All))?
+                    .execute(Print("Frame time:"))?
+                    .execute(Print(format!("{:?}: ", duration)))?
+                    //Relative error
+                    .execute(Print(format!("{}\n", duration_relative_error)))?
+                    .execute(Print("CPU HZ: "))?
+                    .execute(Print(format!(
+                        "{} hz: ",
+                        (c) as f64 / duration.as_secs_f64()
+                    )))?
+                    .execute(Print(format!("{}\n", cpu_relative_error)))?;
+            }
+        }
+        // some work here
+    });
+
     pump_loop!(event_pump, {
-        // let b = emu.bus.gpu._vblank_count;
+        let b = emu.bus.timer.tick;
+        let c = emu.bus.clock;
         frame(&mut emu, &mut texture, &mut canvas);
         // tui.print_state(&emu)?;
         delay_min(FRAME_TIME, &timer);
         let now = Instant::now();
-        // println!("{:?} {}", now.duration_since(timer), (emu.bus.gpu._vblank_count - b) as f64 / now.duration_since(timer).as_secs_f64());
+        tx.send((
+            emu.bus.timer.tick - b,
+            emu.bus.clock - c,
+            now.duration_since(timer),
+        ))?;
+        // println!(
+        //     "{:?} [{}] {}",
+        //     now.duration_since(timer),
+        //     emu.bus.timer.tac & 0b11,
+        //     (emu.bus.timer.tick - b) as f64 / now.duration_since(timer).as_secs_f64()
+        // );
         timer = now;
     });
     std::mem::drop(event_pump);
@@ -179,7 +232,7 @@ fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) {
 fn delay_min(min_dur: Duration, timer: &Instant) {
     let time = timer.elapsed();
     if time < min_dur {
-        ::std::thread::sleep(min_dur - time);
+        spin_sleep::sleep(min_dur - time);
     }
 }
 

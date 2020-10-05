@@ -1,4 +1,5 @@
 use crate::cpu;
+use std::time::Instant;
 
 const DIV_TIMER_HZ: usize = 16384;
 pub const DIV: usize = 0xFF04;
@@ -12,6 +13,7 @@ pub struct Timer {
     pub tma: u8,
     pub tac: u8,
     pub clock: usize,
+    pub tick: usize,
 }
 
 impl Timer {
@@ -22,6 +24,7 @@ impl Timer {
             tma: 0,
             tac: 0,
             clock: 0,
+            tick: 0,
         };
     }
     pub fn dump_timer_info(&self) {
@@ -32,7 +35,8 @@ impl Timer {
     }
 
     pub fn tick_timer_counter(&mut self, flags: &mut u8) {
-        if self.clock % DIV_TIMER_HZ == 0 {
+        self.clock += 1;
+        if self.clock % 1024 == 0 {
             self.div = self.div.wrapping_add(1);
         }
         let control = self.tac;
@@ -47,13 +51,13 @@ impl Timer {
         };
         if enable && self.clock % clock_speed == 0 {
             let (value, overflow) = self.tima.overflowing_add(1);
+            self.tick += 1;
             if overflow {
                 *flags |= cpu::TIMER;
-                self.tima = self.tma
+                self.tima = self.tma;
             } else {
                 self.tima = value;
             }
         }
     }
-
 }

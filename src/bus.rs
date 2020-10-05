@@ -1,8 +1,8 @@
 use crate::gpu::GPU;
-use crate::timer::Timer;
-use crate::timer;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
+use crate::timer;
+use crate::timer::Timer;
 use std::fs::File;
 use std::io::Read;
 
