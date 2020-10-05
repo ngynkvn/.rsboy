@@ -129,6 +129,7 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
 
     std::thread::spawn(move || -> Result<(), crossterm::ErrorKind> {
         let mut std = stdout();
+        std.execute(Hide)?;
         loop {
             if let Ok((b, c, duration)) = rx.recv() {
                 let duration_relative_error = ((duration.as_secs_f64() - FRAME_TIME.as_secs_f64())
@@ -140,19 +141,20 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
                     * 100.0;
                 std.execute(MoveTo(0, 0))?
                     .execute(Clear(All))?
-                    .execute(Print("Frame time:"))?
-                    .execute(Print(format!("{:?}: ", duration)))?
+                    .execute(Print("Frame time:\t"))?
+                    .execute(Print(format!("{:10?}:\t", duration)))?
                     //Relative error
-                    .execute(Print(format!("{}\n", duration_relative_error)))?
-                    .execute(Print("CPU HZ: "))?
+                    .execute(Print(format!("{:.3}%\n", duration_relative_error)))?
+                    .execute(Print("CPU HZ:\t"))?
                     .execute(Print(format!(
-                        "{} hz: ",
+                        "{:.3} hz:\t",
                         (c) as f64 / duration.as_secs_f64()
                     )))?
-                    .execute(Print(format!("{}\n", cpu_relative_error)))?;
+                    .execute(Print(format!("{:.3}\n", cpu_relative_error)))?;
+            } else {
+                std.execute(Show)?;
             }
         }
-        // some work here
     });
 
     pump_loop!(event_pump, {
