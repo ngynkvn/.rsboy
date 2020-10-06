@@ -76,9 +76,9 @@ impl Bus {
     }
 
     pub fn generic_cycle(&mut self) {
+        self.clock += 1;
         self.gpu.cycle(&mut self.int_flags);
         self.timer.tick_timer_counter(&mut self.int_flags);
-        self.clock += 1;
     }
 
     pub fn read_cycle(&mut self, addr: u16) -> u8 {

@@ -85,6 +85,9 @@ fn ticks_expected_jumps() {
     let time = time_instr(Instr::RET(None), &mut cpu, &mut bus);
     assert_eq!(time, 4);
 
+    let time = time_instr(Instr::JR(None), &mut cpu, &mut bus);
+    assert_eq!(time, 3);
+
     let pos_flags = [Flag::FlagZ, Flag::FlagC];
     for flag in &pos_flags {
         let time = time_instr(Instr::JP(Some(*flag)), &mut cpu, &mut bus);
@@ -119,6 +122,18 @@ fn ticks_expected_jumps() {
     for flag in &neg_flags {
         let time = time_instr(Instr::RET(Some(*flag)), &mut cpu, &mut bus);
         assert_eq!(time, 5);
+    }
+
+    let pos_flags = [Flag::FlagZ, Flag::FlagC];
+    for flag in &pos_flags {
+        let time = time_instr(Instr::JR(Some(*flag)), &mut cpu, &mut bus);
+        assert_eq!(time, 2);
+    }
+
+    let neg_flags = [Flag::FlagNZ, Flag::FlagNC];
+    for flag in &neg_flags {
+        let time = time_instr(Instr::JR(Some(*flag)), &mut cpu, &mut bus);
+        assert_eq!(time, 3);
     }
 }
 

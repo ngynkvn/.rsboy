@@ -76,7 +76,7 @@ fn create_window(context: &sdl2::Sdl) -> Result<Canvas<Window>, Box<dyn Error>> 
         .build()?
         .into_canvas()
         .build()
-        .or_else(|_| Err("Unable to build window".into()))
+        .map_err(|x| x.into())
 }
 
 macro_rules! pump_loop {
@@ -124,37 +124,34 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
     };
     use std::io::stdout;
 
-    type EmuState = (usize, usize, Duration);
+    type EmuState = (u8, usize, usize, Duration);
     let (tx, rx) = std::sync::mpsc::channel::<EmuState>();
+
+    let calc_relative_error = |x_hat, x| (x_hat - x) * 100.0 / x;
 
     std::thread::spawn(move || -> Result<(), crossterm::ErrorKind> {
         let mut std = stdout();
-        std.execute(Hide)?;
         loop {
-            if let Ok((b, c, duration)) = rx.recv() {
-                let duration_relative_error = ((duration.as_secs_f64() - FRAME_TIME.as_secs_f64())
-                    / FRAME_TIME.as_secs_f64())
-                    * 100.0;
+            if let Ok((tac, ticks, c, duration)) = rx.recv() {
+                let duration_relative_error =
+                    calc_relative_error(duration.as_secs_f64(), FRAME_TIME.as_secs_f64());
                 let cpu_hz = c as f64 / duration.as_secs_f64();
-                let cpu_relative_error = ((cpu_hz - cpu::GB_CYCLE_SPEED as f64)
-                    / cpu::GB_CYCLE_SPEED as f64) as f64
-                    * 100.0;
+                let cpu_relative_error = calc_relative_error(cpu_hz, cpu::GB_CYCLE_SPEED as f64);
+                let timer_hz = ticks as f64 / duration.as_secs_f64();
                 std.execute(MoveTo(0, 0))?
                     .execute(Clear(All))?
-                    .execute(Print("Frame time:\t"))?
-                    .execute(Print(format!("{:10?}:\t", duration)))?
+                    .execute(Print("Frame time:"))?
+                    .execute(Print(format!("{:?}: ", duration)))?
                     //Relative error
-                    .execute(Print(format!("{:.3}%\n", duration_relative_error)))?
-                    .execute(Print("CPU HZ:\t"))?
-                    .execute(Print(format!(
-                        "{:.3} hz:\t",
-                        (c) as f64 / duration.as_secs_f64()
-                    )))?
-                    .execute(Print(format!("{:.3}\n", cpu_relative_error)))?;
-            } else {
-                std.execute(Show)?;
+                    .execute(Print(format!("{}\n", duration_relative_error)))?
+                    .execute(Print("CPU HZ: "))?
+                    .execute(Print(format!("{} hz: ", cpu_hz)))?
+                    .execute(Print(format!("{}\n", cpu_relative_error)))?
+                    .execute(Print(format!("Timer: {}\n", tac & 0b11)))?
+                    .execute(Print(format!("{} hz: ", timer_hz)))?;
             }
         }
+        // some work here
     });
 
     pump_loop!(event_pump, {
@@ -165,16 +162,17 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
         delay_min(FRAME_TIME, &timer);
         let now = Instant::now();
         tx.send((
+            emu.bus.timer.tac,
             emu.bus.timer.tick - b,
             emu.bus.clock - c,
             now.duration_since(timer),
         ))?;
-        // println!(
-        //     "{:?} [{}] {}",
-        //     now.duration_since(timer),
-        //     emu.bus.timer.tac & 0b11,
-        //     (emu.bus.timer.tick - b) as f64 / now.duration_since(timer).as_secs_f64()
-        // );
+        println!(
+            "{:?} [{}] {}",
+            now.duration_since(timer),
+            emu.bus.timer.tac & 0b11,
+            (emu.bus.timer.tick - b) as f64 / now.duration_since(timer).as_secs_f64()
+        );
         timer = now;
     });
     std::mem::drop(event_pump);

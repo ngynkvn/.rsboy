@@ -35,8 +35,8 @@ impl Timer {
     }
 
     pub fn tick_timer_counter(&mut self, flags: &mut u8) {
-        self.clock += 1;
-        if self.clock % 1024 == 0 {
+        self.clock += 4;
+        if self.clock % 256 == 0 {
             self.div = self.div.wrapping_add(1);
         }
         let control = self.tac;

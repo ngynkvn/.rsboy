@@ -194,7 +194,6 @@ impl CPU {
         }
         f(self, bus);
         bus.generic_cycle();
-
     }
     pub fn jp(&mut self, jump_type: Option<Flag>, bus: &mut Bus) {
         let address = self.next_u16(bus);
@@ -385,6 +384,9 @@ impl CPU {
                     self.registers.set_zf(check_zero);
                     self.registers.set_nf(false);
                     self.registers.set_hf(true);
+                    if let Location::Memory(_) = target {
+                        bus.generic_cycle();
+                    }
                 }
                 0xC0..=0xFF => {
                     // SET
@@ -435,7 +437,6 @@ impl CPU {
             unreachable!();
         }
     }
-
 }
 
 #[inline]

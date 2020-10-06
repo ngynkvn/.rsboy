@@ -33,7 +33,6 @@ pub const TIMER: u8 = 0b100;
 pub const SERIAL: u8 = 0b1000;
 pub const JOYPAD: u8 = 0b10000;
 
-
 impl CPU {
     pub fn new() -> Self {
         // TODO
