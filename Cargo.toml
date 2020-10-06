@@ -9,9 +9,6 @@ edition = "2018"
 [[bin]]
 name = "main"
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 [dependencies]
 sdl2 = "0.32.2"
 fern = "0.6.0"
@@ -19,6 +16,9 @@ log = "0.4.8"
 crossterm = "0.17.7"
 arraydeque = "0.4.5"
 spin_sleep = "1.0.0"
+
+[dependencies.gl]
+git = "https://github.com/bjz/gl-rs"
 
 [dev-dependencies]
 criterion = "0.3"

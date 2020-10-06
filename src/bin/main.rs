@@ -20,14 +20,14 @@ use std::io::Read;
 use gpu::{PixelData, PixelMap};
 use rust_emu::emu::Emu;
 
-
-
 use rust_emu::*;
 
 pub const CYCLES_PER_FRAME: usize = GB_CYCLE_SPEED / 60;
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
 
-fn setup_logger() -> Result<(), fern::InitError> {
+type R<T> = Result<T, Box<dyn Error>>;
+
+fn setup_logger() -> R<()> {
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -42,11 +42,11 @@ fn setup_logger() -> Result<(), fern::InitError> {
         .chain(std::io::stdout())
         .chain(fern::log_file("output.log")?)
         // Apply globally
-        .apply()?;
-    Ok(())
+        .apply()
+        .map_err(|x| x.into())
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> R<()> {
     // just_cpu();
     info!("Setup logging");
     setup_logger()?;
@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     sdl_main()
 }
 
-fn init_emu() -> Result<Emu, std::io::Error> {
+fn init_emu() -> R<Emu> {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         println!("Usage: ./gboy [rom]");
@@ -67,16 +67,6 @@ fn init_emu() -> Result<Emu, std::io::Error> {
     file.read_to_end(&mut rom)?;
     let emu = Emu::new(rom);
     Ok(emu)
-}
-fn create_window(context: &sdl2::Sdl) -> Result<Canvas<Window>, Box<dyn Error>> {
-    let video = context.video().unwrap();
-    video
-        .window("Window", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
-        .position_centered()
-        .build()?
-        .into_canvas()
-        .build()
-        .map_err(|x| x.into())
 }
 
 macro_rules! pump_loop {
@@ -97,16 +87,41 @@ macro_rules! pump_loop {
     };
 }
 
-fn sdl_main() -> Result<(), Box<dyn Error>> {
-    let mut emu = init_emu().unwrap();
+pub struct Panel<'a> {
+    canvas: Canvas<Window>,
+    texture: Texture<'a>,
+}
 
-    let context = sdl2::init().unwrap();
-    let mut canvas = create_window(&context)?;
-    let tc = canvas.texture_creator();
+impl Panel<'_> {
+    fn frame<F: FnOnce(&mut Panel)>(&mut self, f: F) {
+        f(self);
+    }
+}
+
+fn sdl_main() -> R<()> {
+    let mut emu = init_emu()?;
+
+    let context = sdl2::init()?;
+    let mut rsboy = context.video()?
+        .window(".rsboy", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
+        .position_centered()
+        .build()?
+        .into_canvas()
+        .build()?;
+    let tc = rsboy.texture_creator();
     let mut texture =
         tc.create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
-    let boot_timer = Instant::now();
+    let mut machine = Panel { canvas: rsboy, texture };
+
+    let mut debugger = context.video()?
+        .window("debugger", 100, 100)
+        .opengl()
+        .build()?
+
+    debugger.
+
+
     let mut timer = Instant::now();
     let mut event_pump = context.event_pump()?;
 
@@ -157,7 +172,17 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
     pump_loop!(event_pump, {
         let b = emu.bus.timer.tick;
         let c = emu.bus.clock;
-        frame(&mut emu, &mut texture, &mut canvas);
+        machine.frame(|panel| {
+            let before = emu.bus.clock;
+            while emu.bus.clock < before + CYCLES_PER_FRAME {
+                emu.emulate_step();
+            }
+            emu.bus.gpu.render(&mut emu.framebuffer);
+            let (h, v) = emu.bus.gpu.scroll();
+            panel.texture.copy_window(h, v, &emu.framebuffer);
+            panel.canvas.copy(&panel.texture, None, None).unwrap();
+            panel.canvas.present();
+        });
         // tui.print_state(&emu)?;
         delay_min(FRAME_TIME, &timer);
         let now = Instant::now();
@@ -177,10 +202,6 @@ fn sdl_main() -> Result<(), Box<dyn Error>> {
     });
     std::mem::drop(event_pump);
 
-    println!(
-        "It took {:?} seconds.",
-        Instant::now().duration_since(boot_timer)
-    );
     // vram_viewer(&context, emu.bus.gpu.vram).unwrap();
     map_viewer(&context, emu)?;
     Ok(())
@@ -215,18 +236,6 @@ impl GBWindow for Texture<'_> {
         let (_, buffer, _) = unsafe { buffer.align_to::<u8>() };
         self.update(None, buffer, 256 * 2).unwrap()
     }
-}
-
-fn frame(emu: &mut Emu, texture: &mut Texture, canvas: &mut Canvas<Window>) {
-    let before = emu.bus.clock;
-    while emu.bus.clock < before + CYCLES_PER_FRAME {
-        emu.emulate_step();
-    }
-    emu.bus.gpu.render(&mut emu.framebuffer);
-    let (h, v) = emu.bus.gpu.scroll();
-    texture.copy_window(h, v, &emu.framebuffer);
-    canvas.copy(&texture, None, None).unwrap();
-    canvas.present();
 }
 
 fn delay_min(min_dur: Duration, timer: &Instant) {
