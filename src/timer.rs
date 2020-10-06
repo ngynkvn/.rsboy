@@ -1,5 +1,5 @@
 use crate::cpu;
-use std::time::Instant;
+
 
 const DIV_TIMER_HZ: usize = 16384;
 pub const DIV: usize = 0xFF04;
@@ -18,14 +18,14 @@ pub struct Timer {
 
 impl Timer {
     pub fn new() -> Self {
-        return Self {
+        Self {
             div: 0,
             tima: 0,
             tma: 0,
             tac: 0,
             clock: 0,
             tick: 0,
-        };
+        }
     }
     pub fn dump_timer_info(&self) {
         println!(

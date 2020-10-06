@@ -20,7 +20,7 @@ use std::io::Read;
 use gpu::{PixelData, PixelMap};
 use rust_emu::emu::Emu;
 
-use rust_emu::tui::Tui;
+
 
 use rust_emu::*;
 

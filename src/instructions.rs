@@ -4,9 +4,9 @@ use self::Location::*;
 use self::Register::*;
 use crate::{
     bus::Bus,
-    cpu::{value::Value, value::Value::*, value::Writable, CPU},
+    cpu::{value::Value, CPU},
 };
-use std::fmt;
+
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum Register {

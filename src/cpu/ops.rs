@@ -7,7 +7,7 @@ use crate::instructions::Location;
 use crate::instructions::Register;
 use crate::instructions::Register::*;
 impl CPU {
-    pub fn noop(&mut self, bus: &mut Bus) {}
+    pub fn noop(&mut self, _bus: &mut Bus) {}
 
     pub fn ld(&mut self, into: Location, from: Location, bus: &mut Bus) {
         let from_value = self.read_from(from, bus);
@@ -70,7 +70,7 @@ impl CPU {
         self.registers.set_hf(half_carry);
         self.registers.set_cf(carry);
     }
-    pub fn stop(&mut self, bus: &mut Bus) {
+    pub fn stop(&mut self, _bus: &mut Bus) {
         println!("stop: {:04x}", self.registers.pc - 1); // todo ?
     }
     pub fn cp(&mut self, location: Location, bus: &mut Bus) {
@@ -169,17 +169,17 @@ impl CPU {
         self.registers.set_nf(true);
         self.registers.set_hf(true);
     }
-    pub fn ccf(&mut self, bus: &mut Bus) {
+    pub fn ccf(&mut self, _bus: &mut Bus) {
         self.registers.set_nf(false);
         self.registers.set_hf(false);
         self.registers.set_cf(!self.registers.flg_c());
     }
-    pub fn scf(&mut self, bus: &mut Bus) {
+    pub fn scf(&mut self, _bus: &mut Bus) {
         self.registers.set_nf(false);
         self.registers.set_hf(false);
         self.registers.set_cf(true);
     }
-    pub fn halt(&mut self, bus: &mut Bus) {
+    pub fn halt(&mut self, _bus: &mut Bus) {
         //todo
         self.halt = true;
     }
@@ -199,7 +199,7 @@ impl CPU {
         let address = self.next_u16(bus);
         self.jumping(jump_type, bus, |cpu, _| cpu.registers.pc = address);
     }
-    pub fn jp_hl(&mut self, bus: &mut Bus) {
+    pub fn jp_hl(&mut self, _bus: &mut Bus) {
         self.registers.pc = self.registers.hl();
     }
     pub fn jr(&mut self, jump_type: Option<Flag>, bus: &mut Bus) {
@@ -239,7 +239,7 @@ impl CPU {
     pub fn disableinterrupts(&mut self, bus: &mut Bus) {
         bus.disable_interrupts();
     }
-    pub fn rra(&mut self, bus: &mut Bus) {
+    pub fn rra(&mut self, _bus: &mut Bus) {
         let carry = self.registers.a & 1 != 0;
         self.registers.a >>= 1;
         if self.registers.flg_c() {
@@ -250,7 +250,7 @@ impl CPU {
         self.registers.set_nf(false);
         self.registers.set_cf(carry);
     }
-    pub fn rrca(&mut self, bus: &mut Bus) {
+    pub fn rrca(&mut self, _bus: &mut Bus) {
         let carry = self.registers.a & 1 != 0;
         self.registers.a >>= 1;
         if carry {
@@ -261,7 +261,7 @@ impl CPU {
         self.registers.set_nf(false);
         self.registers.set_cf(carry);
     }
-    pub fn rla(&mut self, bus: &mut Bus) {
+    pub fn rla(&mut self, _bus: &mut Bus) {
         let overflow = self.registers.a & 0x80 != 0;
         let result = self.registers.a << 1;
         self.registers.a = result | (self.registers.flg_c() as u8);
@@ -270,7 +270,7 @@ impl CPU {
         self.registers.set_nf(false);
         self.registers.set_cf(overflow);
     }
-    pub fn rlca(&mut self, bus: &mut Bus) {
+    pub fn rlca(&mut self, _bus: &mut Bus) {
         let carry = self.registers.a & 0x80 != 0;
         let result = self.registers.a << 1 | carry as u8;
         self.registers.a = result;
@@ -299,7 +299,7 @@ impl CPU {
         self.registers.pc = addr;
         bus.generic_cycle();
     }
-    pub fn daa(&mut self, bus: &mut Bus) {
+    pub fn daa(&mut self, _bus: &mut Bus) {
         self.registers.a = self.bcd_adjust(self.registers.a);
     }
     pub fn sbc(&mut self, l: Location, bus: &mut Bus) {

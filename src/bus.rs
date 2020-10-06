@@ -150,7 +150,7 @@ impl Memory for Bus {
                 self.int_flags |= value;
             }
             0xff50 => {
-                if value != 0 && self.rom_start_signal == false {
+                if value != 0 && !self.rom_start_signal {
                     self.rom_start_signal = true;
                 }
                 self.in_bios = value

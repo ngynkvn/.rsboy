@@ -1,5 +1,5 @@
 use crate::emu::Emu;
-use crate::instructions::INSTR_TABLE;
+
 use crossterm::cursor::MoveTo;
 use crossterm::{
     cursor::*,

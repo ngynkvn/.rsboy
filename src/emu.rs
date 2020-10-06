@@ -72,7 +72,7 @@ impl Emu {
         let il = self.gen_il(&mem);
         il.chunks(10)
             .find(|chunk| chunk.iter().any(|e| e.addr == pc))
-            .expect(&format!("PC: {:04x} {:?}", pc, INSTR_TABLE[mem[pc as usize] as usize]))
+            .unwrap_or_else(|| panic!("PC: {:04x} {:?}", pc, INSTR_TABLE[mem[pc as usize] as usize]))
             .to_vec()
     }
 }
