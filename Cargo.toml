@@ -16,10 +16,9 @@ log = "0.4.8"
 crossterm = "0.17.7"
 arraydeque = "0.4.5"
 spin_sleep = "1.0.0"
-imgui = "*"
-
-[dependencies.gl]
-git = "https://github.com/bjz/gl-rs"
+imgui = "0.5.0"
+imgui-opengl-renderer = "*"
+gl = "*"
 
 [dev-dependencies]
 criterion = "0.3"

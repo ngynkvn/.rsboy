@@ -1,13 +1,18 @@
+extern crate gl;
+extern crate imgui_opengl_renderer;
 //SDL
-use std::error::Error;
+use std::{collections::VecDeque, error::Error, ops::Div, ops::Mul, ops::Sub, sync::mpsc::Sender, thread::JoinHandle};
 
 use cpu::GB_CYCLE_SPEED;
-use sdl2::event::Event;
+use imgui::{Context, Slider, im_str};
+use imgui::{Io, Ui};
+use imgui_opengl_renderer::Renderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::{Canvas, Texture};
 use sdl2::video::Window;
+use sdl2::{event::Event, video::GLContext};
 use std::time::Duration;
 use std::time::Instant;
 
@@ -69,32 +74,75 @@ fn init_emu() -> R<Emu> {
     Ok(emu)
 }
 
-macro_rules! pump_loop {
-    ($e: expr, $body:block) => {
-        'running: loop {
-            for event in $e.poll_iter() {
-                match event {
-                    Event::Quit { .. }
-                    | Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    } => break 'running,
-                    _ => {}
-                }
-            }
-            $body;
+
+fn calc_relative_error(x: f32, y: f32) -> f32 {
+    (x - y) * 100.0 / x
+}
+#[derive(Default)]
+struct Info {
+    frame_times: VecDeque<f32>,
+}
+
+struct Imgui {
+    imgui: Context,
+    renderer: Renderer,
+    window: Window,
+    _gl_context: GLContext,
+    info: Info,
+}
+
+impl Imgui {
+    fn new(video: &sdl2::VideoSubsystem) -> R<Self> {
+        let mut imgui = imgui::Context::create();
+        imgui.fonts().build_rgba32_texture();
+        let io = imgui.io_mut();
+        io.display_size = [512.0, 512.0];
+
+        let debugger = video
+            .window("debugger", 512, 512)
+            .position(0, 20)
+            .opengl()
+            .build()?;
+        let _gl_context = debugger.gl_create_context()?;
+        gl::load_with(|s| video.gl_get_proc_address(s) as _);
+
+        let renderer =
+            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
+
+        Ok(Self {
+            imgui: imgui,
+            renderer: renderer,
+            window: debugger,
+            _gl_context,
+            info: Default::default(),
+        })
+    }
+    fn frame<F: FnOnce(&mut Info, &Ui)>(&mut self, event_pump: &mut sdl2::EventPump, f: F) {
+        let io = self.imgui.io_mut();
+        let state = event_pump.mouse_state();
+        io.mouse_down = [
+            state.left(),
+            state.right(),
+            state.middle(),
+            state.x1(),
+            state.x2(),
+        ];
+        io.mouse_pos = [state.x() as f32, state.y() as f32];
+        let ui = self.imgui.frame();
+
+        unsafe {
+            gl::ClearColor(0.2, 0.2, 0.2, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
         }
-    };
-}
-
-pub struct Panel<'a> {
-    canvas: Canvas<Window>,
-    texture: Texture<'a>,
-}
-
-impl Panel<'_> {
-    fn frame<F: FnOnce(&mut Panel)>(&mut self, f: F) {
-        f(self);
+        f(&mut self.info, &ui);
+        self.renderer.render(ui);
+        self.window.gl_swap_window();
+    }
+    fn add_frame_time(&mut self, time: f32) {
+        self.info.frame_times.push_back(time * 1000.0);
+        if self.info.frame_times.len() > 200 {
+            self.info.frame_times.pop_front();
+        }
     }
 }
 
@@ -102,9 +150,17 @@ fn sdl_main() -> R<()> {
     let mut emu = init_emu()?;
 
     let context = sdl2::init()?;
-    let mut rsboy = context.video()?
+    let video = context.video()?;
+    {
+        let gl_attr = video.gl_attr();
+        gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
+        gl_attr.set_context_version(3, 0);
+    }
+
+    let mut rsboy = video
         .window(".rsboy", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
         .position_centered()
+        .opengl()
         .build()?
         .into_canvas()
         .build()?;
@@ -112,94 +168,64 @@ fn sdl_main() -> R<()> {
     let mut texture =
         tc.create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
-    let mut machine = Panel { canvas: rsboy, texture };
+    let mut debugger = Imgui::new(&video)?;
+    let mut cycle_jump = 0;
+    let mut pause = false;
 
-    let mut debugger = context.video()?
-        .window("debugger", 100, 100)
-        .opengl()
-        .build()?
-
-    debugger.
-
-
-    let mut timer = Instant::now();
     let mut event_pump = context.event_pump()?;
 
-    // let mut tui = Tui::new();
-    // tui.init()?;
-
-    use crossterm::cursor::MoveTo;
-    use crossterm::{
-        cursor::*,
-        event, execute,
-        style::{Color::*, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
-        terminal::ClearType::All,
-        terminal::*,
-        ExecutableCommand,
-    };
-    use std::io::stdout;
-
-    type EmuState = (u8, usize, usize, Duration);
-    let (tx, rx) = std::sync::mpsc::channel::<EmuState>();
-
-    let calc_relative_error = |x_hat, x| (x_hat - x) * 100.0 / x;
-
-    std::thread::spawn(move || -> Result<(), crossterm::ErrorKind> {
-        let mut std = stdout();
-        loop {
-            if let Ok((tac, ticks, c, duration)) = rx.recv() {
-                let duration_relative_error =
-                    calc_relative_error(duration.as_secs_f64(), FRAME_TIME.as_secs_f64());
-                let cpu_hz = c as f64 / duration.as_secs_f64();
-                let cpu_relative_error = calc_relative_error(cpu_hz, cpu::GB_CYCLE_SPEED as f64);
-                let timer_hz = ticks as f64 / duration.as_secs_f64();
-                std.execute(MoveTo(0, 0))?
-                    .execute(Clear(All))?
-                    .execute(Print("Frame time:"))?
-                    .execute(Print(format!("{:?}: ", duration)))?
-                    //Relative error
-                    .execute(Print(format!("{}\n", duration_relative_error)))?
-                    .execute(Print("CPU HZ: "))?
-                    .execute(Print(format!("{} hz: ", cpu_hz)))?
-                    .execute(Print(format!("{}\n", cpu_relative_error)))?
-                    .execute(Print(format!("Timer: {}\n", tac & 0b11)))?
-                    .execute(Print(format!("{} hz: ", timer_hz)))?;
+    'running: loop {
+        let now = Instant::now();
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
+                _ => {}
             }
         }
-        // some work here
-    });
-
-    pump_loop!(event_pump, {
-        let b = emu.bus.timer.tick;
-        let c = emu.bus.clock;
-        machine.frame(|panel| {
+        let mut delta_clock = 0;
+        if !pause {
             let before = emu.bus.clock;
             while emu.bus.clock < before + CYCLES_PER_FRAME {
                 emu.emulate_step();
             }
-            emu.bus.gpu.render(&mut emu.framebuffer);
-            let (h, v) = emu.bus.gpu.scroll();
-            panel.texture.copy_window(h, v, &emu.framebuffer);
-            panel.canvas.copy(&panel.texture, None, None).unwrap();
-            panel.canvas.present();
+            delta_clock = emu.bus.clock - before;
+        } 
+        emu.bus.gpu.render(&mut emu.framebuffer);
+        let (h, v) = emu.bus.gpu.scroll();
+        texture.copy_window(h, v, &emu.framebuffer);
+        rsboy.copy(&texture, None, None).unwrap();
+        rsboy.present();
+        let time = now.elapsed();
+        delay_min(time);
+        let after_delay = now.elapsed();
+        debugger.add_frame_time(after_delay.as_secs_f32());
+        debugger.frame(&mut event_pump, |info, ui| {
+            ui.text(format!("Frame time: {:?}", after_delay));
+            let i = info.frame_times.make_contiguous();
+            ui.plot_lines(
+                im_str!("Frame times"),
+                i,
+            ).graph_size([300.0, 100.0]).build();
+            let cpu_hz = delta_clock as f64 / after_delay.as_secs_f64();
+            ui.text(format!("CPU HZ: {}", cpu_hz));
+            ui.text(format!("Register State:\n{}", emu.cpu.registers));
+            if ui.button(im_str!("Pause"), [200.0, 50.0]) {
+                println!("Pause");
+                pause = !pause;
+            }
+            ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump).build();
+            if ui.button(im_str!("Go"), [200.0, 50.0]) {
+                let before = emu.bus.clock as i32;
+                while emu.bus.clock < (before + cycle_jump) as usize{
+                    emu.emulate_step();
+                }
+            }
         });
-        // tui.print_state(&emu)?;
-        delay_min(FRAME_TIME, &timer);
-        let now = Instant::now();
-        tx.send((
-            emu.bus.timer.tac,
-            emu.bus.timer.tick - b,
-            emu.bus.clock - c,
-            now.duration_since(timer),
-        ))?;
-        println!(
-            "{:?} [{}] {}",
-            now.duration_since(timer),
-            emu.bus.timer.tac & 0b11,
-            (emu.bus.timer.tick - b) as f64 / now.duration_since(timer).as_secs_f64()
-        );
-        timer = now;
-    });
+    }
     std::mem::drop(event_pump);
 
     // vram_viewer(&context, emu.bus.gpu.vram).unwrap();
@@ -238,10 +264,9 @@ impl GBWindow for Texture<'_> {
     }
 }
 
-fn delay_min(min_dur: Duration, timer: &Instant) {
-    let time = timer.elapsed();
-    if time < min_dur {
-        spin_sleep::sleep(min_dur - time);
+fn delay_min(elapsed: Duration) {
+    if let Some(time) = FRAME_TIME.checked_sub(elapsed) {
+        spin_sleep::sleep(time);
     }
 }
 
