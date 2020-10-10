@@ -1,12 +1,10 @@
 use crate::{cpu, texture::*};
-use std::{
-    ops::{Index, Range},
-    time,
-};
+use std::{fmt::Display, ops::{Index, Range}, time};
 
 pub const VRAM_START: usize = 0x8000;
 pub const VRAM_END: usize = 0x9FFF;
-pub const SPRITE_ATTR_RANGE: Range<usize> = 0x1e00..0x1ea0;
+pub const OAM_START: usize = 0xFE00;
+pub const OAM_END: usize = 0xFE9F;
 pub const TILE_DATA_RANGE: Range<usize> = 0..0x1800;
 pub const MAP_DATA_RANGE: Range<usize> = 0x1800..0x1C00;
 pub const TILE_SIZE: usize = 16;
@@ -25,6 +23,7 @@ pub struct GPU {
     clock: usize,
     pub scanline: u8,
     pub vram: [u8; 0x2000],
+    pub oam: [u8; 0x100],
     pub lcdc: u8,
     pub lcdstat: u8,
     pub hscroll: u8,
@@ -78,6 +77,7 @@ impl GPU {
             bg_palette: 0,
             _vblank_count: 0,
             vram: [0; 0x2000],
+            oam: [0; 0x100]
         }
     }
     pub fn is_on(&self) -> bool {
@@ -85,8 +85,7 @@ impl GPU {
     }
 
     pub fn print_sprite_table(&self) {
-        // 0x1e00-0x1ea0
-        for i in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
+        for i in self.oam.chunks_exact(4) {
             println!("{:?}", i);
         }
     }
@@ -144,8 +143,11 @@ impl GPU {
 
         // TODO
         // Need to emulate scanline, and priority rendering
-        for sprite_attributes in self.vram[SPRITE_ATTR_RANGE].chunks_exact(4) {
-            if let [_flags, pattern, x, y] = sprite_attributes {
+        for sprite_attributes in self.oam.chunks_exact(4) {
+            if sprite_attributes.iter().all(|x| *x == 0) {
+                continue;
+            }
+            if let [y, x, pattern, _flags] = sprite_attributes {
                 // let _flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
@@ -187,6 +189,14 @@ impl GPU {
             }),
         }
     }
+
+    pub fn hex_dump(&self) {
+        let mut start = VRAM_START;
+        for row in self.vram.chunks_exact(4) {
+            println!("{:04x}: {:02x} {:02x} {:02x} {:02x}", start, row[0], row[1], row[2], row[3]);
+            start += 4;
+        }
+    }
 }
 
 impl Index<u16> for GPU {
@@ -196,5 +206,15 @@ impl Index<u16> for GPU {
             0x44 => &self.scanline,
             _ => &self.vram[i as usize - 0x8000],
         }
+    }
+}
+
+impl Display for GPU {
+
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for i in self.oam.chunks_exact(4) {
+            f.write_fmt(format_args!("{:?}", i))?
+        }
+        Ok(())
     }
 }

@@ -1,6 +1,8 @@
 pub mod ops;
 pub mod value;
 
+use std::fmt::Display;
+
 use crate::bus::Bus;
 
 use crate::instructions::Register::*;
@@ -326,9 +328,6 @@ impl CPU {
         bus.read_cycle(addr)
     }
 
-    pub fn dump_state(&mut self) {
-        println!("{:#}", self.registers);
-    }
     pub fn next_u16(&mut self, bus: &mut Bus) -> u16 {
         // Little endianess means LSB comes first.
         let lo = self.next_u8(bus);
@@ -447,8 +446,7 @@ impl CPU {
         } else if fired & TIMER != 0 {
             bus.ack_interrupt(TIMER);
             self.registers.pc = 0x50;
-            self.dump_state();
-            bus.timer.dump_timer_info();
+            println!("{}", self);
             // panic!();
             let opcode = self.next_u8(bus);
             self.opcode = opcode;
@@ -558,6 +556,12 @@ impl CPU {
                 panic!();
             }
         }
+    }
+}
+
+impl Display for CPU {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:#}", self.registers))
     }
 }
 

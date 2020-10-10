@@ -1,10 +1,12 @@
 use crate::gpu::GPU;
+use crate::gpu::OAM_END;
+use crate::gpu::OAM_START;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
 use crate::timer;
 use crate::timer::Timer;
-use std::fs::File;
 use std::io::Read;
+use std::{fmt::Display, fs::File};
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -29,6 +31,15 @@ pub struct Bus {
     pub gpu: GPU,
     pub rom_start_signal: bool,
     pub timer: Timer,
+}
+
+impl Display for Bus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "CLK: {}, IE: {}, IF: {:08b}\n{}",
+            self.clock, self.int_enabled, self.int_flags, self.timer
+        ))
+    }
 }
 
 fn load_bootrom() -> Vec<u8> {
@@ -127,6 +138,7 @@ impl Memory for Bus {
             // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
             // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => self.gpu[address],
+            OAM_START..=OAM_END => self.gpu.oam[address as usize - OAM_START],
             _ => self.memory[address as usize],
         }
     }
@@ -142,6 +154,15 @@ impl Memory for Bus {
             0xff42 => self.gpu.vscroll = value,
             0xff43 => self.gpu.hscroll = value,
             0xff44 => self.gpu.scanline = value,
+            0xff46 => {
+                //OAM Transfer request
+                let value = value as u16;
+                if value <= 0xF1 {
+                    let range = ((value << 8) as usize)..=((value << 8) as usize | 0xFF);
+                    self.gpu.oam.copy_from_slice(&self.memory[range]);
+                    self.memory[address as usize] = value as u8;
+                }
+            }
             0xff47 => self.gpu.bg_palette = value,
             0xff4a => self.gpu.windowy = value,
             0xff4b => self.gpu.windowx = value,
@@ -177,6 +198,9 @@ impl Memory for Bus {
                 self.memory[address as usize] = value;
             }
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
+            OAM_START..=OAM_END => {
+                self.gpu.oam[address as usize - OAM_START] = value
+            },
             _ => self.memory[address as usize] = value,
         }
     }

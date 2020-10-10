@@ -92,16 +92,22 @@ struct Imgui {
 }
 
 impl Imgui {
-    fn new(video: &sdl2::VideoSubsystem) -> R<Self> {
+    fn link_io(io: &mut Io) {
+    }
+    fn new(size: (u32, u32), position: (i32, i32), video: &sdl2::VideoSubsystem) -> R<Self> {
         let mut imgui = imgui::Context::create();
         imgui.fonts().build_rgba32_texture();
         let io = imgui.io_mut();
-        io.display_size = [512.0, 512.0];
+        Imgui::link_io(io);
 
+        let (width, height) = size;
+        let (x, y) = position;
+        // Todo: ImguiSettings struct
         let debugger = video
-            .window("debugger", 512, 512)
-            .position(0, 20)
+            .window("debugger", width, height)
+            .position(x, y)
             .opengl()
+            .resizable()
             .build()?;
         let _gl_context = debugger.gl_create_context()?;
         gl::load_with(|s| video.gl_get_proc_address(s) as _);
@@ -117,9 +123,11 @@ impl Imgui {
             info: Default::default(),
         })
     }
-    fn frame<F: FnOnce(&mut Info, &Ui)>(&mut self, event_pump: &mut sdl2::EventPump, f: F) {
+    fn capture_io(&mut self, event_pump: &mut sdl2::EventPump) {
         let io = self.imgui.io_mut();
         let state = event_pump.mouse_state();
+        let (width, height) = self.window.drawable_size();
+        io.display_size = [width as f32, height as f32];
         io.mouse_down = [
             state.left(),
             state.right(),
@@ -128,8 +136,10 @@ impl Imgui {
             state.x2(),
         ];
         io.mouse_pos = [state.x() as f32, state.y() as f32];
+    }
+    fn frame<F: FnOnce(&mut Info, &Ui)>(&mut self, event_pump: &mut sdl2::EventPump, f: F) {
+        self.capture_io(event_pump);
         let ui = self.imgui.frame();
-
         unsafe {
             gl::ClearColor(0.2, 0.2, 0.2, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
@@ -168,9 +178,9 @@ fn sdl_main() -> R<()> {
     let mut texture =
         tc.create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
-    let mut debugger = Imgui::new(&video)?;
+    let mut debugger = Imgui::new((512, 512), (0, 20), &video)?;
     let mut cycle_jump = 0;
-    let mut pause = false;
+    let mut pause = true;
 
     let mut event_pump = context.event_pump()?;
 
@@ -218,11 +228,17 @@ fn sdl_main() -> R<()> {
                 pause = !pause;
             }
             ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump).build();
+            Slider::new(im_str!("")).range(0..=(69905)).build(ui, &mut cycle_jump);
             if ui.button(im_str!("Go"), [200.0, 50.0]) {
                 let before = emu.bus.clock as i32;
                 while emu.bus.clock < (before + cycle_jump) as usize{
                     emu.emulate_step();
                 }
+            }
+            ui.text(format!("Bus Info:\n{}", emu.bus));
+            ui.text(format!("GPU Info:\n{}", emu.bus.gpu));
+            if ui.button(im_str!("Hex Dump"), [200.0, 50.0]) {
+                emu.bus.gpu.hex_dump()
             }
         });
     }
