@@ -16,6 +16,7 @@ pub trait Memory {
 pub enum Select {
     Buttons,
     Directions,
+    None,
 }
 
 // Global emu struct.
@@ -27,7 +28,9 @@ pub struct Bus {
     pub int_flags: u8,
     pub clock: usize,
     pub ime: u8,
-    pub joypad_io: Select,
+    pub select: Select,
+    pub directions: u8,
+    pub keypresses: u8,
     pub gpu: GPU,
     pub rom_start_signal: bool,
     pub timer: Timer,
@@ -36,8 +39,8 @@ pub struct Bus {
 impl Display for Bus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "CLK: {}, IE: {}, IF: {:08b}\n{}",
-            self.clock, self.int_enabled, self.int_flags, self.timer
+            "CLK: {}, IE: {}, IF: {:08b}\n{}, BTNS: {:08b}\nARWS: {:08b}",
+            self.clock, self.int_enabled, self.int_flags, self.timer, self.keypresses, self.directions
         ))
     }
 }
@@ -61,14 +64,16 @@ impl Bus {
         Bus {
             memory,
             bootrom,
-            ime: 0,
             in_bios: 0,
             int_enabled: 0,
             int_flags: 0,
-            rom_start_signal: false,
             clock: 0,
-            joypad_io: Select::Buttons,
+            ime: 0,
+            select: Select::Buttons,
+            directions: 0,
+            keypresses: 0,
             gpu: GPU::new(),
+            rom_start_signal: false,
             timer: Timer::new(),
         }
     }
@@ -126,14 +131,11 @@ impl Memory for Bus {
             0xFF4B => self.gpu.windowx,
             0xffff => self.int_enabled,
             0xff0f => self.int_flags,
-            0xff00 => {
-                match self.joypad_io {
-                    Select::Buttons => {
-                        0xff //Todo
-                    }
-                    Select::Directions => 0xff,
-                }
-            }
+            0xff00 => match self.select {
+                Select::Buttons => self.keypresses,
+                Select::Directions => self.directions,
+                Select::None => 0xFF,
+            },
             // 0xFFFF => &self.gpu.,
             // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
             // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
@@ -180,12 +182,11 @@ impl Memory for Bus {
                 self.memory[address as usize] = value;
             }
             0xff00 => {
-                let select_buttons = value & 0b0010_0000 != 0;
-                let select_directions = value & 0b0001_0000 != 0;
-                if select_buttons {
-                    self.joypad_io = Select::Buttons;
-                } else if select_directions {
-                    self.joypad_io = Select::Directions;
+                self.select = match value & 0xF0 {
+                    0b0001_0000 => Select::Buttons,
+                    0b0010_0000 => Select::Directions,
+                    0b0011_0000 => Select::None,
+                    _ => unreachable!("{:08b}", value),
                 }
             }
             0xff01 => {
@@ -198,9 +199,7 @@ impl Memory for Bus {
                 self.memory[address as usize] = value;
             }
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
-            OAM_START..=OAM_END => {
-                self.gpu.oam[address as usize - OAM_START] = value
-            },
+            OAM_START..=OAM_END => self.gpu.oam[address as usize - OAM_START] = value,
             _ => self.memory[address as usize] = value,
         }
     }

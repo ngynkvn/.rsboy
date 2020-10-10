@@ -23,7 +23,7 @@ use std::fs::File;
 use std::io::Read;
 
 use gpu::{PixelData, PixelMap};
-use rust_emu::emu::Emu;
+use rust_emu::{cpu::JOYPAD, emu::Emu};
 
 use rust_emu::*;
 
@@ -187,12 +187,49 @@ fn sdl_main() -> R<()> {
     'running: loop {
         let now = Instant::now();
         for event in event_pump.poll_iter() {
+            emu.bus.directions |= 0x0F;
+            emu.bus.keypresses |= 0x0F;
             match event {
                 Event::Quit { .. }
                 | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
+                Event::KeyDown {
+                    keycode: Some(Keycode::Down),
+                    ..
+                }  => {
+                    emu.bus.directions &= !0b1000;
+                    emu.bus.int_flags |= JOYPAD;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Up),
+                    ..
+                } => {
+                    emu.bus.directions &= !0b0100;
+                    emu.bus.int_flags |= JOYPAD;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Left),
+                    ..
+                } => {
+                    emu.bus.directions &= !0b0010;
+                    emu.bus.int_flags |= JOYPAD;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Right),
+                    ..
+                } => {
+                    emu.bus.directions &= !0b0001;
+                    emu.bus.int_flags |= JOYPAD;
+                }
+                Event::KeyDown {
+                    keycode: Some(Keycode::Return),
+                    ..
+                } => {
+                    emu.bus.keypresses &= !0b1000;
+                    emu.bus.int_flags |= JOYPAD;
+                }
                 _ => {}
             }
         }
