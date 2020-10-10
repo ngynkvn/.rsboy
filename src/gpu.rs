@@ -17,6 +17,9 @@ enum GpuMode {
     VRAM,   // 3
 }
 
+const SCREEN_WIDTH: u32 = 160;
+const SCREEN_HEIGHT: u32 = 144;
+
 // Global emu struct.
 pub struct GPU {
     mode: GpuMode,
@@ -122,12 +125,12 @@ impl GPU {
         );
     }
 
-    fn blit_texture(&self, pixels: &mut PixelData, mapx: usize, mapy: usize, tile: Tile) {
+    fn blit_to_screen(&self, pixels: &mut PixelData, screenx: usize, screeny: usize, tile: Tile) {
         for row in 0..8 {
             for col in 0..8 {
-                //Find offset from map x and y
-                let x = mapx * 8 + col;
-                let y = mapy * 8 + row;
+                let (x, y) = self.scroll();
+                let x = screenx + col + x as usize;
+                let y = screeny + row + y as usize;
                 if y < pixels.len() && x < pixels[0].len() {
                     pixels[y][x] = tile.texture[row][col];
                 }
@@ -150,11 +153,10 @@ impl GPU {
             if let [y, x, pattern, _flags] = sprite_attributes {
                 // let _flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
-                println!("{:04x}", idx);
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
                 let screen_x = (*x).wrapping_sub(8);
                 let screen_y = (*y).wrapping_sub(16);
-                self.blit_texture(pixels, screen_x as usize, screen_y as usize, tile);
+                self.blit_to_screen(pixels, screen_x as usize, screen_y as usize, tile);
             }
         }
         // println!("{:?}", time::Instant::now().saturating_duration_since(start));
