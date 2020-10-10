@@ -150,6 +150,7 @@ impl GPU {
             if let [y, x, pattern, _flags] = sprite_attributes {
                 // let _flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
+                println!("{:04x}", idx);
                 let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
                 let screen_x = (*x).wrapping_sub(8);
                 let screen_y = (*y).wrapping_sub(16);
