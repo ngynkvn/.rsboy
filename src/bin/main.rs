@@ -1,13 +1,10 @@
 extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
-use std::{
-    collections::VecDeque, error::Error, path::PathBuf,
-};
+use std::{collections::VecDeque, error::Error, path::PathBuf};
 
 use cpu::GB_CYCLE_SPEED;
-use imgui::{Context, Slider, Ui, im_str};
-
+use imgui::{im_str, Context, Slider, Ui};
 
 use imgui_opengl_renderer::Renderer;
 use sdl2::keyboard::Keycode;
@@ -23,7 +20,7 @@ use std::time::Instant;
 use log::info;
 
 use gpu::{PixelData, PixelMap};
-use rust_emu::{cpu::JOYPAD, emu::Emu, emu::IL, emu::gen_il};
+use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, emu::IL};
 use structopt::StructOpt;
 
 use rust_emu::*;
@@ -219,6 +216,9 @@ fn sdl_main(input: PathBuf) -> MaybeErr<()> {
                         println!("{:?}", key);
                     }
                 },
+                Event::MouseWheel { y, .. } => {
+                    debugger.imgui.io_mut().mouse_wheel = y as f32;
+                }
                 _ => {}
             }
         }
