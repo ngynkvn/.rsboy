@@ -21,10 +21,8 @@ enum GpuMode {
     VRAM,   // 3
 }
 
-const SCREEN_WIDTH: u32 = 160;
-const SCREEN_HEIGHT: u32 = 144;
-
-// Global emu struct.
+// Global GPU struct.
+// Holds I/O Registers relevant to GPU. Make sure these are available from bus struct.
 pub struct GPU {
     mode: GpuMode,
     clock: usize,
@@ -40,7 +38,6 @@ pub struct GPU {
     pub obj1pal: u8, //Object1 Palette
     pub windowx: u8, //
     pub windowy: u8, //
-    pub bg_palette: u8,
     pub _vblank_count: usize,
 }
 
@@ -81,7 +78,6 @@ impl GPU {
             obj1pal: 0,
             windowx: 0,
             windowy: 0,
-            bg_palette: 0,
             _vblank_count: 0,
             vram: [0; 0x2000],
             oam: [0; 0x100],
@@ -158,7 +154,7 @@ impl GPU {
     pub fn tiles(&self) -> Vec<Tile> {
         self.vram[TILE_DATA_RANGE]
             .chunks_exact(TILE_SIZE) // Tile
-            .map(|tile| Tile::construct(self.bg_palette, tile))
+            .map(|tile| Tile::construct(self.bgrdpal, tile))
             .collect()
     }
 
@@ -166,7 +162,7 @@ impl GPU {
         let tile = self.bg_tile_data(self.vram[vram_index]);
         let mapx = (vram_index - 0x1800) % 32;
         let mapy = (vram_index - 0x1800) / 32;
-        Tile::write(self.bg_palette, pixels, (mapx, mapy), &self.vram[tile]);
+        Tile::write(self.bgrdpal, pixels, (mapx, mapy), &self.vram[tile]);
     }
 
     fn blit_to_screen(&self, pixels: &mut PixelData, screenx: usize, screeny: usize, tile: Tile) {
@@ -204,7 +200,7 @@ impl GPU {
             if let [y, x, pattern, _flags] = sprite_attributes {
                 // let _flags = SpriteAttribute::from(*flags);
                 let idx = *pattern as usize * 16;
-                let tile = Tile::construct(self.bg_palette, &self.vram[Tile::range(idx)]);
+                let tile = Tile::construct(self.obj0pal, &self.vram[Tile::range(idx)]);
                 let screen_x = (*x).wrapping_sub(8);
                 let screen_y = (*y).wrapping_sub(16);
                 self.blit_to_screen(pixels, screen_x as usize, screen_y as usize, tile);

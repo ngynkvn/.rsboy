@@ -40,7 +40,12 @@ impl Display for Bus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "CLK: {}, IE: {}, IF: {:08b}\n{}, BTNS: {:08b}\nARWS: {:08b}",
-            self.clock, self.int_enabled, self.int_flags, self.timer, self.keypresses, self.directions
+            self.clock,
+            self.int_enabled,
+            self.int_flags,
+            self.timer,
+            self.keypresses,
+            self.directions
         ))
     }
 }
@@ -165,7 +170,9 @@ impl Memory for Bus {
                     self.memory[address as usize] = value as u8;
                 }
             }
-            0xff47 => self.gpu.bg_palette = value,
+            0xff47 => self.gpu.bgrdpal = value,
+            0xff48 => self.gpu.obj0pal = value,
+            0xff49 => self.gpu.obj1pal = value,
             0xff4a => self.gpu.windowy = value,
             0xff4b => self.gpu.windowx = value,
             0xffff => self.int_enabled = value,

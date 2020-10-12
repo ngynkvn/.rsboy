@@ -1,10 +1,13 @@
 extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
-use std::{collections::VecDeque, error::Error, ops::Div, ops::Mul, ops::Sub, sync::mpsc::Sender, thread::JoinHandle};
+use std::{
+    collections::VecDeque, error::Error, ops::Div, ops::Mul, ops::Sub, sync::mpsc::Sender,
+    thread::JoinHandle,
+};
 
 use cpu::GB_CYCLE_SPEED;
-use imgui::{Context, Slider, im_str};
+use imgui::{im_str, Context, Slider};
 use imgui::{Io, Ui};
 use imgui_opengl_renderer::Renderer;
 use sdl2::keyboard::Keycode;
@@ -74,7 +77,6 @@ fn init_emu() -> R<Emu> {
     Ok(emu)
 }
 
-
 fn calc_relative_error(x: f32, y: f32) -> f32 {
     (x - y) * 100.0 / x
 }
@@ -92,14 +94,9 @@ struct Imgui {
 }
 
 impl Imgui {
-    fn link_io(io: &mut Io) {
-    }
     fn new(size: (u32, u32), position: (i32, i32), video: &sdl2::VideoSubsystem) -> R<Self> {
         let mut imgui = imgui::Context::create();
         imgui.fonts().build_rgba32_texture();
-        let io = imgui.io_mut();
-        Imgui::link_io(io);
-
         let (width, height) = size;
         let (x, y) = position;
         // Todo: ImguiSettings struct
@@ -198,7 +195,7 @@ fn sdl_main() -> R<()> {
                 Event::KeyDown {
                     keycode: Some(Keycode::Down),
                     ..
-                }  => {
+                } => {
                     emu.bus.directions &= !0b1000;
                     emu.bus.int_flags |= JOYPAD;
                 }
@@ -240,7 +237,7 @@ fn sdl_main() -> R<()> {
                 emu.emulate_step();
             }
             delta_clock = emu.bus.clock - before;
-        } 
+        }
         emu.bus.gpu.render(&mut emu.framebuffer);
         let (h, v) = emu.bus.gpu.scroll();
         texture.copy_window(h, v, &emu.framebuffer);
@@ -253,10 +250,9 @@ fn sdl_main() -> R<()> {
         debugger.frame(&mut event_pump, |info, ui| {
             ui.text(format!("Frame time: {:?}", after_delay));
             let i = info.frame_times.make_contiguous();
-            ui.plot_lines(
-                im_str!("Frame times"),
-                i,
-            ).graph_size([300.0, 100.0]).build();
+            ui.plot_lines(im_str!("Frame times"), i)
+                .graph_size([300.0, 100.0])
+                .build();
             let cpu_hz = delta_clock as f64 / after_delay.as_secs_f64();
             ui.text(format!("CPU HZ: {}", cpu_hz));
             ui.text(format!("Register State:\n{}", emu.cpu.registers));
@@ -264,11 +260,14 @@ fn sdl_main() -> R<()> {
                 println!("Pause");
                 pause = !pause;
             }
-            ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump).build();
-            Slider::new(im_str!("")).range(0..=(69905)).build(ui, &mut cycle_jump);
+            ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump)
+                .build();
+            Slider::new(im_str!(""))
+                .range(0..=(69905))
+                .build(ui, &mut cycle_jump);
             if ui.button(im_str!("Go"), [200.0, 50.0]) {
                 let before = emu.bus.clock as i32;
-                while emu.bus.clock < (before + cycle_jump) as usize{
+                while emu.bus.clock < (before + cycle_jump) as usize {
                     emu.emulate_step();
                 }
             }
