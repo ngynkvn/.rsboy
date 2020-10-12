@@ -131,6 +131,9 @@ impl GPU {
 
     //   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
     //   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
+    fn sprite_display_enabled(&self) -> bool {
+        self.lcdc & 0b10 == 0b10
+    }
     //   Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
 
     pub fn print_sprite_table(&self) {
@@ -185,6 +188,13 @@ impl GPU {
             self.blit_tile(pixels, i);
         }
 
+        if self.sprite_display_enabled() {
+            self.render_sprites(pixels);
+        }
+    }
+
+    // Renders sprites to the framebuffer using the oam table.
+    fn render_sprites(&self, pixels: &mut PixelData) {
         // TODO
         // Need to emulate scanline, and priority rendering
         for sprite_attributes in self.oam.chunks_exact(4) {
@@ -200,7 +210,6 @@ impl GPU {
                 self.blit_to_screen(pixels, screen_x as usize, screen_y as usize, tile);
             }
         }
-        // println!("{:?}", time::Instant::now().saturating_duration_since(start));
     }
 
     fn check_clock<F: FnOnce(&mut Self)>(&mut self, criteria: usize, f: F) {
