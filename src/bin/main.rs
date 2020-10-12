@@ -2,18 +2,17 @@ extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
 use std::{
-    collections::VecDeque, error::Error, ops::Div, ops::Mul, ops::Sub, sync::mpsc::Sender,
-    thread::JoinHandle,
+    collections::VecDeque, error::Error,
 };
 
 use cpu::GB_CYCLE_SPEED;
 use imgui::{im_str, Context, Slider};
-use imgui::{Io, Ui};
+use imgui::{Ui};
 use imgui_opengl_renderer::Renderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
-use sdl2::render::{Canvas, Texture};
+use sdl2::render::{Texture};
 use sdl2::video::Window;
 use sdl2::{event::Event, video::GLContext};
 use std::time::Duration;
@@ -113,8 +112,8 @@ impl Imgui {
             imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
 
         Ok(Self {
-            imgui: imgui,
-            renderer: renderer,
+            imgui,
+            renderer,
             window: debugger,
             _gl_context,
             info: Default::default(),
