@@ -3,7 +3,7 @@ pub mod value;
 
 use std::fmt::Display;
 
-use crate::bus::Bus;
+use crate::bus::{Bus, Memory};
 
 use crate::instructions::Register::*;
 use crate::instructions::*;
@@ -446,7 +446,7 @@ impl CPU {
         } else if fired & TIMER != 0 {
             bus.ack_interrupt(TIMER);
             self.registers.pc = 0x50;
-            println!("{}", self);
+            // println!("{}", self);
             // panic!();
             let opcode = self.next_u8(bus);
             self.opcode = opcode;
@@ -504,37 +504,37 @@ impl CPU {
         self.registers.h = 0x01;
         self.registers.l = 0x4d;
         self.registers.sp = 0xfffe;
-        bus.memory[0xFF06] = 0x00; // TMA
-        bus.memory[0xFF07] = 0x00; // TAC
-        bus.memory[0xFF10] = 0x80; // NR10
-        bus.memory[0xFF11] = 0xBF; // NR11
-        bus.memory[0xFF12] = 0xF3; // NR12
-        bus.memory[0xFF14] = 0xBF; // NR14
-        bus.memory[0xFF16] = 0x3F; // NR21
-        bus.memory[0xFF17] = 0x00; // NR22
-        bus.memory[0xFF19] = 0xBF; // NR24
-        bus.memory[0xFF1A] = 0x7F; // NR30
-        bus.memory[0xFF1B] = 0xFF; // NR31
-        bus.memory[0xFF1C] = 0x9F; // NR32
-        bus.memory[0xFF1E] = 0xBF; // NR33
-        bus.memory[0xFF20] = 0xFF; // NR41
-        bus.memory[0xFF21] = 0x00; // NR42
-        bus.memory[0xFF22] = 0x00; // NR43
-        bus.memory[0xFF23] = 0xBF; // NR30
-        bus.memory[0xFF24] = 0x77; // NR50
-        bus.memory[0xFF25] = 0xF3; // NR51
-        bus.memory[0xFF26] = 0xF1; // NR52
-        bus.memory[0xFF40] = 0x91; // LCDC
-        bus.memory[0xFF42] = 0x00; // SCY
-        bus.memory[0xFF43] = 0x00; // SCX
-        bus.memory[0xFF45] = 0x00; // LYC
-        bus.memory[0xFF47] = 0xFC; // BGP
-        bus.memory[0xFF48] = 0xFF; // OBP0
-        bus.memory[0xFF49] = 0xFF; // OBP1
-        bus.memory[0xFF4A] = 0x00; // WY
-        bus.memory[0xFF4B] = 0x00; // WX
-        bus.memory[0xFFFF] = 0x00; // IE
-                                   // assert_eq!(bus.memory[0xFF04], 0xAB);
+        bus.write(0xFF06, 0x00); // TMA
+        bus.write(0xFF07, 0x00); // TAC
+        bus.write(0xFF10, 0x80); // NR10
+        bus.write(0xFF11, 0xBF); // NR11
+        bus.write(0xFF12, 0xF3); // NR12
+        bus.write(0xFF14, 0xBF); // NR14
+        bus.write(0xFF16, 0x3F); // NR21
+        bus.write(0xFF17, 0x00); // NR22
+        bus.write(0xFF19, 0xBF); // NR24
+        bus.write(0xFF1A, 0x7F); // NR30
+        bus.write(0xFF1B, 0xFF); // NR31
+        bus.write(0xFF1C, 0x9F); // NR32
+        bus.write(0xFF1E, 0xBF); // NR33
+        bus.write(0xFF20, 0xFF); // NR41
+        bus.write(0xFF21, 0x00); // NR42
+        bus.write(0xFF22, 0x00); // NR43
+        bus.write(0xFF23, 0xBF); // NR30
+        bus.write(0xFF24, 0x77); // NR50
+        bus.write(0xFF25, 0xF3); // NR51
+        bus.write(0xFF26, 0xF1); // NR52
+        bus.write(0xFF40, 0x91); // LCDC
+        bus.write(0xFF42, 0x00); // SCY
+        bus.write(0xFF43, 0x00); // SCX
+        bus.write(0xFF45, 0x00); // LYC
+        bus.write(0xFF47, 0xFC); // BGP
+        bus.write(0xFF48, 0xFF); // OBP0
+        bus.write(0xFF49, 0xFF); // OBP1
+        bus.write(0xFF4A, 0x00); // WY
+        bus.write(0xFF4B, 0x00); // WX
+        bus.write(0xFFFF, 0x00); // IE
+                                 // assert_eq!(bus.memory[0xFF04], 0xAB);
     }
 
     pub fn step(&mut self, bus: &mut Bus) {

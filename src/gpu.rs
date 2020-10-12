@@ -1,5 +1,9 @@
 use crate::{cpu, texture::*};
-use std::{fmt::Display, ops::{Index, Range}, time};
+use std::{
+    fmt::Display,
+    ops::{Index, Range, RangeInclusive},
+    time,
+};
 
 pub const VRAM_START: usize = 0x8000;
 pub const VRAM_END: usize = 0x9FFF;
@@ -80,12 +84,54 @@ impl GPU {
             bg_palette: 0,
             _vblank_count: 0,
             vram: [0; 0x2000],
-            oam: [0; 0x100]
+            oam: [0; 0x100],
         }
     }
+    //   Bit 7 - LCD Display Enable             (0=Off, 1=On)
     pub fn is_on(&self) -> bool {
         self.lcdc & 0b1000_0000 == 0b1000_0000
     }
+    //   Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
+    fn window_tile_map_display_select(&self) -> RangeInclusive<usize> {
+        if self.lcdc & 0b0100_0000 != 0 {
+            (0x9C00 - VRAM_START)..=(0x9FFF - VRAM_START)
+        } else {
+            (0x9800 - VRAM_START)..=(0x9BFF - VRAM_START)
+        }
+    }
+
+    //   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
+    fn bg_and_window_tile_data_select(&self) -> RangeInclusive<usize> {
+        if self.lcdc & 0b0010_0000 != 0 {
+            (0x8000 - VRAM_START)..=(0x8FFF - VRAM_START)
+        } else {
+            (0x8800 - VRAM_START)..=(0x97FF - VRAM_START)
+        }
+    }
+    fn bg_tile_data(&self, value: u8) -> Range<usize> {
+        if self.lcdc & 0b0001_0000 != 0 {
+            let start_address = value as usize * 16;
+            let end_address = start_address + 16;
+            start_address..end_address
+        } else {
+            let offset = value as i8 as i32;
+            let start_address = (0x1000 + (offset * 16) as i32) as usize;
+            let end_address = start_address + 16;
+            start_address..end_address
+        }
+    }
+    //   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
+    fn bg_tile_map_display_select(&self) -> RangeInclusive<usize> {
+        if self.lcdc & 0b0001_0000 != 0 {
+            (0x9C00 - VRAM_START)..=(0x9FFF - VRAM_START)
+        } else {
+            (0x9800 - VRAM_START)..=(0x9BFF - VRAM_START)
+        }
+    }
+
+    //   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
+    //   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
+    //   Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
 
     pub fn print_sprite_table(&self) {
         for i in self.oam.chunks_exact(4) {
@@ -114,15 +160,10 @@ impl GPU {
     }
 
     fn blit_tile(&self, pixels: &mut PixelData, vram_index: usize) {
-        let tile = self.vram[vram_index] as usize * 16;
+        let tile = self.bg_tile_data(self.vram[vram_index]);
         let mapx = (vram_index - 0x1800) % 32;
         let mapy = (vram_index - 0x1800) / 32;
-        Tile::write(
-            self.bg_palette,
-            pixels,
-            (mapx, mapy),
-            &self.vram[Tile::range(tile)],
-        );
+        Tile::write(self.bg_palette, pixels, (mapx, mapy), &self.vram[tile]);
     }
 
     fn blit_to_screen(&self, pixels: &mut PixelData, screenx: usize, screeny: usize, tile: Tile) {
@@ -196,7 +237,10 @@ impl GPU {
     pub fn hex_dump(&self) {
         let mut start = VRAM_START;
         for row in self.vram.chunks_exact(4) {
-            println!("{:04x}: {:02x} {:02x} {:02x} {:02x}", start, row[0], row[1], row[2], row[3]);
+            println!(
+                "{:04x}: {:02x} {:02x} {:02x} {:02x}",
+                start, row[0], row[1], row[2], row[3]
+            );
             start += 4;
         }
     }
@@ -213,11 +257,11 @@ impl Index<u16> for GPU {
 }
 
 impl Display for GPU {
-
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for i in self.oam.chunks_exact(4) {
-            f.write_fmt(format_args!("{:?}", i))?
-        }
-        Ok(())
+        f.write_fmt(format_args!("LCDC: {:08b}", self.lcdc))
+        // for i in self.oam.chunks_exact(4) {
+        //     f.write_fmt(format_args!("{:?}", i))?
+        // }
+        // Ok(())
     }
 }
