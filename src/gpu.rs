@@ -47,21 +47,21 @@ const END_VBLANK: u8 = 154;
 pub type PixelData = [[u16; 256]; 256];
 pub type PixelMap = [u8; 256 * 256 * 2];
 
-struct SpriteAttribute {
-    above: bool,
-    yflip: bool,
-    xflip: bool,
-}
+// struct SpriteAttribute {
+//     above: bool,
+//     yflip: bool,
+//     xflip: bool,
+// }
 
-impl From<u8> for SpriteAttribute {
-    fn from(byte: u8) -> Self {
-        Self {
-            above: byte & 0x80 != 0,
-            yflip: byte & 0x40 != 0,
-            xflip: byte & 0x20 != 0,
-        }
-    }
-}
+// impl From<u8> for SpriteAttribute {
+//     fn from(byte: u8) -> Self {
+//         Self {
+//             above: byte & 0x80 != 0,
+//             yflip: byte & 0x40 != 0,
+//             xflip: byte & 0x20 != 0,
+//         }
+//     }
+// }
 
 impl GPU {
     pub fn new() -> Self {

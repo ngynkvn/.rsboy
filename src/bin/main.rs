@@ -23,7 +23,7 @@ use std::fs::File;
 use std::io::Read;
 
 use gpu::{PixelData, PixelMap};
-use rust_emu::{cpu::JOYPAD, emu::Emu};
+use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::str_il, emu::Emu, emu::InstrList, emu::IL};
 
 use rust_emu::*;
 
@@ -74,12 +74,13 @@ fn init_emu() -> R<Emu> {
     Ok(emu)
 }
 
-fn calc_relative_error(x: f32, y: f32) -> f32 {
-    (x - y) * 100.0 / x
-}
+// fn calc_relative_error(x: f32, y: f32) -> f32 {
+//     (x - y) * 100.0 / x
+// }
 #[derive(Default)]
 struct Info {
     frame_times: VecDeque<f32>,
+    il: Vec<IL>,
 }
 
 struct Imgui {
@@ -177,6 +178,9 @@ fn sdl_main() -> R<()> {
     let mut pause = true;
 
     let mut event_pump = context.event_pump()?;
+
+    let il = gen_il(&emu.bus.memory);
+    debugger.info.il = il;
 
     'running: loop {
         let now = Instant::now();
