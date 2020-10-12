@@ -12,6 +12,37 @@ pub struct IL {
     pub data: Option<u16>,
     pub addr: u16,
 }
+pub struct InstrList {
+    pub il: Vec<IL>,
+}
+pub fn gen_il(mem: &[u8]) -> Vec<IL> {
+    let mut view = vec![];
+    let mut i = 0;
+    while i < mem.len() {
+        let op = mem[i];
+        let instr = INSTR_TABLE[op as usize];
+        let data_length = INSTR_DATA_LENGTHS[op as usize];
+        let data = match data_length {
+            0 => None,
+            1 => Some(mem[i + 1] as u16),
+            2 => Some(u16::from_le_bytes([mem[i + 1], mem[i + 2]])),
+            _ => unreachable!(),
+        };
+        view.push(IL {
+            instr,
+            data,
+            addr: i as u16,
+        });
+        i += 1 + data_length;
+    }
+    view
+}
+
+pub fn str_il(il: &[IL]) -> String {
+    il.iter().fold(String::new(), |res, il| {
+        res + &format!("{:04x}: {:?} {:?}\n", il.addr, il.instr, il.data)
+    })
+}
 
 // Global emu struct.
 pub struct Emu {
@@ -19,7 +50,6 @@ pub struct Emu {
     pub bus: Bus,
     pub framebuffer: Box<PixelData>,
     prev: CPU,
-    il: Vec<IL>,
 }
 
 impl Emu {
@@ -37,7 +67,6 @@ impl Emu {
             bus,
             framebuffer: Box::new([[0; 256]; 256]),
             prev,
-            il: vec![],
         }
     }
 
@@ -53,7 +82,6 @@ impl Emu {
             bus,
             framebuffer: Box::new([[0; 256]; 256]),
             prev,
-            il: vec![],
         })
     }
 
@@ -87,7 +115,7 @@ impl Emu {
         } else {
             &self.bus.memory[..]
         };
-        let il = self.gen_il(&mem);
+        let il = gen_il(&mem);
         il.chunks(10)
             .find(|chunk| chunk.iter().any(|e| e.addr == pc))
             .unwrap_or_else(|| {

@@ -2,18 +2,18 @@ extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
 use std::{
-    collections::VecDeque, error::Error, ops::Div, ops::Mul, ops::Sub, path::PathBuf,
-    sync::mpsc::Sender, thread::JoinHandle,
+    collections::VecDeque, error::Error, path::PathBuf,
 };
 
 use cpu::GB_CYCLE_SPEED;
-use imgui::{im_str, Context, Slider};
-use imgui::{Io, Ui};
+use imgui::{Context, Slider, Ui, im_str};
+
+
 use imgui_opengl_renderer::Renderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
-use sdl2::render::{Canvas, Texture};
+use sdl2::render::Texture;
 use sdl2::video::Window;
 use sdl2::{event::Event, video::GLContext};
 use std::time::Duration;
@@ -21,12 +21,9 @@ use std::time::Instant;
 
 //File IO
 use log::info;
-use std::env;
-use std::fs::File;
-use std::io::Read;
 
 use gpu::{PixelData, PixelMap};
-use rust_emu::{cpu::JOYPAD, emu::Emu};
+use rust_emu::{cpu::JOYPAD, emu::Emu, emu::IL, emu::gen_il};
 use structopt::StructOpt;
 
 use rust_emu::*;
@@ -68,7 +65,7 @@ fn setup_logger() -> MaybeErr<()> {
 
 fn main() -> MaybeErr<()> {
     let settings = Settings::from_args();
-    if let Some(output) = settings.logfile {
+    if let Some(_output) = settings.logfile {
         info!("Setup logging");
         setup_logger()?;
     }
@@ -76,12 +73,13 @@ fn main() -> MaybeErr<()> {
     sdl_main(settings.input)
 }
 
-fn calc_relative_error(x: f32, y: f32) -> f32 {
-    (x - y) * 100.0 / x
-}
+// fn calc_relative_error(x: f32, y: f32) -> f32 {
+//     (x - y) * 100.0 / x
+// }
 #[derive(Default)]
 struct Info {
     frame_times: VecDeque<f32>,
+    il: Vec<IL>,
 }
 
 struct Imgui<'a> {
@@ -93,12 +91,9 @@ struct Imgui<'a> {
 }
 
 impl<'a> Imgui<'a> {
-    fn link_io(io: &mut Io) {}
     fn new(window: &'a Window) -> MaybeErr<Self> {
         let mut imgui = imgui::Context::create();
         imgui.fonts().build_rgba32_texture();
-        let io = imgui.io_mut();
-        Imgui::link_io(io);
         let _gl_context = window.gl_create_context()?;
         gl::load_with(|s| window.subsystem().gl_get_proc_address(s) as _);
 
@@ -182,6 +177,9 @@ fn sdl_main(input: PathBuf) -> MaybeErr<()> {
 
     let mut event_pump = context.event_pump()?;
 
+    let il = gen_il(&emu.bus.memory);
+    debugger.info.il = il;
+
     'running: loop {
         let now = Instant::now();
         for event in event_pump.poll_iter() {
@@ -224,6 +222,7 @@ fn sdl_main(input: PathBuf) -> MaybeErr<()> {
                 _ => {}
             }
         }
+
         let mut delta_clock = 0;
         if !pause {
             let before = emu.bus.clock;
@@ -232,15 +231,20 @@ fn sdl_main(input: PathBuf) -> MaybeErr<()> {
             }
             delta_clock = emu.bus.clock - before;
         }
-        emu.bus.gpu.render(&mut emu.framebuffer);
-        let (h, v) = emu.bus.gpu.scroll();
-        texture.copy_window(h, v, &emu.framebuffer);
-        rsboy.copy(&texture, None, None).unwrap();
-        rsboy.present();
-        let time = now.elapsed();
-        delay_min(time);
+        // Render to framebuffer and copy.
+        {
+            let time = now.elapsed();
+            emu.bus.gpu.render(&mut emu.framebuffer);
+            let (h, v) = emu.bus.gpu.scroll();
+            texture.copy_window(h, v, &emu.framebuffer);
+            rsboy.copy(&texture, None, None).unwrap();
+            rsboy.present();
+            delay_min(time);
+        }
         let after_delay = now.elapsed();
         debugger.add_frame_time(after_delay.as_secs_f32());
+
+        //ImGui display frame.
         debugger.frame(&mut event_pump, |info, ui| {
             ui.text(format!("Frame time: {:?}", after_delay));
             let i = info.frame_times.make_contiguous();

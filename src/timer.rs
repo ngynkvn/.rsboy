@@ -7,6 +7,7 @@ pub const TIMA: usize = 0xFF05;
 pub const TMA: usize = 0xFF06;
 pub const TAC: usize = 0xFF07;
 
+#[derive(Default)]
 pub struct Timer {
     pub div: u8,
     pub tima: u8,
@@ -53,7 +54,8 @@ impl Timer {
         if self.clock % 256 == 0 {
             self.div = self.div.wrapping_add(1);
         }
-        if enable && was_one && now_zero {//(was_one && now_zero) {
+        if enable && was_one && now_zero {
+            //(was_one && now_zero) {
             let (value, overflow) = self.tima.overflowing_add(1);
             if overflow {
                 *flags |= cpu::TIMER;
