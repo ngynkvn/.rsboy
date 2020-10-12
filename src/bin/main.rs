@@ -1,18 +1,16 @@
 extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
-use std::{
-    collections::VecDeque, error::Error,
-};
+use std::{collections::VecDeque, error::Error};
 
 use cpu::GB_CYCLE_SPEED;
+use imgui::Ui;
 use imgui::{im_str, Context, Slider};
-use imgui::{Ui};
 use imgui_opengl_renderer::Renderer;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
-use sdl2::render::{Texture};
+use sdl2::render::Texture;
 use sdl2::video::Window;
 use sdl2::{event::Event, video::GLContext};
 use std::time::Duration;
@@ -229,6 +227,7 @@ fn sdl_main() -> R<()> {
                 _ => {}
             }
         }
+
         let mut delta_clock = 0;
         if !pause {
             let before = emu.bus.clock;
@@ -237,15 +236,20 @@ fn sdl_main() -> R<()> {
             }
             delta_clock = emu.bus.clock - before;
         }
-        emu.bus.gpu.render(&mut emu.framebuffer);
-        let (h, v) = emu.bus.gpu.scroll();
-        texture.copy_window(h, v, &emu.framebuffer);
-        rsboy.copy(&texture, None, None).unwrap();
-        rsboy.present();
-        let time = now.elapsed();
-        delay_min(time);
+        // Render to framebuffer and copy.
+        {
+            let time = now.elapsed();
+            emu.bus.gpu.render(&mut emu.framebuffer);
+            let (h, v) = emu.bus.gpu.scroll();
+            texture.copy_window(h, v, &emu.framebuffer);
+            rsboy.copy(&texture, None, None).unwrap();
+            rsboy.present();
+            delay_min(time);
+        }
         let after_delay = now.elapsed();
         debugger.add_frame_time(after_delay.as_secs_f32());
+
+        //ImGui display frame.
         debugger.frame(&mut event_pump, |info, ui| {
             ui.text(format!("Frame time: {:?}", after_delay));
             let i = info.frame_times.make_contiguous();
