@@ -35,6 +35,12 @@ pub const TIMER: u8 = 0b100;
 pub const SERIAL: u8 = 0b1000;
 pub const JOYPAD: u8 = 0b10000;
 
+impl Default for CPU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CPU {
     pub fn new() -> Self {
         // TODO
@@ -308,7 +314,6 @@ impl CPU {
             0xFD => unimplemented!(),
             0xFE => self.cp(Location::Immediate(1), bus),
             0xFF => self.rst(0x38, bus),
-            _ => unimplemented!(),
         }
     }
 

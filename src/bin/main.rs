@@ -102,8 +102,8 @@ impl<'a> Imgui<'a> {
         });
 
         Ok(Self {
-            imgui: imgui,
-            renderer: renderer,
+            imgui,
+            renderer,
             window,
             _gl_context,
             info: Default::default(),

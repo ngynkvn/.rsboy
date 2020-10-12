@@ -415,7 +415,7 @@ pub enum Instr {
     DisableInterrupts,
     EnableInterrupts,
     JP(Condition),
-    JP_HL,
+    JpHl,
     RET(Condition),
     RETI,
     DAA,
@@ -665,7 +665,7 @@ impl Into<u8> for Instr {
             AND(Immediate(1)) => 0xE6,
             RST(0x20) => 0xE7,
             ADDSP => 0xE8,
-            JP_HL => 0xE9,
+            JpHl => 0xE9,
             LD(MemoryImmediate, Register(A)) => 0xEA,
             XOR(Immediate(1)) => 0xEE,
             RST(0x28) => 0xEF,
@@ -921,7 +921,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     AND(Immediate(1)),                //0xE6
     RST(0x20),                        //0xE7
     ADDSP,                            //0xE8
-    JP_HL,                            //0xE9
+    JpHl,                            //0xE9
     LD(MemoryImmediate, Register(A)), //0xEA
     UNIMPLEMENTED,                    //0xEB
     UNIMPLEMENTED,                    //0xEC

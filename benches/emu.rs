@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use rust_emu::emu::Emu;
 use rust_emu::instructions::INSTR_TABLE;
 
@@ -8,8 +8,8 @@ fn criterion_benchmark(c: &mut Criterion) {
             let mut emu = Emu::new(vec![]);
             let mut bus = emu.bus;
             bus.in_bios = 1;
-            for instr in INSTR_TABLE.iter() {
-                emu.cpu.opcode = instr;
+            for _instr in INSTR_TABLE.iter() {
+                // emu.cpu.opcode = instr;
                 emu.cpu.step(&mut bus);
             }
         })

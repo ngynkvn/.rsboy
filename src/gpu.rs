@@ -63,6 +63,12 @@ pub type PixelMap = [u8; 256 * 256 * 2];
 //     }
 // }
 
+impl Default for GPU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GPU {
     pub fn new() -> Self {
         Self {
