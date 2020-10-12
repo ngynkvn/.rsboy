@@ -1,10 +1,13 @@
 extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
-use std::{collections::VecDeque, error::Error, ops::Div, ops::Mul, ops::Sub, sync::mpsc::Sender, thread::JoinHandle};
+use std::{
+    collections::VecDeque, error::Error, ops::Div, ops::Mul, ops::Sub, path::PathBuf,
+    sync::mpsc::Sender, thread::JoinHandle,
+};
 
 use cpu::GB_CYCLE_SPEED;
-use imgui::{Context, Slider, im_str};
+use imgui::{im_str, Context, Slider};
 use imgui::{Io, Ui};
 use imgui_opengl_renderer::Renderer;
 use sdl2::keyboard::Keycode;
@@ -24,15 +27,27 @@ use std::io::Read;
 
 use gpu::{PixelData, PixelMap};
 use rust_emu::{cpu::JOYPAD, emu::Emu};
+use structopt::StructOpt;
 
 use rust_emu::*;
 
 pub const CYCLES_PER_FRAME: usize = GB_CYCLE_SPEED / 60;
 const FRAME_TIME: Duration = Duration::from_nanos(16670000);
 
-type R<T> = Result<T, Box<dyn Error>>;
+#[derive(StructOpt)]
+#[structopt(name = ".rsboy", about = "Rust emulator")]
+struct Settings {
+    #[structopt(parse(from_os_str))]
+    input: PathBuf,
+    #[structopt(parse(from_os_str))]
+    logfile: Option<PathBuf>,
+    #[structopt(short = "-s")]
+    single: bool,
+}
 
-fn setup_logger() -> R<()> {
+type MaybeErr<T> = Result<T, Box<dyn Error>>;
+
+fn setup_logger() -> MaybeErr<()> {
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -51,29 +66,15 @@ fn setup_logger() -> R<()> {
         .map_err(|x| x.into())
 }
 
-fn main() -> R<()> {
-    // just_cpu();
-    info!("Setup logging");
-    setup_logger()?;
-    info!("Running SDL Main");
-    sdl_main()
-}
-
-fn init_emu() -> R<Emu> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        println!("Usage: ./gboy [rom]");
-        panic!();
+fn main() -> MaybeErr<()> {
+    let settings = Settings::from_args();
+    if let Some(output) = settings.logfile {
+        info!("Setup logging");
+        setup_logger()?;
     }
-    info!("{:?}", args);
-    info!("Attempting to load {:?}", args[1]);
-    let mut file = File::open(args[1].to_string())?;
-    let mut rom = Vec::new();
-    file.read_to_end(&mut rom)?;
-    let emu = Emu::new(rom);
-    Ok(emu)
+    info!("Running SDL Main");
+    sdl_main(settings.input)
 }
-
 
 fn calc_relative_error(x: f32, y: f32) -> f32 {
     (x - y) * 100.0 / x
@@ -83,42 +84,32 @@ struct Info {
     frame_times: VecDeque<f32>,
 }
 
-struct Imgui {
+struct Imgui<'a> {
     imgui: Context,
     renderer: Renderer,
-    window: Window,
+    window: &'a Window,
     _gl_context: GLContext,
     info: Info,
 }
 
-impl Imgui {
-    fn link_io(io: &mut Io) {
-    }
-    fn new(size: (u32, u32), position: (i32, i32), video: &sdl2::VideoSubsystem) -> R<Self> {
+impl<'a> Imgui<'a> {
+    fn link_io(io: &mut Io) {}
+    fn new(window: &'a Window) -> MaybeErr<Self> {
         let mut imgui = imgui::Context::create();
         imgui.fonts().build_rgba32_texture();
         let io = imgui.io_mut();
         Imgui::link_io(io);
+        let _gl_context = window.gl_create_context()?;
+        gl::load_with(|s| window.subsystem().gl_get_proc_address(s) as _);
 
-        let (width, height) = size;
-        let (x, y) = position;
-        // Todo: ImguiSettings struct
-        let debugger = video
-            .window("debugger", width, height)
-            .position(x, y)
-            .opengl()
-            .resizable()
-            .build()?;
-        let _gl_context = debugger.gl_create_context()?;
-        gl::load_with(|s| video.gl_get_proc_address(s) as _);
-
-        let renderer =
-            imgui_opengl_renderer::Renderer::new(&mut imgui, |s| video.gl_get_proc_address(s) as _);
+        let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| {
+            window.subsystem().gl_get_proc_address(s) as _
+        });
 
         Ok(Self {
             imgui: imgui,
             renderer: renderer,
-            window: debugger,
+            window,
             _gl_context,
             info: Default::default(),
         })
@@ -156,8 +147,8 @@ impl Imgui {
     }
 }
 
-fn sdl_main() -> R<()> {
-    let mut emu = init_emu()?;
+fn sdl_main(input: PathBuf) -> MaybeErr<()> {
+    let mut emu = Emu::from_path(input)?;
 
     let context = sdl2::init()?;
     let video = context.video()?;
@@ -178,7 +169,14 @@ fn sdl_main() -> R<()> {
     let mut texture =
         tc.create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
-    let mut debugger = Imgui::new((512, 512), (0, 20), &video)?;
+    let debugger = video
+        .window("debugger", 512, 512)
+        .position(0, 20)
+        .opengl()
+        .resizable()
+        .build()?;
+
+    let mut debugger = Imgui::new(&debugger)?;
     let mut cycle_jump = 0;
     let mut pause = true;
 
@@ -196,40 +194,33 @@ fn sdl_main() -> R<()> {
                     ..
                 } => break 'running,
                 Event::KeyDown {
-                    keycode: Some(Keycode::Down),
+                    keycode: Some(keycode),
                     ..
-                }  => {
-                    emu.bus.directions &= !0b1000;
-                    emu.bus.int_flags |= JOYPAD;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Up),
-                    ..
-                } => {
-                    emu.bus.directions &= !0b0100;
-                    emu.bus.int_flags |= JOYPAD;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Left),
-                    ..
-                } => {
-                    emu.bus.directions &= !0b0010;
-                    emu.bus.int_flags |= JOYPAD;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Right),
-                    ..
-                } => {
-                    emu.bus.directions &= !0b0001;
-                    emu.bus.int_flags |= JOYPAD;
-                }
-                Event::KeyDown {
-                    keycode: Some(Keycode::Return),
-                    ..
-                } => {
-                    emu.bus.keypresses &= !0b1000;
-                    emu.bus.int_flags |= JOYPAD;
-                }
+                } => match keycode {
+                    Keycode::Down => {
+                        emu.bus.directions &= !0b1000;
+                        emu.bus.int_flags |= JOYPAD;
+                    }
+                    Keycode::Up => {
+                        emu.bus.directions &= !0b0100;
+                        emu.bus.int_flags |= JOYPAD;
+                    }
+                    Keycode::Left => {
+                        emu.bus.directions &= !0b0010;
+                        emu.bus.int_flags |= JOYPAD;
+                    }
+                    Keycode::Right => {
+                        emu.bus.directions &= !0b0001;
+                        emu.bus.int_flags |= JOYPAD;
+                    }
+                    Keycode::Return => {
+                        emu.bus.keypresses &= !0b1000;
+                        emu.bus.int_flags |= JOYPAD;
+                    }
+                    key => {
+                        println!("{:?}", key);
+                    }
+                },
                 _ => {}
             }
         }
@@ -240,7 +231,7 @@ fn sdl_main() -> R<()> {
                 emu.emulate_step();
             }
             delta_clock = emu.bus.clock - before;
-        } 
+        }
         emu.bus.gpu.render(&mut emu.framebuffer);
         let (h, v) = emu.bus.gpu.scroll();
         texture.copy_window(h, v, &emu.framebuffer);
@@ -253,10 +244,9 @@ fn sdl_main() -> R<()> {
         debugger.frame(&mut event_pump, |info, ui| {
             ui.text(format!("Frame time: {:?}", after_delay));
             let i = info.frame_times.make_contiguous();
-            ui.plot_lines(
-                im_str!("Frame times"),
-                i,
-            ).graph_size([300.0, 100.0]).build();
+            ui.plot_lines(im_str!("Frame times"), i)
+                .graph_size([300.0, 100.0])
+                .build();
             let cpu_hz = delta_clock as f64 / after_delay.as_secs_f64();
             ui.text(format!("CPU HZ: {}", cpu_hz));
             ui.text(format!("Register State:\n{}", emu.cpu.registers));
@@ -264,11 +254,14 @@ fn sdl_main() -> R<()> {
                 println!("Pause");
                 pause = !pause;
             }
-            ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump).build();
-            Slider::new(im_str!("")).range(0..=(69905)).build(ui, &mut cycle_jump);
+            ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump)
+                .build();
+            Slider::new(im_str!(""))
+                .range(0..=(69905))
+                .build(ui, &mut cycle_jump);
             if ui.button(im_str!("Go"), [200.0, 50.0]) {
                 let before = emu.bus.clock as i32;
-                while emu.bus.clock < (before + cycle_jump) as usize{
+                while emu.bus.clock < (before + cycle_jump) as usize {
                     emu.emulate_step();
                 }
             }
@@ -326,23 +319,16 @@ fn delay_min(elapsed: Duration) {
 fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
     let gpu = emu.bus.gpu;
     let video_subsystem = sdl_context.video()?;
-    let (w, h) = (32 * 8, 32 * 8);
     let window = video_subsystem
-        .window("Map Viewer", w as u32, h as u32)
+        .window("Map Viewer", 256, 256)
         .position_centered()
         .build()
         .map_err(|e| e.to_string())?;
     let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
 
     let texture_creator = canvas.texture_creator();
-    let (map_w, map_h) = (32, 32);
-    let tile_w = 8;
     let mut texture = texture_creator
-        .create_texture_static(
-            PixelFormatEnum::RGB565,
-            (map_w * tile_w) as u32,
-            (map_h * tile_w) as u32,
-        )
+        .create_texture_streaming(PixelFormatEnum::RGB565, 256, 256)
         .map_err(|e| e.to_string())?;
 
     // Pitch = n_bytes(3) * map_w * tile_w

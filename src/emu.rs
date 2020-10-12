@@ -1,3 +1,5 @@
+use std::{error::Error, fs::File, io::Read, path::PathBuf};
+
 use crate::bus::Bus;
 use crate::instructions::Instr;
 use crate::instructions::INSTR_DATA_LENGTHS;
@@ -39,6 +41,22 @@ impl Emu {
         }
     }
 
+    pub fn from_path(input: PathBuf) -> Result<Emu, Box<dyn Error>> {
+        let mut file = File::open(input)?;
+        let mut rom = Vec::new();
+        file.read_to_end(&mut rom)?;
+        let cpu = CPU::new();
+        let bus = Bus::new(rom);
+        let prev = cpu.clone();
+        Ok(Emu {
+            cpu,
+            bus,
+            framebuffer: Box::new([[0; 256]; 256]),
+            prev,
+            il: vec![],
+        })
+    }
+
     pub fn gen_il(&self, mem: &[u8]) -> Vec<IL> {
         let mut view = vec![];
         let mut i = 0;
@@ -72,7 +90,12 @@ impl Emu {
         let il = self.gen_il(&mem);
         il.chunks(10)
             .find(|chunk| chunk.iter().any(|e| e.addr == pc))
-            .unwrap_or_else(|| panic!("PC: {:04x} {:?}", pc, INSTR_TABLE[mem[pc as usize] as usize]))
+            .unwrap_or_else(|| {
+                panic!(
+                    "PC: {:04x} {:?}",
+                    pc, INSTR_TABLE[mem[pc as usize] as usize]
+                )
+            })
             .to_vec()
     }
 }

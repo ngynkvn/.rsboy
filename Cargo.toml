@@ -19,6 +19,7 @@ spin_sleep = "1.0.0"
 imgui = "0.5.0"
 imgui-opengl-renderer = "*"
 gl = "*"
+structopt = "*"
 
 [dev-dependencies]
 criterion = "0.3"
