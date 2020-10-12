@@ -196,7 +196,6 @@ fn pop_af() {
         let opcode = Instr::AND(Register(H)).into();
         cpu.opcode = opcode;
         cpu.execute_op(&mut bus);
-        cpu.dump_state();
         //      cp   e
         let opcode = Instr::CP(Register(E)).into();
         cpu.opcode = opcode;

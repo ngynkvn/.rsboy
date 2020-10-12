@@ -308,7 +308,6 @@ impl CPU {
             0xFD => unimplemented!(),
             0xFE => self.cp(Location::Immediate(1), bus),
             0xFF => self.rst(0x38, bus),
-            _ => unimplemented!(),
         }
     }
 
