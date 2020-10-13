@@ -20,6 +20,11 @@ enum GpuMode {
     OAM,    // 2
     VRAM,   // 3
 }
+#[derive(Debug)]
+enum SpriteSize {
+    Square,
+    Tall,
+}
 
 // Global GPU struct.
 // Holds I/O Registers relevant to GPU. Make sure these are available from bus struct.
@@ -31,8 +36,8 @@ pub struct GPU {
     pub oam: [u8; 0x100],
     pub lcdc: u8,
     pub lcdstat: u8,
-    pub hscroll: u8,
-    pub vscroll: u8,
+    pub scrollx: u8,
+    pub scrolly: u8,
     pub bgrdpal: u8, //Background Palette
     pub obj0pal: u8, //Object0 Palette
     pub obj1pal: u8, //Object1 Palette
@@ -44,24 +49,25 @@ pub struct GPU {
 const END_HBLANK: u8 = 144;
 const END_VBLANK: u8 = 154;
 
-pub type PixelData = [[u16; 256]; 256];
-pub type PixelMap = [u8; 256 * 256 * 2];
+pub type PixelData = [[u32; 256]; 256];
+pub type PixelMap = [u8; 256 * 256 * 4];
 
-// struct SpriteAttribute {
-//     above: bool,
-//     yflip: bool,
-//     xflip: bool,
-// }
-
-// impl From<u8> for SpriteAttribute {
-//     fn from(byte: u8) -> Self {
-//         Self {
-//             above: byte & 0x80 != 0,
-//             yflip: byte & 0x40 != 0,
-//             xflip: byte & 0x20 != 0,
-//         }
-//     }
-// }
+struct SpriteAttribute {
+    above: bool,
+    yflip: bool,
+    xflip: bool,
+    obj0: bool, //True for OBJ0, OBJ1 otherwise.
+}
+impl From<&u8> for SpriteAttribute {
+    fn from(byte: &u8) -> Self {
+        Self {
+            above: byte & 0x80 != 0,
+            yflip: byte & 0x40 != 0,
+            xflip: byte & 0x20 != 0,
+            obj0: byte & 0x10 == 0,
+        }
+    }
+}
 
 impl Default for GPU {
     fn default() -> Self {
@@ -75,15 +81,17 @@ impl GPU {
             mode: GpuMode::OAM,
             clock: 0,
             scanline: 0,
+            // FFxx Values
             lcdc: 0,
             lcdstat: 0,
-            vscroll: 0,
-            hscroll: 0,
+            scrolly: 0,
+            scrollx: 0,
             bgrdpal: 0,
             obj0pal: 0,
             obj1pal: 0,
             windowx: 0,
             windowy: 0,
+            // FFxx Values end
             _vblank_count: 0,
             vram: [0; 0x2000],
             oam: [0; 0x100],
@@ -96,18 +104,23 @@ impl GPU {
     //   Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
     fn window_tile_map_display_select(&self) -> RangeInclusive<usize> {
         if self.lcdc & 0b0100_0000 != 0 {
-            (0x9C00 - VRAM_START)..=(0x9FFF - VRAM_START)
+            (0x9C00)..=(0x9FFF)
         } else {
-            (0x9800 - VRAM_START)..=(0x9BFF - VRAM_START)
+            (0x9800)..=(0x9BFF)
         }
+    }
+
+    //   Bit 5 - Window Display Enable          (0=Off, 1=On)
+    fn window_display_enabled(&self) -> bool {
+        self.lcdc & 0b0010_0000 == 0b0010_0000
     }
 
     //   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
     fn bg_and_window_tile_data_select(&self) -> RangeInclusive<usize> {
         if self.lcdc & 0b0010_0000 != 0 {
-            (0x8000 - VRAM_START)..=(0x8FFF - VRAM_START)
+            (0x8000)..=(0x8FFF)
         } else {
-            (0x8800 - VRAM_START)..=(0x97FF - VRAM_START)
+            (0x8800)..=(0x97FF)
         }
     }
     fn bg_tile_data(&self, value: u8) -> Range<usize> {
@@ -125,13 +138,20 @@ impl GPU {
     //   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
     fn bg_tile_map_display_select(&self) -> RangeInclusive<usize> {
         if self.lcdc & 0b0001_0000 != 0 {
-            (0x9C00 - VRAM_START)..=(0x9FFF - VRAM_START)
+            0x9C00..=0x9FFF
         } else {
-            (0x9800 - VRAM_START)..=(0x9BFF - VRAM_START)
+            0x9800..=0x9BFF
         }
     }
 
     //   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
+    fn sprite_size(&self) -> SpriteSize {
+        if self.lcdc & 0b100 == 0b100 {
+            return SpriteSize::Square;
+        } else {
+            return SpriteSize::Tall;
+        }
+    }
     //   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
     fn sprite_display_enabled(&self) -> bool {
         self.lcdc & 0b10 == 0b10
@@ -154,13 +174,13 @@ impl GPU {
     }
 
     pub fn scroll(&self) -> (u32, u32) {
-        (self.hscroll as u32, self.vscroll as u32)
+        (self.scrollx as u32, self.scrolly as u32)
     }
 
-    pub fn tiles(&self) -> Vec<Tile> {
+    pub fn tiles(&self, palette: u8) -> Vec<Tile> {
         self.vram[TILE_DATA_RANGE]
             .chunks_exact(TILE_SIZE) // Tile
-            .map(|tile| Tile::construct(self.bgrdpal, tile))
+            .map(|tile| Tile::construct(palette, tile))
             .collect()
     }
 
@@ -203,10 +223,16 @@ impl GPU {
             if sprite_attributes.iter().all(|x| *x == 0) {
                 continue;
             }
-            if let [y, x, pattern, _flags] = sprite_attributes {
-                // let _flags = SpriteAttribute::from(*flags);
+            if let [y, x, pattern, flags] = sprite_attributes {
+                let flags = SpriteAttribute::from(flags);
                 let idx = *pattern as usize * 16;
-                let tile = Tile::construct(self.obj0pal, &self.vram[Tile::range(idx)]);
+
+                let palette = if flags.obj0 {
+                    self.obj0pal
+                } else {
+                    self.obj1pal
+                };
+                let tile = Tile::sprite_construct(palette, &self.vram[Tile::range(idx)]);
                 let screen_x = (*x).wrapping_sub(8);
                 let screen_y = (*y).wrapping_sub(16);
                 self.blit_to_screen(pixels, screen_x as usize, screen_y as usize, tile);
@@ -269,10 +295,35 @@ impl Index<u16> for GPU {
 
 impl Display for GPU {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("LCDC: {:08b}", self.lcdc))
-        // for i in self.oam.chunks_exact(4) {
-        //     f.write_fmt(format_args!("{:?}", i))?
-        // }
-        // Ok(())
+        // No I'm not a monster I'll change these later.
+        // TODO
+        let wtmds = self.window_tile_map_display_select();
+        let bgwtds = self.bg_and_window_tile_data_select();
+        let bgtmds = self.bg_tile_map_display_select();
+        f.write_fmt(format_args!(
+            r#"LCDC: {:08b}
+LCD On: {}, 
+Window Tile Map Display Select: {:04X}-{:04X}
+Window Display Enable: {} 
+BG+Window Tile Data Select: {:04X}-{:04X}
+BG Tile Map Display Select: {:04X}-{:04X}
+Sprite Size: {:?} 
+Sprite Display Enable: {} 
+BG Display: UNIMPLEMENTED
+STAT: {:08b}"#,
+            self.lcdc,
+            self.is_on(),
+            wtmds.start(),
+            wtmds.end(),
+            self.window_display_enabled(),
+            bgwtds.start(),
+            bgwtds.end(),
+            bgtmds.start(),
+            bgtmds.end(),
+            self.sprite_size(),
+            self.sprite_display_enabled(),
+            // self.bg_display_enabled(),
+            self.lcdstat,
+        ))
     }
 }

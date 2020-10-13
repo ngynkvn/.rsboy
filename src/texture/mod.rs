@@ -1,18 +1,18 @@
 use crate::gpu::PixelData;
 use std::ops::Range;
 
-fn pixel(value: u8) -> u16 {
+fn pixel(value: u8) -> u32 {
     match value {
-        0b00 => 0xE7DA,
-        0b01 => 0x8E0E,
-        0b10 => 0x360A,
-        0b11 => 0x08C4,
+        0b00 => 0xE0F8D0FF, // White
+        0b01 => 0x88C070FF, // Light Gray
+        0b10 => 0x346856FF, // Dark Gray
+        0b11 => 0x081820FF, // Black
         _ => unreachable!("Are you sure you're reading byte data?"),
     }
 }
 
 pub struct Tile {
-    pub texture: [[u16; 8]; 8],
+    pub texture: [[u32; 8]; 8],
 }
 
 impl Tile {
@@ -28,6 +28,27 @@ impl Tile {
                 let index = (hi << 1) | lo;
                 let color = (palette >> (index << 1)) & 0b11;
                 let c = pixel(color);
+                texture[y][x] = c;
+            }
+        }
+        Self { texture }
+    }
+
+    pub fn sprite_construct(palette: u8, tile_data: &[u8]) -> Self {
+        let mut texture = [[0; 8]; 8];
+        // We receive in order of
+        // low byte, then high byte
+        for (y, d) in tile_data.chunks_exact(2).enumerate() {
+            //Each row in tile is pair of 2 bytes.
+            for x in 0..8 {
+                let lo = d[0] >> (7 - x) & 1;
+                let hi = d[1] >> (7 - x) & 1;
+                let index = (hi << 1) | lo;
+                let color = (palette >> (index << 1)) & 0b11;
+                let mut c = pixel(color);
+                if color == 0 {
+                    c &= 0xFFFFFF00;
+                }
                 texture[y][x] = c;
             }
         }
@@ -62,7 +83,7 @@ impl Tile {
         i..i + 16
     }
 
-    pub fn texture(&self) -> &[[u16; 8]; 8] {
+    pub fn texture(&self) -> &[[u32; 8]; 8] {
         &self.texture
     }
 }

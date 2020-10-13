@@ -20,7 +20,7 @@ use std::time::Instant;
 use log::info;
 
 use gpu::{PixelData, PixelMap};
-use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, emu::IL};
+use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, emu::IL, texture::Tile};
 use structopt::StructOpt;
 
 use rust_emu::*;
@@ -159,7 +159,7 @@ fn sdl_main(input: PathBuf) -> MaybeErr<()> {
         .build()?;
     let tc = rsboy.texture_creator();
     let mut texture =
-        tc.create_texture_streaming(PixelFormatEnum::RGB565, WINDOW_WIDTH, WINDOW_HEIGHT)?;
+        tc.create_texture_streaming(PixelFormatEnum::RGBA32, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
     let debugger = video
         .window("debugger", 512, 512)
@@ -278,8 +278,8 @@ fn sdl_main(input: PathBuf) -> MaybeErr<()> {
     }
     std::mem::drop(event_pump);
 
-    // vram_viewer(&context, emu.bus.gpu.vram).unwrap();
-    map_viewer(&context, emu)?;
+    map_viewer(&context, &emu)?;
+    vram_viewer(&context, &emu)?;
     Ok(())
 }
 
@@ -299,18 +299,26 @@ impl GBWindow for Texture<'_> {
                 let y = (y % MAP_WIDTH) as usize;
                 for x in horz..horz + WINDOW_WIDTH {
                     let x = (x % MAP_WIDTH) as usize;
-                    let [lo, hi] = framebuffer[y][x].to_le_bytes();
-                    buffer[i] = lo;
-                    buffer[i + 1] = hi;
-                    i += 2;
+                    let bytes = framebuffer[y][x].to_be_bytes();
+                    buffer[i..(i + 4)].copy_from_slice(&bytes);
+                    i += 4;
                 }
             }
         })
         .unwrap();
     }
     fn copy_map(&mut self, buffer: &PixelData) {
-        let (_, buffer, _) = unsafe { buffer.align_to::<u8>() };
-        self.update(None, buffer, 256 * 2).unwrap()
+        let mut i = 0;
+        self.with_lock(None, |tbuffer, _| {
+            for y in buffer.iter() {
+                for x in y.iter() {
+                    let bytes = x.to_be_bytes();
+                    tbuffer[i..(i + 4)].copy_from_slice(&bytes);
+                    i += 4;
+                }
+            }
+        })
+        .unwrap();
     }
 }
 
@@ -320,8 +328,8 @@ fn delay_min(elapsed: Duration) {
     }
 }
 
-fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
-    let gpu = emu.bus.gpu;
+fn map_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<(), String> {
+    let gpu = &emu.bus.gpu;
     let video_subsystem = sdl_context.video()?;
     let window = video_subsystem
         .window("Map Viewer", 256, 256)
@@ -332,14 +340,11 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
 
     let texture_creator = canvas.texture_creator();
     let mut texture = texture_creator
-        .create_texture_streaming(PixelFormatEnum::RGB565, 256, 256)
+        .create_texture_streaming(PixelFormatEnum::RGBA32, 256, 256)
         .map_err(|e| e.to_string())?;
 
     // Pitch = n_bytes(3) * map_w * tile_w
-    let buffer = unsafe { std::mem::transmute::<PixelData, PixelMap>(*emu.framebuffer) };
-    texture
-        .update(None, &buffer, 256 * 2)
-        .map_err(|e| e.to_string())?;
+    texture.copy_map(&emu.framebuffer);
     canvas.copy(&texture, None, None)?;
     let (h, v) = gpu.scroll();
     println!("{} {}", h, v);
@@ -362,6 +367,75 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: emu::Emu) -> Result<(), String> {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
+                _ => {}
+            }
+        }
+
+        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
+        // The rest of the game loop goes here...
+    }
+
+    Ok(())
+}
+
+fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> MaybeErr<()> {
+    let gpu = &emu.bus.gpu;
+    let video_subsystem = sdl_context.video()?;
+    let window = video_subsystem
+        .window("VRAM Viewer", 1024, 512)
+        .position_centered()
+        .build()?;
+    let mut canvas = window.into_canvas().build()?;
+
+    let texture_creator = canvas.texture_creator();
+
+    let mut update = |palette: u8| -> MaybeErr<()> {
+        let tiles = gpu.tiles(palette);
+        for (i, t) in tiles.iter().enumerate() {
+            let i = i as i32;
+            let mut tex =
+                texture_creator.create_texture_streaming(PixelFormatEnum::RGBA32, 8, 8)?;
+            tex.with_lock(None, |data, _| {
+                let mut c = 0;
+                for i in t.texture.iter() {
+                    for j in i.iter() {
+                        let d = j.to_be_bytes();
+                        data[c..(c + 4)].copy_from_slice(&d);
+                        c += 4;
+                    }
+                }
+            })?;
+            let rect = ((i % 32) * 32, (i / 32) * 32, 32, 32);
+            let rect = Rect::from(rect);
+            canvas.copy(&tex, None, Rect::from(rect))?
+        }
+        canvas.present();
+        Ok(())
+    };
+    let ps = [gpu.bgrdpal, gpu.obj0pal, gpu.obj1pal];
+    let mut i = 0;
+    update(ps[i])?;
+    let mut event_pump = sdl_context.event_pump()?;
+
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
+                Event::KeyDown {
+                    keycode: Some(key), ..
+                } => match key {
+                    Keycode::Return => {
+                        i += 1;
+                        i %= ps.len();
+                        println!("{}", i);
+                        update(ps[i])?;
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }

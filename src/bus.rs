@@ -39,13 +39,16 @@ pub struct Bus {
 impl Display for Bus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "CLK: {}, IE: {}, IF: {:08b}\n{}, BTNS: {:08b}\nARWS: {:08b}",
+            r#"CLK: {}, IE: {}, IF: {:08b}
+[TIMER]: {}
+[BTNS]: {:08b}
+[ARWS]: {:08b}"#,
             self.clock,
             self.int_enabled,
             self.int_flags,
             self.timer,
             self.keypresses,
-            self.directions
+            self.directions,
         ))
     }
 }
@@ -128,8 +131,8 @@ impl Memory for Bus {
             timer::TIMA => self.timer.tima,
             0xFF40 => self.gpu.lcdc,
             0xFF41 => self.gpu.lcdstat,
-            0xFF42 => self.gpu.vscroll,
-            0xFF43 => self.gpu.hscroll,
+            0xFF42 => self.gpu.scrolly,
+            0xFF43 => self.gpu.scrollx,
             0xFF44 => self.gpu.scanline,
             0xFF47 => panic!("0xFF47 (bg_palette) is WRITE ONLY"),
             0xFF4A => self.gpu.windowy,
@@ -158,8 +161,8 @@ impl Memory for Bus {
             timer::TMA => self.timer.tma = value,
             0xff40 => self.gpu.lcdc = value,
             0xff41 => self.gpu.lcdstat = value,
-            0xff42 => self.gpu.vscroll = value,
-            0xff43 => self.gpu.hscroll = value,
+            0xff42 => self.gpu.scrolly = value,
+            0xff43 => self.gpu.scrollx = value,
             0xff44 => self.gpu.scanline = value,
             0xff46 => {
                 //OAM Transfer request
@@ -207,7 +210,11 @@ impl Memory for Bus {
             }
             VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
             OAM_START..=OAM_END => self.gpu.oam[address as usize - OAM_START] = value,
-            _ => self.memory[address as usize] = value,
+            _ => {
+                if address >= 0x8000 {
+                    self.memory[address as usize] = value
+                }
+            }
         }
     }
 }
