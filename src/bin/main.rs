@@ -19,7 +19,7 @@ use std::time::Instant;
 //File IO
 use log::info;
 
-use gpu::{PixelData, PixelMap};
+use gpu::{PixelData};
 use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, emu::IL};
 use structopt::StructOpt;
 
@@ -408,7 +408,7 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> MaybeErr<()> {
             })?;
             let rect = ((i % 32) * 32, (i / 32) * 32, 32, 32);
             let rect = Rect::from(rect);
-            canvas.copy(&tex, None, Rect::from(rect))?
+            canvas.copy(&tex, None, rect)?
         }
         canvas.present();
         Ok(())

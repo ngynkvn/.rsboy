@@ -147,9 +147,9 @@ impl GPU {
     //   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
     fn sprite_size(&self) -> SpriteSize {
         if self.lcdc & 0b100 == 0b100 {
-            return SpriteSize::Square;
+            SpriteSize::Square
         } else {
-            return SpriteSize::Tall;
+            SpriteSize::Tall
         }
     }
     //   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
