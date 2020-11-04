@@ -20,7 +20,7 @@ use std::time::Instant;
 use log::info;
 
 use gpu::{PixelData, PixelMap};
-use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, emu::IL, texture::Tile};
+use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, emu::IL};
 use structopt::StructOpt;
 
 use rust_emu::*;
@@ -59,6 +59,7 @@ fn setup_logger() -> MaybeErr<()> {
         .apply()
         .map_err(|x| x.into())
 }
+
 
 fn main() -> MaybeErr<()> {
     let settings = Settings::from_args();
