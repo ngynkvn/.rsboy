@@ -21,7 +21,7 @@ fn ticks_expected() {
     let mut i = 0;
     while i < INSTR_TABLE.len() {
         let mut cpu = CPU::new();
-        let mut bus = Bus::new(vec![]);
+        let mut bus = Bus::new(vec![], None);
         bus.in_bios = 1;
         if EXPECTED_TICKS[i] == 0 {
             i += 1;
@@ -58,7 +58,7 @@ fn time_instr(instr: Instr, cpu: &mut CPU, bus: &mut Bus) -> usize {
 fn ticks_cb_instr() {
     for instr in 0x00..=0xFF {
         let mut cpu = CPU::new();
-        let mut bus = Bus::new(vec![]);
+        let mut bus = Bus::new(vec![], None);
         let before = bus.clock;
         cpu.registers.pc = 0;
         bus.in_bios = 1;
@@ -78,7 +78,7 @@ fn ticks_cb_instr() {
 #[test]
 fn ticks_expected_jumps() {
     let mut cpu = CPU::new();
-    let mut bus = Bus::new(vec![]);
+    let mut bus = Bus::new(vec![], None);
     let time = time_instr(Instr::JP(None), &mut cpu, &mut bus);
     assert_eq!(time, 4);
 
@@ -145,7 +145,7 @@ fn ld() {
     let mut cpu = CPU::new();
     cpu.registers.a = 5;
     cpu.registers.b = 8;
-    let mut bus = Bus::new(vec![]);
+    let mut bus = Bus::new(vec![], None);
     assert_eq!(cpu.registers.a, 0x5);
     let opcode = Instr::LD(Register(A), Register(B)).into();
     cpu.opcode = opcode;
@@ -157,7 +157,9 @@ fn ld() {
 fn jr() {
     let mut cpu = CPU::new();
     cpu.registers.pc = 0x000A;
-    let mut bus = Bus::new(vec![]);
+    let mut bus = Bus::new(vec![], None);
+    bus.in_bios = 0;
+    bus.rom_start_signal = false;
     bus.bootrom[0x0007] = 0x76;
     bus.bootrom[0x000A] = 0x20;
     bus.bootrom[0x000B] = 0xFB;
@@ -170,7 +172,7 @@ fn jr() {
 #[test]
 fn pop_af() {
     let mut cpu = CPU::new();
-    let mut bus = Bus::new(vec![]);
+    let mut bus = Bus::new(vec![], None);
     cpu.registers.b = 0x12; //      ld   bc,$1200
     cpu.registers.c = 0x00;
     cpu.registers.h = 0xF0;
