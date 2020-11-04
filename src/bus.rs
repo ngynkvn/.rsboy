@@ -196,7 +196,7 @@ impl Memory for Bus {
                     0b0001_0000 => Select::Buttons,
                     0b0010_0000 => Select::Directions,
                     0b0011_0000 => Select::None,
-                    _ => unreachable!("{:08b}", value),
+                    _ => Select::None,
                 }
             }
             0xff01 => {

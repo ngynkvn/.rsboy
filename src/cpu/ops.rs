@@ -71,7 +71,7 @@ impl CPU {
         self.registers.set_cf(carry);
     }
     pub fn stop(&mut self, _bus: &mut Bus) {
-        println!("stop: {:04x}", self.registers.pc - 1); // todo ?
+        // println!("stop: {:04x}", self.registers.pc - 1); // todo ?
     }
     pub fn cp(&mut self, location: Location, bus: &mut Bus) {
         let value = self.read_from(location, bus).into();

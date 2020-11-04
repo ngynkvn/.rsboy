@@ -18,15 +18,17 @@ pub const EXPECTED_TICKS: [usize; 256] = [
 
 #[test]
 fn ticks_expected() {
-    let mut cpu = CPU::new();
-    let mut bus = Bus::new(vec![]);
     let mut i = 0;
     while i < INSTR_TABLE.len() {
+        let mut cpu = CPU::new();
+        let mut bus = Bus::new(vec![]);
+        bus.in_bios = 1;
         if EXPECTED_TICKS[i] == 0 {
             i += 1;
             continue;
         }
         let instr = INSTR_TABLE[i];
+        print!("Testing {:?}? ", instr);
         let time = time_instr(instr, &mut cpu, &mut bus);
         assert_eq!(
             time,
@@ -37,6 +39,7 @@ fn ticks_expected() {
             time,
             EXPECTED_TICKS[i] / 4
         );
+        println!("OK");
         i += 1
     }
 }
