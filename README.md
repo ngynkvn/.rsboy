@@ -27,7 +27,6 @@ Render image of Tetris main screen
   - This will be a long one. Low priority
 - GFX
   - Still some inaccuracies. I will not be implementing the full PPU operations
-- OTHER STUFF
 - WebAssembly Port
 
 ## References
