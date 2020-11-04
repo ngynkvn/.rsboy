@@ -1,3 +1,5 @@
+![Rust](https://github.com/ngynkvn/.rsboy/workflows/Rust/badge.svg)
+
 <img src="docs/rsboy.png" style="display:block;margin:0 auto" width=300px/>
 
 ## A gameboy emulator in Rust
