@@ -7,6 +7,7 @@ use crate::timer;
 use crate::timer::Timer;
 use std::io::Read;
 use std::{fmt::Display, fs::File};
+use std::path::PathBuf;
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -53,23 +54,14 @@ impl Display for Bus {
     }
 }
 
-fn load_bootrom() -> Vec<u8> {
-    let mut file = File::open("dmg_boot.bin").expect("Couldn't open bootrom file.");
-    let mut bootrom = Vec::new();
-    file.read_to_end(&mut bootrom)
-        .expect("Couldn't read the file.");
-    bootrom
-}
 
 impl Bus {
-    pub fn new(rom_vec: Vec<u8>) -> Self {
+    pub fn new(rom_vec: Vec<u8>, bootrom_path: Option<PathBuf>) -> Self {
         let mut memory = [0; 0x10000];
+        let mut buffer = Vec::new();
         let mut bootrom = [0; 0x100];
-        let bootrom_vec = load_bootrom();
-        bootrom[..].clone_from_slice(&bootrom_vec[..]);
-        memory[..rom_vec.len()].clone_from_slice(&rom_vec[..]);
 
-        Bus {
+        let mut bus = Bus {
             memory,
             bootrom,
             in_bios: 0,
@@ -83,7 +75,20 @@ impl Bus {
             gpu: GPU::new(),
             rom_start_signal: false,
             timer: Timer::new(),
+        };
+
+        if let Ok(mut file) = File::open(bootrom_path.unwrap_or("dmg_boot.bin".into())) {
+            file.read_to_end(&mut buffer)
+                .expect("Couldn't read the file.");
+            bus.bootrom[..].clone_from_slice(&buffer[..]);
+        } else {
+            bus.in_bios = 1;
+            bus.rom_start_signal = true;
+            println!("No bootrom provided.");
         }
+        bus.memory[..rom_vec.len()].clone_from_slice(&rom_vec[..]);
+
+        bus
     }
 
     pub fn enable_interrupts(&mut self) {

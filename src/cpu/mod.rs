@@ -509,6 +509,8 @@ impl CPU {
         self.registers.h = 0x01;
         self.registers.l = 0x4d;
         self.registers.sp = 0xfffe;
+        self.registers.pc = 0x100;
+        bus.in_bios = 1;
         bus.write(0xFF06, 0x00); // TMA
         bus.write(0xFF07, 0x00); // TAC
         bus.write(0xFF10, 0x80); // NR10

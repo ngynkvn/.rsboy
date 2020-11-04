@@ -35,8 +35,8 @@ struct Settings {
     input: PathBuf,
     #[structopt(parse(from_os_str))]
     logfile: Option<PathBuf>,
-    #[structopt(short = "-s")]
-    single: bool,
+    #[structopt(short = "-b")]
+    bootrom: Option<PathBuf>,
 }
 
 type MaybeErr<T> = Result<T, Box<dyn Error>>;
@@ -68,7 +68,7 @@ fn main() -> MaybeErr<()> {
         setup_logger()?;
     }
     info!("Running SDL Main");
-    sdl_main(settings.input)
+    sdl_main(settings.input, settings.bootrom)
 }
 
 // fn calc_relative_error(x: f32, y: f32) -> f32 {
@@ -140,8 +140,8 @@ impl<'a> Imgui<'a> {
     }
 }
 
-fn sdl_main(input: PathBuf) -> MaybeErr<()> {
-    let mut emu = Emu::from_path(input)?;
+fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>) -> MaybeErr<()> {
+    let mut emu = Emu::from_path(input, bootrom)?;
 
     let context = sdl2::init()?;
     let video = context.video()?;
