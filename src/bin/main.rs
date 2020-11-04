@@ -37,6 +37,8 @@ struct Settings {
     logfile: Option<PathBuf>,
     #[structopt(short = "-b")]
     bootrom: Option<PathBuf>,
+    #[structopt(short = "-r")]
+    repl: bool,
 }
 
 type MaybeErr<T> = Result<T, Box<dyn Error>>;
@@ -68,7 +70,7 @@ fn main() -> MaybeErr<()> {
         setup_logger()?;
     }
     info!("Running SDL Main");
-    sdl_main(settings.input, settings.bootrom)
+    sdl_main(settings.input, settings.bootrom, settings.repl)
 }
 
 // fn calc_relative_error(x: f32, y: f32) -> f32 {
@@ -140,9 +142,15 @@ impl<'a> Imgui<'a> {
     }
 }
 
-fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>) -> MaybeErr<()> {
-    let mut emu = Emu::from_path(input, bootrom)?;
+use std::thread;
+use rustyline::error::ReadlineError;
 
+enum REPL {
+    Kill
+}
+
+fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()> {
+    let mut emu = Emu::from_path(input, bootrom)?;
     let context = sdl2::init()?;
     let video = context.video()?;
     {
@@ -178,8 +186,40 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>) -> MaybeErr<()> {
     let il = gen_il(&emu.bus.memory);
     debugger.info.il = il;
 
+    use std::sync::mpsc::channel;
+
+    let (sender, receiver) = channel();
+
+    if repl {
+        thread::spawn(move ||{
+            let mut rl = rustyline::Editor::<()>::new();
+            loop {
+                let readline = rl.readline(">> ");
+                match readline {
+                    Ok(line) => {
+                        println!("Line: {:?}", line)
+                    },
+                    Err(ReadlineError::Interrupted) => {
+                        println!("CTRL-C");
+                        break
+                    },
+                    Err(ReadlineError::Eof) => {
+                        println!("CTRL-D");
+                        break
+                    },
+                    Err(_) => println!("No input"),
+                }
+            }
+            // Send a kill.
+            sender.send(REPL::Kill);
+        });
+    }
+
     'running: loop {
         let now = Instant::now();
+        if let Ok(REPL::Kill) = receiver.try_recv() {
+            break;
+        }
         for event in event_pump.poll_iter() {
             emu.bus.directions |= 0x0F;
             emu.bus.keypresses |= 0x0F;
