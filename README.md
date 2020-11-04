@@ -1,3 +1,5 @@
+![Rust](https://github.com/ngynkvn/.rsboy/workflows/Rust/badge.svg)
+
 <img src="docs/rsboy.png" style="display:block;margin:0 auto" width=300px/>
 
 ## A gameboy emulator in Rust
@@ -16,12 +18,15 @@ Cause that hasnt been done before.
 Render image of Tetris main screen
 
 ## TODO
-- CREATE CONTEXT - DONE
-- CPU - WIP
-- MEM - WIP
+- CPU - Passing blargg's cpu_instr test suite, sans interrupts
+  - Pass "02-interrupts.gb"
+  - Create Github Action to test these gb files by reading from I/O port
+- MEM - Some memory access issues are still in place.
+  - Research, fix memory R/W issues
 - SOUND
-- GFX - WIP
-- OTHER STUFF
+  - This will be a long one. Low priority
+- GFX
+  - Still some inaccuracies. I will not be implementing the full PPU operations
 - WebAssembly Port
 
 ## References
