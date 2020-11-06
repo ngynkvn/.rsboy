@@ -130,7 +130,7 @@ impl Memory for Bus {
     fn read(&self, address: u16) -> u8 {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => self.bootrom[address as usize],
-            timer::DIV => self.timer.div,
+            timer::DIV => self.timer.div(),
             timer::TAC => self.timer.tac,
             timer::TMA => self.timer.tma,
             timer::TIMA => self.timer.tima,
@@ -160,7 +160,7 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
-            timer::DIV => self.timer.div = 0,
+            timer::DIV => {self.timer.update_internal(&mut self.int_flags, 0) },
             timer::TAC => self.timer.tac = 0b1111_1000 | value,
             timer::TIMA => self.timer.tima = value,
             timer::TMA => self.timer.tma = value,

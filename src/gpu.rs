@@ -247,6 +247,8 @@ impl GPU {
         }
     }
 
+    // This is a huge can of worms to correct emulate the state of the scanline during emulation.
+    // I would revisit this later.
     pub fn step(&mut self, flag: &mut u8) {
         match self.mode {
             GpuMode::OAM => self.check_clock(80, |gpu| gpu.mode = GpuMode::VRAM),

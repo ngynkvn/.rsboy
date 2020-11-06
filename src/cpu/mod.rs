@@ -54,6 +54,7 @@ impl CPU {
     }
 
     pub fn execute_op(&mut self, bus: &mut Bus) {
+        // println!("A:{:02X} F:{} BC:{:04X} DE:{:04x} HL:{:04x} SP:{:04x} PC:{:04x} (cy: {})", self.registers.a, self.registers.f_pretty(), self.registers.bc(), self.registers.de(), self.registers.hl(), self.registers.sp, self.op_addr, bus.timer.clock);
         match self.opcode {
             0x0 => self.noop(bus),
             0x1 => self.ld(Location::Register(BC), Location::Immediate(2), bus),
@@ -500,7 +501,7 @@ impl CPU {
     }
     // TODO hide this
     pub fn load_start_values(&mut self, bus: &mut Bus) {
-        self.registers.a = 0x01;
+        self.registers.a = 0x11;
         self.registers.f = 0xb0;
         self.registers.b = 0x00;
         self.registers.c = 0x13;
@@ -511,6 +512,7 @@ impl CPU {
         self.registers.sp = 0xfffe;
         self.registers.pc = 0x100;
         bus.in_bios = 1;
+        bus.timer.internal = 0x1ea0;
         bus.write(0xFF06, 0x00); // TMA
         bus.write(0xFF07, 0x00); // TAC
         bus.write(0xFF10, 0x80); // NR10

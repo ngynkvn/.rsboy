@@ -253,6 +253,12 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
                         emu.bus.keypresses &= !0b1000;
                         emu.bus.int_flags |= JOYPAD;
                     }
+                    Keycode::Z => {
+                        //A?
+                    }
+                    Keycode::B => {
+                        //B?
+                    }
                     key => {
                         println!("{:?}", key);
                     }
@@ -314,6 +320,13 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
             ui.text(format!("GPU Info:\n{}", emu.bus.gpu));
             if ui.button(im_str!("Hex Dump"), [200.0, 50.0]) {
                 emu.bus.gpu.hex_dump()
+            }
+            if ui.button(im_str!("Frame"), [200.0, 50.0]) {
+                println!("Frame");
+                let before = emu.bus.clock;
+                while emu.bus.clock < before + CYCLES_PER_FRAME {
+                    emu.emulate_step();
+                }
             }
         });
     }
