@@ -35,6 +35,7 @@ pub struct Bus {
     pub gpu: GPU,
     pub rom_start_signal: bool,
     pub timer: Timer,
+    pub io: String,
 }
 
 impl Display for Bus {
@@ -75,6 +76,7 @@ impl Bus {
             gpu: GPU::new(),
             rom_start_signal: false,
             timer: Timer::new(),
+            io: String::new(),
         };
 
         if let Ok(mut file) = File::open(bootrom_path.unwrap_or("dmg_boot.bin".into())) {
@@ -161,7 +163,9 @@ impl Memory for Bus {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
             timer::DIV => {self.timer.update_internal(&mut self.int_flags, 0) },
-            timer::TAC => self.timer.tac = 0b1111_1000 | value,
+            timer::TAC => {
+                self.timer.tac = 0b1111_1000 | value
+            },
             timer::TIMA => self.timer.tima = value,
             timer::TMA => self.timer.tma = value,
             0xff40 => self.gpu.lcdc = value,
@@ -209,7 +213,7 @@ impl Memory for Bus {
             }
             0xff02 => {
                 if value == 0x81 {
-                    // warn!("{}", char::from(self.memory[0xff01]));
+                    self.io.push(char::from(self.memory[0xff01]));
                 }
                 self.memory[address as usize] = value;
             }

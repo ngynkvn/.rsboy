@@ -6,16 +6,16 @@ use crate::instructions::INSTR_DATA_LENGTHS;
 use crate::instructions::INSTR_TABLE;
 use crate::{cpu::CPU, gpu::PixelData};
 
-#[derive(Clone, Debug)]
-pub struct IL {
+#[derive(Clone, Debug, Default)]
+pub struct InstrListing {
     pub instr: Instr,
     pub data: Option<u16>,
     pub addr: u16,
 }
 pub struct InstrList {
-    pub il: Vec<IL>,
+    pub il: Vec<InstrListing>,
 }
-pub fn gen_il(mem: &[u8]) -> Vec<IL> {
+pub fn gen_il(mem: &[u8]) -> Vec<InstrListing> {
     let mut view = vec![];
     let mut i = 0;
     while i < mem.len() {
@@ -28,7 +28,7 @@ pub fn gen_il(mem: &[u8]) -> Vec<IL> {
             2 => Some(u16::from_le_bytes([mem[i + 1], mem[i + 2]])),
             _ => unreachable!(),
         };
-        view.push(IL {
+        view.push(InstrListing {
             instr,
             data,
             addr: i as u16,
@@ -38,7 +38,7 @@ pub fn gen_il(mem: &[u8]) -> Vec<IL> {
     view
 }
 
-pub fn str_il(il: &[IL]) -> String {
+pub fn str_il(il: &[InstrListing]) -> String {
     il.iter().fold(String::new(), |res, il| {
         res + &format!("{:04x}: {:?} {:?}\n", il.addr, il.instr, il.data)
     })
@@ -55,6 +55,7 @@ pub struct Emu {
 impl Emu {
     pub fn emulate_step(&mut self) {
         self.prev = self.cpu.clone();
+        println!("{}", self.cpu);
         self.cpu.step(&mut self.bus);
     }
 
@@ -85,7 +86,7 @@ impl Emu {
         })
     }
 
-    pub fn gen_il(&self, mem: &[u8]) -> Vec<IL> {
+    pub fn gen_il(&self, mem: &[u8]) -> Vec<InstrListing> {
         let mut view = vec![];
         let mut i = 0;
         while i < mem.len() {
@@ -98,7 +99,7 @@ impl Emu {
                 2 => Some(u16::from_le_bytes([mem[i + 1], mem[i + 2]])),
                 _ => unreachable!(),
             };
-            view.push(IL {
+            view.push(InstrListing {
                 instr,
                 data,
                 addr: i as u16,
@@ -108,7 +109,7 @@ impl Emu {
         view
     }
 
-    pub fn view(&self) -> Vec<IL> {
+    pub fn view(&self) -> Vec<InstrListing> {
         let pc = self.cpu.op_addr;
         let mem = if self.bus.in_bios == 0 {
             &self.bus.bootrom[..]

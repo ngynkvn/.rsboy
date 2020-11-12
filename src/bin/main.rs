@@ -1,12 +1,18 @@
 extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
-use std::{collections::VecDeque, error::Error, path::PathBuf};
 
-use cpu::GB_CYCLE_SPEED;
-use imgui::{im_str, Context, Slider, Ui};
+use crate::constants::GB_CYCLE_SPEED;
+use crate::constants::CYCLES_PER_FRAME;
+use crate::constants::FRAME_TIME;
+use crate::constants::WINDOW_HEIGHT;
+use crate::constants::WINDOW_WIDTH;
+use crate::constants::MAP_WIDTH;
 
-use imgui_opengl_renderer::Renderer;
+use crate::debugger::Imgui;
+use imgui::Slider;
+use imgui::im_str;
+
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
@@ -15,18 +21,17 @@ use sdl2::video::Window;
 use sdl2::{event::Event, video::GLContext};
 use std::time::Duration;
 use std::time::Instant;
+use std::path::PathBuf;
 
 //File IO
 use log::info;
 
 use gpu::{PixelData};
-use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, emu::IL};
+use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, debugger};
 use structopt::StructOpt;
 
 use rust_emu::*;
-
-pub const CYCLES_PER_FRAME: usize = GB_CYCLE_SPEED / 60;
-const FRAME_TIME: Duration = Duration::from_nanos(16670000);
+use crate::constants::MaybeErr;
 
 #[derive(StructOpt)]
 #[structopt(name = ".rsboy", about = "Rust emulator")]
@@ -41,7 +46,6 @@ struct Settings {
     repl: bool,
 }
 
-type MaybeErr<T> = Result<T, Box<dyn Error>>;
 
 fn setup_logger() -> MaybeErr<()> {
     fern::Dispatch::new()
@@ -64,101 +68,17 @@ fn setup_logger() -> MaybeErr<()> {
 
 
 fn main() -> MaybeErr<()> {
+    // When the program starts up, parse command line arguments and setup additional systems.
     let settings = Settings::from_args();
     if let Some(_output) = settings.logfile {
         info!("Setup logging");
         setup_logger()?;
     }
     info!("Running SDL Main");
-    sdl_main(settings.input, settings.bootrom, settings.repl)
-}
-
-// fn calc_relative_error(x: f32, y: f32) -> f32 {
-//     (x - y) * 100.0 / x
-// }
-#[derive(Default)]
-struct Info {
-    frame_times: VecDeque<f32>,
-    il: Vec<IL>,
-}
-
-struct Imgui<'a> {
-    imgui: Context,
-    renderer: Renderer,
-    window: &'a Window,
-    _gl_context: GLContext,
-    info: Info,
-}
-
-impl<'a> Imgui<'a> {
-    fn new(window: &'a Window) -> MaybeErr<Self> {
-        let mut imgui = imgui::Context::create();
-        imgui.fonts().build_rgba32_texture();
-        let _gl_context = window.gl_create_context()?;
-        gl::load_with(|s| window.subsystem().gl_get_proc_address(s) as _);
-
-        let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| {
-            window.subsystem().gl_get_proc_address(s) as _
-        });
-
-        Ok(Self {
-            imgui,
-            renderer,
-            window,
-            _gl_context,
-            info: Default::default(),
-        })
-    }
-    fn capture_io(&mut self, event_pump: &mut sdl2::EventPump) {
-        let io = self.imgui.io_mut();
-        let state = event_pump.mouse_state();
-        let (width, height) = self.window.drawable_size();
-        io.display_size = [width as f32, height as f32];
-        io.mouse_down = [
-            state.left(),
-            state.right(),
-            state.middle(),
-            state.x1(),
-            state.x2(),
-        ];
-        io.mouse_pos = [state.x() as f32, state.y() as f32];
-    }
-    fn frame<F: FnOnce(&mut Info, &Ui)>(&mut self, event_pump: &mut sdl2::EventPump, f: F) {
-        self.capture_io(event_pump);
-        let ui = self.imgui.frame();
-        unsafe {
-            gl::ClearColor(0.2, 0.2, 0.2, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-        }
-        f(&mut self.info, &ui);
-        self.renderer.render(ui);
-        self.window.gl_swap_window();
-    }
-    fn add_frame_time(&mut self, time: f32) {
-        self.info.frame_times.push_back(time * 1000.0);
-        if self.info.frame_times.len() > 200 {
-            self.info.frame_times.pop_front();
-        }
-    }
-}
-
-use std::thread;
-use rustyline::error::ReadlineError;
-
-enum REPL {
-    Kill
-}
-
-fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()> {
-    let mut emu = Emu::from_path(input, bootrom)?;
+    let mut emu = Emu::from_path(settings.input, settings.bootrom)?;
     let context = sdl2::init()?;
-    let video = context.video()?;
-    {
-        let gl_attr = video.gl_attr();
-        gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
-        gl_attr.set_context_version(3, 0);
-    }
 
+    let video = context.video()?;
     let mut rsboy = video
         .window(".rsboy", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
         .position_centered()
@@ -166,9 +86,6 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
         .build()?
         .into_canvas()
         .build()?;
-    let tc = rsboy.texture_creator();
-    let mut texture =
-        tc.create_texture_streaming(PixelFormatEnum::RGBA32, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
     let debugger = video
         .window("debugger", 512, 512)
@@ -177,7 +94,26 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
         .resizable()
         .build()?;
 
+    // Wrapper struct for imgui to handle frame-by-frame rendering.
     let mut debugger = Imgui::new(&debugger)?;
+
+    sdl_main(&mut rsboy, &mut debugger, &context, &mut emu)?;
+    map_viewer(&context, &emu)?;
+    vram_viewer(&context, &emu)
+}
+
+fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, context: &sdl2::Sdl, emu: &mut Emu) -> MaybeErr<()> {
+    // Setup gl attributes, then create the texture that we will copy our framebuffer to.
+    let video_subsystem = context.video()?;
+    let gl_attr = video_subsystem.gl_attr();
+    gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
+    gl_attr.set_context_version(3, 0);
+
+    let tc = video.texture_creator();
+    let mut texture =
+        tc.create_texture_streaming(PixelFormatEnum::RGBA32, WINDOW_WIDTH, WINDOW_HEIGHT)?;
+
+    // Some UI state
     let mut cycle_jump = 0;
     let mut pause = true;
 
@@ -186,40 +122,8 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
     let il = gen_il(&emu.bus.memory);
     debugger.info.il = il;
 
-    use std::sync::mpsc::channel;
-
-    let (sender, receiver) = channel();
-
-    if repl {
-        thread::spawn(move ||{
-            let mut rl = rustyline::Editor::<()>::new();
-            loop {
-                let readline = rl.readline(">> ");
-                match readline {
-                    Ok(line) => {
-                        println!("Line: {:?}", line)
-                    },
-                    Err(ReadlineError::Interrupted) => {
-                        println!("CTRL-C");
-                        break
-                    },
-                    Err(ReadlineError::Eof) => {
-                        println!("CTRL-D");
-                        break
-                    },
-                    Err(_) => println!("No input"),
-                }
-            }
-            // Send a kill.
-            sender.send(REPL::Kill);
-        });
-    }
-
-    'running: loop {
+    loop {
         let now = Instant::now();
-        if let Ok(REPL::Kill) = receiver.try_recv() {
-            break;
-        }
         for event in event_pump.poll_iter() {
             emu.bus.directions |= 0x0F;
             emu.bus.keypresses |= 0x0F;
@@ -228,7 +132,7 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
                 | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
-                } => break 'running,
+                } => return Ok(()),
                 Event::KeyDown {
                     keycode: Some(keycode),
                     ..
@@ -284,8 +188,8 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
             emu.bus.gpu.render(&mut emu.framebuffer);
             let (h, v) = emu.bus.gpu.scroll();
             texture.copy_window(h, v, &emu.framebuffer);
-            rsboy.copy(&texture, None, None).unwrap();
-            rsboy.present();
+            video.copy(&texture, None, None).unwrap();
+            video.present();
             delay_min(time);
         }
         let after_delay = now.elapsed();
@@ -330,16 +234,15 @@ fn sdl_main(input: PathBuf, bootrom: Option<PathBuf>, repl: bool) -> MaybeErr<()
             }
         });
     }
-    std::mem::drop(event_pump);
-
-    map_viewer(&context, &emu)?;
-    vram_viewer(&context, &emu)?;
-    Ok(())
 }
 
-const WINDOW_HEIGHT: u32 = 144;
-const WINDOW_WIDTH: u32 = 160;
-const MAP_WIDTH: u32 = 256;
+fn delay_min(elapsed: Duration) {
+    if let Some(time) = FRAME_TIME.checked_sub(elapsed) {
+        spin_sleep::sleep(time);
+    }
+}
+
+
 
 trait GBWindow {
     fn copy_window(&mut self, h: u32, v: u32, buffer: &PixelData);
@@ -373,12 +276,6 @@ impl GBWindow for Texture<'_> {
             }
         })
         .unwrap();
-    }
-}
-
-fn delay_min(elapsed: Duration) {
-    if let Some(time) = FRAME_TIME.checked_sub(elapsed) {
-        spin_sleep::sleep(time);
     }
 }
 

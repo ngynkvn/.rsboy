@@ -12,7 +12,6 @@ use value::Value;
 use value::Value::*;
 use value::Writable;
 
-pub const GB_CYCLE_SPEED: usize = 4194304;
 #[derive(Debug, Clone)]
 pub enum CPUState {
     Running,
@@ -54,7 +53,6 @@ impl CPU {
     }
 
     pub fn execute_op(&mut self, bus: &mut Bus) {
-        // println!("A:{:02X} F:{} BC:{:04X} DE:{:04x} HL:{:04x} SP:{:04x} PC:{:04x} (cy: {})", self.registers.a, self.registers.f_pretty(), self.registers.bc(), self.registers.de(), self.registers.hl(), self.registers.sp, self.op_addr, bus.timer.clock);
         match self.opcode {
             0x0 => self.noop(bus),
             0x1 => self.ld(Location::Register(BC), Location::Immediate(2), bus),
@@ -340,6 +338,9 @@ impl CPU {
         let hi = self.next_u8(bus);
         u16::from_le_bytes([lo, hi])
     }
+
+    // ld a, b
+    // cpu.parse_op | read_from(location) | write_to(location)
 
     pub fn read_from(&mut self, location: Location, bus: &mut Bus) -> Value {
         match location {

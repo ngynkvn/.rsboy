@@ -7,3 +7,5 @@ pub mod registers;
 pub mod texture;
 // pub mod tui;
 pub mod timer;
+pub mod debugger;
+pub mod constants;

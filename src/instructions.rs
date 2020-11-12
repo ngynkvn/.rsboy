@@ -434,6 +434,12 @@ pub enum Instr {
     RST(usize),
 }
 
+impl Default for Instr {
+    fn default() -> Instr {
+        NOOP
+    }
+}
+
 impl Into<u8> for Instr {
     fn into(self) -> u8 {
         match self {

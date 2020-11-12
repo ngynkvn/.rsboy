@@ -256,27 +256,16 @@ impl RegisterState {
 pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
     ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
 }
-
 impl fmt::Display for RegisterState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            concat!(
-                "AF: 0x{:04X}\n",
-                "BC: 0x{:04X}\n",
-                "DE: 0x{:04X}\n",
-                "HL: 0x{:04X}\n",
-                "SP: 0x{:04X}\n",
-                "PC: 0x{:04X}\n"
-            ),
-            self.af(),
-            self.bc(),
-            self.de(),
-            self.hl(),
-            self.sp(),
-            self.pc()
-        )
-    }
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(
+      f,
+      "PC:{:04x} SP:{:04x} \
+       A:{:02x} F:{:04b} B:{:02x} C:{:02x} \
+       D:{:02x} E:{:02x} H:{:02x} L:{:02x}",
+      self.pc, self.sp, self.a, self.f, self.b, self.c, self.d, self.e, self.h, self.l
+    )
+  }
 }
 
 #[cfg(test)]
