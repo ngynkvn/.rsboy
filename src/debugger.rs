@@ -10,7 +10,8 @@ use imgui::im_str;
 
 #[derive(Default)]
 pub struct Info {
-    pub frame_times: VecDeque<f32>,
+    pub frame_times: Vec<f32>,
+    f_i: usize,
     pub il: Vec<InstrListing>,
 }
 
@@ -33,12 +34,15 @@ impl<'a> Imgui<'a> {
             window.subsystem().gl_get_proc_address(s) as _
         });
 
+        let mut info: Info = Default::default();
+        info.frame_times.resize(200, 0.0);
+
         Ok(Self {
             imgui,
             renderer,
             window,
             _gl_context,
-            info: Default::default(),
+            info,
         })
     }
     pub fn capture_io(&mut self, event_pump: &mut sdl2::EventPump) {
@@ -67,9 +71,8 @@ impl<'a> Imgui<'a> {
         self.window.gl_swap_window();
     }
     pub fn add_frame_time(&mut self, time: f32) {
-        self.info.frame_times.push_back(time * 1000.0);
-        if self.info.frame_times.len() > 200 {
-            self.info.frame_times.pop_front();
-        }
+        self.info.frame_times[self.info.f_i] = time * 1000.0;
+        self.info.f_i += 1;
+        self.info.f_i %= self.info.frame_times.capacity();
     }
 }

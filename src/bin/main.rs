@@ -183,22 +183,25 @@ fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, cont
             delta_clock = emu.bus.clock - before;
         }
         // Render to framebuffer and copy.
-        {
-            let time = now.elapsed();
-            emu.bus.gpu.render(&mut emu.framebuffer);
-            let (h, v) = emu.bus.gpu.scroll();
-            texture.copy_window(h, v, &emu.framebuffer);
-            video.copy(&texture, None, None).unwrap();
-            video.present();
-            delay_min(time);
+        emu.bus.gpu.render(&mut emu.framebuffer);
+        let (h, v) = emu.bus.gpu.scroll();
+        texture.copy_window(h, v, &emu.framebuffer);
+        video.copy(&texture, None, None).unwrap();
+        video.present();
+
+        // Delay a minimum of 16.67 milliseconds (60 fps).
+        if let Some(time) = FRAME_TIME.checked_sub(now.elapsed()) {
+            spin_sleep::sleep(time);
         }
+
+        // Log frame time
         let after_delay = now.elapsed();
         debugger.add_frame_time(after_delay.as_secs_f32());
 
         //ImGui display frame.
         debugger.frame(&mut event_pump, |info, ui| {
             ui.text(format!("Frame time: {:?}", after_delay));
-            let i = info.frame_times.make_contiguous();
+            let i = info.frame_times.as_slice();
             ui.plot_lines(im_str!("Frame times"), i)
                 .graph_size([300.0, 100.0])
                 .build();
@@ -233,12 +236,6 @@ fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, cont
                 }
             }
         });
-    }
-}
-
-fn delay_min(elapsed: Duration) {
-    if let Some(time) = FRAME_TIME.checked_sub(elapsed) {
-        spin_sleep::sleep(time);
     }
 }
 
@@ -323,7 +320,6 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<(), String> {
         }
 
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-        // The rest of the game loop goes here...
     }
 
     Ok(())

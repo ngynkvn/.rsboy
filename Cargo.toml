@@ -9,6 +9,10 @@ edition = "2018"
 [[bin]]
 name = "main"
 
+[profile.release]
+debug = true
+
+
 [dependencies]
 sdl2 = "0.32.2"
 fern = "0.6.0"
