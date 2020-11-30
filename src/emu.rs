@@ -54,8 +54,10 @@ pub struct Emu {
 
 impl Emu {
     pub fn emulate_step(&mut self) {
-        self.prev = self.cpu.clone();
-        // println!("{}", self.cpu);
+        // self.prev = self.cpu.clone();
+        // if self.cpu.registers.pc >= 0x4936 {
+        //     println!("{}", self.cpu);
+        // }
         self.cpu.step(&mut self.bus);
     }
 

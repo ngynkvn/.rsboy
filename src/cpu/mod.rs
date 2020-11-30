@@ -453,8 +453,6 @@ impl CPU {
         } else if fired & TIMER != 0 {
             bus.ack_interrupt(TIMER);
             self.registers.pc = 0x50;
-            // println!("{}", self);
-            // panic!();
             let opcode = self.next_u8(bus);
             self.opcode = opcode;
         } else if fired & SERIAL != 0 {

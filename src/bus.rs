@@ -106,6 +106,7 @@ impl Bus {
         self.int_flags &= !flag;
     }
 
+    // Cycle refers to 1 T-cycle
     pub fn generic_cycle(&mut self) {
         self.clock += 1;
         self.gpu.cycle(&mut self.int_flags);
