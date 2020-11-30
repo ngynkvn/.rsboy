@@ -49,27 +49,20 @@ pub struct Emu {
     pub cpu: CPU,
     pub bus: Bus,
     pub framebuffer: Box<PixelData>,
-    prev: CPU,
 }
 
 impl Emu {
     pub fn emulate_step(&mut self) {
-        // self.prev = self.cpu.clone();
-        // if self.cpu.registers.pc >= 0x4936 {
-        //     println!("{}", self.cpu);
-        // }
         self.cpu.step(&mut self.bus);
     }
 
     pub fn new(rom: Vec<u8>, bootrom: Option<PathBuf>) -> Emu {
         let cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
-        let prev = cpu.clone();
         Emu {
             cpu,
             bus,
             framebuffer: Box::new([[0; 256]; 256]),
-            prev,
         }
     }
 
@@ -79,12 +72,10 @@ impl Emu {
         file.read_to_end(&mut rom)?;
         let mut cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
-        let prev = cpu.clone();
         Ok(Emu {
             cpu,
             bus,
             framebuffer: Box::new([[0; 256]; 256]),
-            prev,
         })
     }
 
