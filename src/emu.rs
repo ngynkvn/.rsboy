@@ -55,7 +55,7 @@ pub struct Emu {
 impl Emu {
     pub fn emulate_step(&mut self) {
         self.prev = self.cpu.clone();
-        println!("{}", self.cpu);
+        // println!("{}", self.cpu);
         self.cpu.step(&mut self.bus);
     }
 

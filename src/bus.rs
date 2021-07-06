@@ -6,8 +6,8 @@ use crate::gpu::VRAM_START;
 use crate::timer;
 use crate::timer::Timer;
 use std::io::Read;
-use std::{fmt::Display, fs::File};
 use std::path::PathBuf;
+use std::{fmt::Display, fs::File};
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -54,7 +54,6 @@ impl Display for Bus {
         ))
     }
 }
-
 
 impl Bus {
     pub fn new(rom_vec: Vec<u8>, bootrom_path: Option<PathBuf>) -> Self {
@@ -162,10 +161,8 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
-            timer::DIV => {self.timer.update_internal(&mut self.int_flags, 0) },
-            timer::TAC => {
-                self.timer.tac = 0b1111_1000 | value
-            },
+            timer::DIV => self.timer.update_internal(&mut self.int_flags, 0),
+            timer::TAC => self.timer.tac = 0b1111_1000 | value,
             timer::TIMA => self.timer.tima = value,
             timer::TMA => self.timer.tma = value,
             0xff40 => self.gpu.lcdc = value,
