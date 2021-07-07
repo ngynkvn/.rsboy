@@ -1,4 +1,3 @@
-
 use crate::{bus::Bus, instructions::Register, registers::RegisterState};
 
 #[derive(Debug, PartialEq, Clone, Copy)]

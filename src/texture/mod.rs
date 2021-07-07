@@ -7,7 +7,7 @@ fn pixel(value: u8) -> u32 {
         0b01 => 0x88C070FF, // Light Gray
         0b10 => 0x346856FF, // Dark Gray
         0b11 => 0x081820FF, // Black
-        _ => unreachable!("Are you sure you're reading byte data?"),
+        _ => 0,
     }
 }
 
@@ -58,22 +58,23 @@ impl Tile {
     // PERFORMANCE ISSUE
     pub fn write(palette: u8, pixels: &mut PixelData, location: (usize, usize), tile_data: &[u8]) {
         let (mapx, mapy) = location;
-        for (y, d) in tile_data.chunks_exact(2).enumerate() {
-            //Each row in tile is pair of 2 bytes.
-            let y = mapy * 8 + y;
+        for i in 0..8 {
+            let y = (mapy * 8) + i;
+
             let pixels = &mut pixels[y];
-            if let [mut lo, mut hi] = d {
-                let x = mapx * 8;
-                for x in (x..x + 8).rev() {
-                    let lo_b = lo & 1;
-                    let hi_b = hi & 1;
-                    let index = (hi_b << 2) | lo_b << 1;
-                    let color = (palette >> index) & 0b11;
-                    let c = pixel(color);
-                    pixels[x] = c;
-                    lo >>= 1;
-                    hi >>= 1;
-                }
+
+            let mut lo = tile_data[i * 2];
+            let mut hi = tile_data[i * 2 + 1];
+            let x = mapx * 8;
+            for offset in 0..8 {
+                let lo_b = lo & 1;
+                let hi_b = hi & 1;
+                let index = (hi_b << 2) | lo_b << 1;
+                let color = (palette >> index) & 0b11;
+                let c = pixel(color);
+                pixels[x + 7 - offset] = c;
+                lo >>= 1;
+                hi >>= 1;
             }
         }
     }

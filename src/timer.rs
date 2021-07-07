@@ -69,7 +69,11 @@ impl Display for Timer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
             "DIV:{:02x}\nTIMA:{:02x}\nTMA:{:02x}\nTAC:{:08b}\n{:016b}",
-            self.div(), self.tima, self.tma, self.tac, self.internal,
+            self.div(),
+            self.tima,
+            self.tma,
+            self.tac,
+            self.internal,
         ))
     }
 }

@@ -1,12 +1,12 @@
 extern crate imgui_opengl_renderer;
-use imgui_opengl_renderer::Renderer;
-use std::collections::VecDeque;
-use sdl2::video::Window;
-use sdl2::{event::Event, video::GLContext};
-use imgui::{Context, Slider, Ui};
 use crate::constants::MaybeErr;
 use crate::emu::InstrListing;
 use imgui::im_str;
+use imgui::{Context, Slider, Ui};
+use imgui_opengl_renderer::Renderer;
+use sdl2::video::Window;
+use sdl2::{event::Event, video::GLContext};
+use std::collections::VecDeque;
 
 #[derive(Default)]
 pub struct Info {

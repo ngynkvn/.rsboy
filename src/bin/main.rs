@@ -2,16 +2,17 @@ extern crate gl;
 extern crate imgui_opengl_renderer;
 //SDL
 
-use crate::constants::GB_CYCLE_SPEED;
 use crate::constants::CYCLES_PER_FRAME;
 use crate::constants::FRAME_TIME;
+use crate::constants::GB_CYCLE_SPEED;
+use crate::constants::MAP_WIDTH;
 use crate::constants::WINDOW_HEIGHT;
 use crate::constants::WINDOW_WIDTH;
-use crate::constants::MAP_WIDTH;
+use std::net::SocketAddr;
 
 use crate::debugger::Imgui;
-use imgui::Slider;
 use imgui::im_str;
+use imgui::Slider;
 
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
@@ -19,19 +20,19 @@ use sdl2::rect::Rect;
 use sdl2::render::Texture;
 use sdl2::video::Window;
 use sdl2::{event::Event, video::GLContext};
+use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
-use std::path::PathBuf;
 
 //File IO
 use log::info;
 
-use gpu::{PixelData};
-use rust_emu::{cpu::JOYPAD, emu::gen_il, emu::Emu, debugger};
+use gpu::PixelData;
+use rust_emu::{cpu::JOYPAD, debugger, emu::gen_il, emu::Emu};
 use structopt::StructOpt;
 
-use rust_emu::*;
 use crate::constants::MaybeErr;
+use rust_emu::*;
 
 #[derive(StructOpt)]
 #[structopt(name = ".rsboy", about = "Rust emulator")]
@@ -45,7 +46,6 @@ struct Settings {
     #[structopt(short = "-r")]
     repl: bool,
 }
-
 
 fn setup_logger() -> MaybeErr<()> {
     fern::Dispatch::new()
@@ -65,7 +65,6 @@ fn setup_logger() -> MaybeErr<()> {
         .apply()
         .map_err(|x| x.into())
 }
-
 
 fn main() -> MaybeErr<()> {
     // When the program starts up, parse command line arguments and setup additional systems.
@@ -102,8 +101,27 @@ fn main() -> MaybeErr<()> {
     vram_viewer(&context, &emu)
 }
 
-fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, context: &sdl2::Sdl, emu: &mut Emu) -> MaybeErr<()> {
+fn sdl_main(
+    video: &mut sdl2::render::Canvas<Window>,
+    debugger: &mut Imgui,
+    context: &sdl2::Sdl,
+    emu: &mut Emu,
+) -> MaybeErr<()> {
     // Setup gl attributes, then create the texture that we will copy our framebuffer to.
+    use minitrace::*;
+    use minitrace_jaeger::Reporter;
+
+    let collector = {
+        let (root_span, collector) = Span::root("root");
+        let _span_guard = root_span.enter();
+
+        let _local_span_guard = LocalSpan::enter("child");
+
+        // do something ...
+
+        collector
+    };
+
     let video_subsystem = context.video()?;
     let gl_attr = video_subsystem.gl_attr();
     gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
@@ -237,9 +255,30 @@ fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, cont
             }
         });
     }
+
+    let spans: Vec<span::Span> = collector.collect();
+
+    let socket = SocketAddr::new("127.0.0.1".parse().unwrap(), 6831);
+
+    const TRACE_ID: u64 = 42;
+    const SPAN_ID_PREFIX: u32 = 42;
+    const ROOT_PARENT_SPAN_ID: u64 = 0;
+    let bytes = Reporter::encode(
+        String::from("service name"),
+        TRACE_ID,
+        ROOT_PARENT_SPAN_ID,
+        SPAN_ID_PREFIX,
+        &spans,
+    )
+    .expect("encode error");
+    Reporter::report(socket, &bytes).expect("report error");
 }
 
-
+fn delay_min(elapsed: Duration) {
+    if let Some(time) = FRAME_TIME.checked_sub(elapsed) {
+        spin_sleep::sleep(time);
+    }
+}
 
 trait GBWindow {
     fn copy_window(&mut self, h: u32, v: u32, buffer: &PixelData);

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
-use std::path::PathBuf;
 use std::error::Error;
+use std::path::PathBuf;
 use std::time::Duration;
 
 // Constants for cycle times
