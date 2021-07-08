@@ -4,11 +4,11 @@ extern crate imgui_opengl_renderer;
 
 use crate::constants::CYCLES_PER_FRAME;
 use crate::constants::FRAME_TIME;
-use crate::constants::GB_CYCLE_SPEED;
+
 use crate::constants::MAP_WIDTH;
 use crate::constants::WINDOW_HEIGHT;
 use crate::constants::WINDOW_WIDTH;
-use std::net::SocketAddr;
+
 
 use crate::debugger::Imgui;
 use imgui::im_str;
@@ -19,7 +19,7 @@ use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::Texture;
 use sdl2::video::Window;
-use sdl2::{event::Event, video::GLContext};
+use sdl2::{event::Event};
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -108,8 +108,8 @@ fn sdl_main(
     emu: &mut Emu,
 ) -> MaybeErr<()> {
     // Setup gl attributes, then create the texture that we will copy our framebuffer to.
-    use minitrace::*;
-    use minitrace_jaeger::Reporter;
+    
+    
 
     let video_subsystem = context.video()?;
     let gl_attr = video_subsystem.gl_attr();

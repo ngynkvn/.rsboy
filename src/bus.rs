@@ -57,9 +57,9 @@ impl Display for Bus {
 
 impl Bus {
     pub fn new(rom_vec: Vec<u8>, bootrom_path: Option<PathBuf>) -> Self {
-        let mut memory = [0; 0x10000];
+        let memory = [0; 0x10000];
         let mut buffer = Vec::new();
-        let mut bootrom = [0; 0x100];
+        let bootrom = [0; 0x100];
 
         let mut bus = Bus {
             memory,

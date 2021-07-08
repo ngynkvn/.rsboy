@@ -1,5 +1,5 @@
 use crate::instructions::Bus;
-use crate::instructions::Location;
+
 use crate::instructions::CPU;
 
 use super::Flag;

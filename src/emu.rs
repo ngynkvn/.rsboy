@@ -72,7 +72,7 @@ impl Emu {
         let mut file = File::open(input)?;
         let mut rom = Vec::new();
         file.read_to_end(&mut rom)?;
-        let mut cpu = CPU::new();
+        let cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
         Ok(Emu {
             cpu,
@@ -111,7 +111,7 @@ impl Emu {
         } else {
             &self.bus.memory[..]
         };
-        let il = gen_il(&mem);
+        let il = gen_il(mem);
         il.chunks(10)
             .find(|chunk| chunk.iter().any(|e| e.addr == pc))
             .unwrap_or_else(|| {

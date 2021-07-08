@@ -6,6 +6,6 @@ SDL2*
 www
 dist
 *gb
-*bin
+./*bin
 *log
 ghidra
