@@ -135,3 +135,33 @@ pub fn swapped_nibbles(byte: u8) -> u8 {
     let [hi, lo] = [byte >> 4, byte & 0xF];
     (lo << 4) | hi
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        bus::Bus,
+        cpu::CPU,
+        instructions::{Instr, Location},
+    };
+
+    // #[test]
+    // fn ticks_cb_instr() {
+    //     for instr in 0x00..=0xFF {
+    //         let mut cpu = CPU::new();
+    //         let mut bus = Bus::new(vec![], None);
+    //         let before = bus.clock;
+    //         cpu.registers.pc = 0;
+    //         bus.in_bios = 1;
+    //         bus.memory[0x00] = instr;
+    //         bus.generic_cycle();
+    //         cpu.opcode = Instr::CB.into();
+    //         cpu.execute_op(&mut bus);
+    //         let after = bus.clock;
+    //         if let Location::Register(_) = cb_location(instr) {
+    //             assert_eq!(after - before, 2, "Opcode failed: {:02x}", instr);
+    //         } else {
+    //             assert_eq!(after - before, 4, "Opcode failed: {:02x}", instr);
+    //         }
+    //     }
+    // }
+}

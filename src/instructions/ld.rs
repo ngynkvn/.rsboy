@@ -31,3 +31,23 @@ pub fn ldsp(cpu: &mut CPU, bus: &mut Bus) {
     cpu.registers.set_hf(half_carry);
     cpu.registers.set_cf(carry);
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        bus::Bus,
+        cpu::CPU,
+        instructions::{ld, Register, Register::*},
+    };
+
+    #[test]
+    fn _ld() {
+        let mut cpu = CPU::new();
+        let mut bus = Bus::new(vec![], None);
+        cpu.registers.a = 5;
+        cpu.registers.b = 8;
+        assert_eq!(cpu.registers.a, 0x5);
+        ld::ld((Register(A), Register(B)), &mut cpu, &mut bus);
+        assert_eq!(cpu.registers.a, 0x8);
+    }
+}

@@ -71,3 +71,41 @@ pub fn call(jump_type: Option<Flag>, cpu: &mut CPU, bus: &mut Bus) {
         cpu.registers.pc = address;
     });
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        bus::Bus,
+        cpu::CPU,
+        instructions::{jp::jr, Flag},
+    };
+
+    #[test]
+    fn _jr() {
+        let mut cpu = CPU::new();
+        let mut bus = Bus::new(vec![], None);
+        cpu.registers.pc = 0x000A + 1;
+        bus.bootrom[0x0007] = 0x76;
+        bus.bootrom[0x000A] = 0x20;
+        bus.bootrom[0x000B] = 0xFB; // -3
+
+        assert_eq!(cpu.registers.pc, 0x000B);
+        jr(Some(Flag::FlagNZ), &mut cpu, &mut bus);
+        assert_eq!(cpu.registers.pc, 0x0007);
+    }
+
+    // Enumerate all possible values for JR
+    fn _jr2() {
+        for i in 0..0xFF {
+            let mut cpu = CPU::new();
+            let mut bus = Bus::new(vec![], None);
+            cpu.registers.pc = 0x000A + 1;
+            bus.bootrom[i] = i as u8;
+            bus.bootrom[0x000A] = 0x20;
+            bus.bootrom[0x000B] = i as u8;
+            assert_eq!(cpu.registers.pc, 0x000B);
+            jr(Some(Flag::FlagNZ), &mut cpu, &mut bus);
+            assert_eq!(cpu.registers.pc, i as u16);
+        }
+    }
+}
