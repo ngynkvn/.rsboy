@@ -9,9 +9,6 @@ edition = "2018"
 [[bin]]
 name = "main"
 
-[profile.release]
-debug = true
-
 
 [dependencies]
 sdl2 = "0.32.2"
@@ -42,4 +39,4 @@ opt-level = 3
 incremental = true
 
 [profile.release]
-debug = 1
+debug = true
