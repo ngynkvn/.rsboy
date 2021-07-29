@@ -37,5 +37,9 @@ criterion = "0.3"
 name = "emu"
 harness = false
 
+[profile.dev]
+opt-level = 3
+incremental = true
+
 [profile.release]
 debug = 1

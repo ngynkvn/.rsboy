@@ -55,7 +55,7 @@ impl Tile {
         Self { texture }
     }
 
-    // PERFORMANCE ISSUE
+    // PERFORMANCE ISSUE -- sike
     pub fn write(palette: u8, pixels: &mut PixelData, location: (usize, usize), tile_data: &[u8]) {
         let (mapx, mapy) = location;
         for i in 0..8 {
