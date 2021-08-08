@@ -9,17 +9,16 @@ use crate::constants::MAP_WIDTH;
 use crate::constants::WINDOW_HEIGHT;
 use crate::constants::WINDOW_WIDTH;
 
-
 use crate::debugger::Imgui;
 use imgui::im_str;
 use imgui::Slider;
 
+use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::Texture;
 use sdl2::video::Window;
-use sdl2::{event::Event};
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -43,8 +42,6 @@ struct Settings {
     logfile: Option<PathBuf>,
     #[structopt(short = "-b")]
     bootrom: Option<PathBuf>,
-    #[structopt(short = "-r")]
-    repl: bool,
 }
 
 fn setup_logger() -> MaybeErr<()> {
@@ -108,8 +105,6 @@ fn sdl_main(
     emu: &mut Emu,
 ) -> MaybeErr<()> {
     // Setup gl attributes, then create the texture that we will copy our framebuffer to.
-    
-    
 
     let video_subsystem = context.video()?;
     let gl_attr = video_subsystem.gl_attr();
@@ -243,12 +238,6 @@ fn sdl_main(
                 }
             }
         });
-    }
-}
-
-fn delay_min(elapsed: Duration) {
-    if let Some(time) = FRAME_TIME.checked_sub(elapsed) {
-        spin_sleep::sleep(time);
     }
 }
 

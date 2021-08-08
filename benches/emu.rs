@@ -1,14 +1,17 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rust_emu::emu::Emu;
-use rust_emu::instructions::INSTR_TABLE;
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("Emu step", |b| {
         b.iter(|| {
-            let mut emu = Emu::new(vec![]);
+            let mut emu = Emu::from_bytes(
+                include_bytes!("../Dr. Mario (JU) (V1.1).gb"),
+                include_bytes!("../dmg_boot.bin"),
+            )
+            .unwrap();
             let mut bus = emu.bus;
             bus.in_bios = 1;
-            for _instr in INSTR_TABLE.iter() {
+            for _ in 0..999999 {
                 // emu.cpu.opcode = instr;
                 emu.cpu.step(&mut bus);
             }

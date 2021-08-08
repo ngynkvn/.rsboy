@@ -68,6 +68,16 @@ impl Emu {
         }
     }
 
+    pub fn from_bytes(bytes: &[u8], bootrom: &[u8]) -> Result<Emu, Box<dyn Error>> {
+        let cpu = CPU::new();
+        let bus = Bus::from_bytes(bytes, bootrom);
+        Ok(Emu {
+            cpu,
+            bus,
+            framebuffer: Box::new([[0; 256]; 256]),
+        })
+    }
+
     pub fn from_path(input: PathBuf, bootrom: Option<PathBuf>) -> Result<Emu, Box<dyn Error>> {
         let mut file = File::open(input)?;
         let mut rom = Vec::new();

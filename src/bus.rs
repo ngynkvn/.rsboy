@@ -5,7 +5,7 @@ use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
 use crate::timer;
 use crate::timer::Timer;
-use std::io::Read;
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::{fmt::Display, fs::File};
 
@@ -58,7 +58,6 @@ impl Display for Bus {
 impl Bus {
     pub fn new(rom_vec: Vec<u8>, bootrom_path: Option<PathBuf>) -> Self {
         let memory = [0; 0x10000];
-        let mut buffer = Vec::new();
         let bootrom = [0; 0x100];
 
         let mut bus = Bus {
@@ -79,17 +78,43 @@ impl Bus {
         };
 
         if let Ok(mut file) = File::open(bootrom_path.unwrap_or("dmg_boot.bin".into())) {
-            file.read_to_end(&mut buffer)
-                .expect("Couldn't read the file.");
-            bus.bootrom[..].clone_from_slice(&buffer[..]);
+            std::io::copy(&mut file, &mut Cursor::new(&mut bus.bootrom[..])).unwrap();
         } else {
             bus.in_bios = 1;
             bus.rom_start_signal = true;
-            println!("No bootrom provided.");
+            eprintln!("No bootrom provided.");
         }
-        bus.memory[..rom_vec.len()].clone_from_slice(&rom_vec[..]);
+        std::io::copy(
+            &mut Cursor::new(&rom_vec[..]),
+            &mut Cursor::new(&mut bus.memory[..]),
+        )
+        .unwrap();
 
         bus
+    }
+
+    pub fn from_bytes(mut rom: &[u8], mut bootrom_slice: &[u8]) -> Self {
+        let mut memory = [0; 0x10000];
+        let mut bootrom = [0; 0x100];
+        std::io::copy(&mut rom, &mut Cursor::new(&mut memory[..])).unwrap();
+        std::io::copy(&mut bootrom_slice, &mut Cursor::new(&mut bootrom[..])).unwrap();
+
+        Bus {
+            memory,
+            bootrom,
+            in_bios: 0,
+            int_enabled: 0,
+            int_flags: 0,
+            clock: 0,
+            ime: 0,
+            select: Select::Buttons,
+            directions: 0,
+            keypresses: 0,
+            gpu: GPU::new(),
+            rom_start_signal: false,
+            timer: Timer::new(),
+            io: String::new(),
+        }
     }
 
     pub fn enable_interrupts(&mut self) {
