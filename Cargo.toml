@@ -11,21 +11,21 @@ name = "main"
 
 
 [dependencies]
-sdl2 = "0.32.2"
+sdl2 = "0.34.5"
 fern = "0.6.0"
-log = "0.4.8"
-crossterm = "0.17.7"
+log = "0.4.14"
+crossterm = "0.20.0"
 arraydeque = "0.4.5"
 spin_sleep = "1.0.0"
-imgui = "0.5.0"
-imgui-opengl-renderer = "*"
-gl = "*"
-structopt = "*"
-rustyline = "6.3.0"
+imgui = "0.7.0"
+imgui-opengl-renderer = "0.11.0"
+gl = "0.14.0"
+structopt = "0.3.22"
+rustyline = "8.2.0"
 
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.3.5"
 
 [[bench]]
 name = "emu"
