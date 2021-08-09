@@ -19,6 +19,8 @@ use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::Texture;
 use sdl2::video::Window;
+use std::error::Error;
+use std::fmt::Display;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
@@ -28,53 +30,34 @@ use log::info;
 
 use gpu::PixelData;
 use rust_emu::{cpu::JOYPAD, debugger, emu::gen_il, emu::Emu};
-use structopt::StructOpt;
 
 use crate::constants::MaybeErr;
 use rust_emu::*;
 
-#[derive(StructOpt)]
-#[structopt(name = ".rsboy", about = "Rust emulator")]
+use clap::Clap;
+
+#[derive(Clap)]
+#[clap(name = ".rsboy", about = "Rust emulator")]
 struct Settings {
-    #[structopt(parse(from_os_str))]
+    #[clap(parse(from_os_str))]
     input: PathBuf,
-    #[structopt(parse(from_os_str))]
+    #[clap(parse(from_os_str))]
     logfile: Option<PathBuf>,
-    #[structopt(short = "-b")]
-    bootrom: Option<PathBuf>,
+    #[clap(short, long, default_value = "dmg_boot.bin")]
+    bootrom: PathBuf,
 }
 
-fn setup_logger() -> MaybeErr<()> {
-    fern::Dispatch::new()
-        .format(|out, message, record| {
-            out.finish(format_args!(
-                "[{}][{}:{}] {}",
-                record.level(),
-                record.file().unwrap(),
-                record.line().unwrap(),
-                message
-            ))
-        })
-        // Output to stdout, files, and other Dispatch configurations
-        .chain(std::io::stdout())
-        .chain(fern::log_file("output.log")?)
-        // Apply globally
-        .apply()
-        .map_err(|x| x.into())
-}
-
-fn main() -> MaybeErr<()> {
+use color_eyre::Result;
+fn main() -> Result<()> {
+    color_eyre::install()?;
     // When the program starts up, parse command line arguments and setup additional systems.
-    let settings = Settings::from_args();
-    if let Some(_output) = settings.logfile {
-        info!("Setup logging");
-        setup_logger()?;
-    }
+    let settings = Settings::parse();
     info!("Running SDL Main");
-    let mut emu = Emu::from_path(settings.input, settings.bootrom)?;
-    let context = sdl2::init()?;
+    println!("{:?} {:?}", settings.input, settings.bootrom);
+    let mut emu = Emu::from_path(settings.input, settings.bootrom).unwrap();
+    let context = sdl2::init().unwrap();
 
-    let video = context.video()?;
+    let video = context.video().unwrap();
     let mut rsboy = video
         .window(".rsboy", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
         .position_centered()
@@ -91,11 +74,12 @@ fn main() -> MaybeErr<()> {
         .build()?;
 
     // Wrapper struct for imgui to handle frame-by-frame rendering.
-    let mut debugger = Imgui::new(&debugger)?;
+    let mut debugger = Imgui::new(&debugger).unwrap();
 
-    sdl_main(&mut rsboy, &mut debugger, &context, &mut emu)?;
-    map_viewer(&context, &emu)?;
-    vram_viewer(&context, &emu)
+    sdl_main(&mut rsboy, &mut debugger, &context, &mut emu).unwrap();
+    map_viewer(&context, &emu).unwrap();
+    vram_viewer(&context, &emu).unwrap();
+    Ok(())
 }
 
 fn sdl_main(
@@ -103,10 +87,10 @@ fn sdl_main(
     debugger: &mut Imgui,
     context: &sdl2::Sdl,
     emu: &mut Emu,
-) -> MaybeErr<()> {
+) -> Result<()> {
     // Setup gl attributes, then create the texture that we will copy our framebuffer to.
 
-    let video_subsystem = context.video()?;
+    let video_subsystem = context.video().unwrap();
     let gl_attr = video_subsystem.gl_attr();
     gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
     gl_attr.set_context_version(3, 0);
@@ -119,7 +103,7 @@ fn sdl_main(
     let mut cycle_jump = 0;
     let mut pause = false;
 
-    let mut event_pump = context.event_pump()?;
+    let mut event_pump = context.event_pump().unwrap();
 
     let il = gen_il(&emu.bus.memory);
     debugger.info.il = il;

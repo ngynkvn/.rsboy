@@ -58,7 +58,7 @@ impl Emu {
         self.cpu.step(&mut self.bus);
     }
 
-    pub fn new(rom: Vec<u8>, bootrom: Option<PathBuf>) -> Emu {
+    pub fn new(rom: Vec<u8>, bootrom: PathBuf) -> Emu {
         let cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
         Emu {
@@ -78,7 +78,7 @@ impl Emu {
         })
     }
 
-    pub fn from_path(input: PathBuf, bootrom: Option<PathBuf>) -> Result<Emu, Box<dyn Error>> {
+    pub fn from_path(input: PathBuf, bootrom: PathBuf) -> Result<Emu, Box<dyn Error>> {
         let mut file = File::open(input)?;
         let mut rom = Vec::new();
         file.read_to_end(&mut rom)?;

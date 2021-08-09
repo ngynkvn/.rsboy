@@ -56,7 +56,7 @@ impl Display for Bus {
 }
 
 impl Bus {
-    pub fn new(rom_vec: Vec<u8>, bootrom_path: Option<PathBuf>) -> Self {
+    pub fn new(rom_vec: Vec<u8>, bootrom_path: PathBuf) -> Self {
         let memory = [0; 0x10000];
         let bootrom = [0; 0x100];
 
@@ -77,7 +77,7 @@ impl Bus {
             io: String::new(),
         };
 
-        if let Ok(mut file) = File::open(bootrom_path.unwrap_or("dmg_boot.bin".into())) {
+        if let Ok(mut file) = File::open(bootrom_path) {
             std::io::copy(&mut file, &mut Cursor::new(&mut bus.bootrom[..])).unwrap();
         } else {
             bus.in_bios = 1;
