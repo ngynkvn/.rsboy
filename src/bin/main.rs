@@ -10,6 +10,7 @@ use crate::constants::WINDOW_HEIGHT;
 use crate::constants::WINDOW_WIDTH;
 
 use crate::debugger::Imgui;
+use glium_glue::sdl2::SDL2Facade;
 use imgui::im_str;
 use imgui::Slider;
 
@@ -48,65 +49,30 @@ struct Settings {
 }
 
 use color_eyre::Result;
+use glium_glue::sdl2::DisplayBuild;
 fn main() -> Result<()> {
     color_eyre::install()?;
     // When the program starts up, parse command line arguments and setup additional systems.
     let settings = Settings::parse();
     info!("Running SDL Main");
-    println!("{:?} {:?}", settings.input, settings.bootrom);
     let mut emu = Emu::from_path(settings.input, settings.bootrom).unwrap();
     let context = sdl2::init().unwrap();
 
     let video = context.video().unwrap();
     let mut rsboy = video
         .window(".rsboy", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
-        .position_centered()
-        .opengl()
-        .build()?
-        .into_canvas()
-        .build()?;
+        .build_glium()
+        .unwrap();
 
-    let debugger = video
-        .window("debugger", 512, 512)
-        .position(0, 20)
-        .opengl()
-        .resizable()
-        .build()?;
-
-    // Wrapper struct for imgui to handle frame-by-frame rendering.
-    let mut debugger = Imgui::new(&debugger).unwrap();
-
-    sdl_main(&mut rsboy, &mut debugger, &context, &mut emu).unwrap();
+    sdl_main(&mut rsboy, &context, &mut emu).unwrap();
     map_viewer(&context, &emu).unwrap();
     vram_viewer(&context, &emu).unwrap();
     Ok(())
 }
 
-fn sdl_main(
-    video: &mut sdl2::render::Canvas<Window>,
-    debugger: &mut Imgui,
-    context: &sdl2::Sdl,
-    emu: &mut Emu,
-) -> Result<()> {
-    // Setup gl attributes, then create the texture that we will copy our framebuffer to.
-
-    let video_subsystem = context.video().unwrap();
-    let gl_attr = video_subsystem.gl_attr();
-    gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
-    gl_attr.set_context_version(3, 0);
-
-    let tc = video.texture_creator();
-    let mut texture =
-        tc.create_texture_streaming(PixelFormatEnum::RGBA32, WINDOW_WIDTH, WINDOW_HEIGHT)?;
-
-    // Some UI state
-    let mut cycle_jump = 0;
-    let mut pause = false;
-
+fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Result<()> {
     let mut event_pump = context.event_pump().unwrap();
-
     let il = gen_il(&emu.bus.memory);
-    debugger.info.il = il;
 
     loop {
         let now = Instant::now();
@@ -154,26 +120,27 @@ fn sdl_main(
                     }
                 },
                 Event::MouseWheel { y, .. } => {
-                    debugger.imgui.io_mut().mouse_wheel = y as f32;
+                    // debugger.imgui.io_mut().mouse_wheel = y as f32;
                 }
                 _ => {}
             }
         }
 
         let mut delta_clock = 0;
-        if !pause {
-            let before = emu.bus.clock;
-            while emu.bus.clock < before + CYCLES_PER_FRAME {
-                emu.emulate_step();
-            }
-            delta_clock = emu.bus.clock - before;
+        // if !pause {
+        let before = emu.bus.clock;
+        while emu.bus.clock < before + CYCLES_PER_FRAME {
+            emu.emulate_step();
         }
+        delta_clock = emu.bus.clock - before;
+        // }
         // Render to framebuffer and copy.
         emu.bus.gpu.render(&mut emu.framebuffer);
         let (h, v) = emu.bus.gpu.scroll();
-        texture.copy_window(h, v, &emu.framebuffer);
-        video.copy(&texture, None, None).unwrap();
-        video.present();
+        // TODO HERE
+        // texture.copy_window(h, v, &emu.framebuffer);
+        // video.copy(&texture, None, None).unwrap();
+        // video.present();
 
         // Delay a minimum of 16.67 milliseconds (60 fps).
         if let Some(time) = FRAME_TIME.checked_sub(now.elapsed()) {
@@ -181,47 +148,47 @@ fn sdl_main(
         }
 
         // Log frame time
-        let after_delay = now.elapsed();
-        debugger.add_frame_time(after_delay.as_secs_f32());
+        // let after_delay = now.elapsed();
+        // debugger.add_frame_time(after_delay.as_secs_f32());
 
-        //ImGui display frame.
-        debugger.frame(&mut event_pump, |info, ui| {
-            ui.text(format!("Frame time: {:?}", after_delay));
-            let i = info.frame_times.as_slice();
-            ui.plot_lines(im_str!("Frame times"), i)
-                .graph_size([300.0, 100.0])
-                .build();
-            let cpu_hz = delta_clock as f64 / after_delay.as_secs_f64();
-            ui.text(format!("CPU HZ: {}", cpu_hz));
-            ui.text(format!("Register State:\n{}", emu.cpu.registers));
-            if ui.button(im_str!("Pause"), [200.0, 50.0]) {
-                println!("Pause");
-                pause = !pause;
-            }
-            ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump)
-                .build();
-            Slider::new(im_str!(""))
-                .range(0..=(69905))
-                .build(ui, &mut cycle_jump);
-            if ui.button(im_str!("Go"), [200.0, 50.0]) {
-                let before = emu.bus.clock as i32;
-                while emu.bus.clock < (before + cycle_jump) as usize {
-                    emu.emulate_step();
-                }
-            }
-            ui.text(format!("Bus Info:\n{}", emu.bus));
-            ui.text(format!("GPU Info:\n{}", emu.bus.gpu));
-            if ui.button(im_str!("Hex Dump"), [200.0, 50.0]) {
-                emu.bus.gpu.hex_dump()
-            }
-            if ui.button(im_str!("Frame"), [200.0, 50.0]) {
-                println!("Frame");
-                let before = emu.bus.clock;
-                while emu.bus.clock < before + CYCLES_PER_FRAME {
-                    emu.emulate_step();
-                }
-            }
-        });
+        // //ImGui display frame.
+        // debugger.frame(&mut event_pump, |info, ui| {
+        //     ui.text(format!("Frame time: {:?}", after_delay));
+        //     let i = info.frame_times.as_slice();
+        //     ui.plot_lines(im_str!("Frame times"), i)
+        //         .graph_size([300.0, 100.0])
+        //         .build();
+        //     let cpu_hz = delta_clock as f64 / after_delay.as_secs_f64();
+        //     ui.text(format!("CPU HZ: {}", cpu_hz));
+        //     ui.text(format!("Register State:\n{}", emu.cpu.registers));
+        //     if ui.button(im_str!("Pause"), [200.0, 50.0]) {
+        //         println!("Pause");
+        //         pause = !pause;
+        //     }
+        //     ui.input_int(im_str!("Run for n cycles"), &mut cycle_jump)
+        //         .build();
+        //     Slider::new(im_str!(""))
+        //         .range(0..=(69905))
+        //         .build(ui, &mut cycle_jump);
+        //     if ui.button(im_str!("Go"), [200.0, 50.0]) {
+        //         let before = emu.bus.clock as i32;
+        //         while emu.bus.clock < (before + cycle_jump) as usize {
+        //             emu.emulate_step();
+        //         }
+        //     }
+        //     ui.text(format!("Bus Info:\n{}", emu.bus));
+        //     ui.text(format!("GPU Info:\n{}", emu.bus.gpu));
+        //     if ui.button(im_str!("Hex Dump"), [200.0, 50.0]) {
+        //         emu.bus.gpu.hex_dump()
+        //     }
+        //     if ui.button(im_str!("Frame"), [200.0, 50.0]) {
+        //         println!("Frame");
+        //         let before = emu.bus.clock;
+        //         while emu.bus.clock < before + CYCLES_PER_FRAME {
+        //             emu.emulate_step();
+        //         }
+        //     }
+        // });
     }
 }
 
