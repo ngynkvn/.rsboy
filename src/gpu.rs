@@ -204,6 +204,16 @@ impl GPU {
         }
     }
 
+    pub fn render_to(&self, pixels: &mut PixelData) {
+        for i in MAP_DATA_RANGE {
+            self.blit_tile(pixels, i);
+        }
+
+        if self.sprite_display_enabled() {
+            self.render_sprites(pixels);
+        }
+    }
+
     pub fn render(&self, pixels: &mut PixelData) {
         let _start = time::Instant::now();
         for i in MAP_DATA_RANGE {

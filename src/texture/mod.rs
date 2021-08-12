@@ -3,12 +3,13 @@ use std::ops::Range;
 
 fn pixel(value: u8) -> u32 {
     match value {
-        0b00 => 0xE0F8D0FF, // White
-        0b01 => 0x88C070FF, // Light Gray
-        0b10 => 0x346856FF, // Dark Gray
-        0b11 => 0x081820FF, // Black
+        0b00 => 0xE0F8D0FFu32, // White
+        0b01 => 0x88C070FF,    // Light Gray
+        0b10 => 0x346856FF,    // Dark Gray
+        0b11 => 0x081820FF,    // Black
         _ => 0,
     }
+    .swap_bytes()
 }
 
 pub struct Tile {

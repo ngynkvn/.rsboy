@@ -10,16 +10,28 @@ use crate::constants::WINDOW_HEIGHT;
 use crate::constants::WINDOW_WIDTH;
 
 use crate::debugger::Imgui;
+use glium::index::PrimitiveType;
+use glium::texture::ClientFormat;
+use glium::texture::MipmapsOption;
+use glium::texture::RawImage2d;
+use glium::uniform;
+use glium::uniforms;
+use glium::DrawParameters;
+use glium::IndexBuffer;
+use glium::Surface;
+use glium::VertexBuffer;
 use glium_glue::sdl2::SDL2Facade;
 use imgui::im_str;
 use imgui::Slider;
 
+use rust_emu::gpu::PixelMap;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::Texture;
 use sdl2::video::Window;
+use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::Display;
 use std::path::PathBuf;
@@ -70,9 +82,64 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+const VERT: &str = "#version 330 core
+in vec4 pos_tex;
+out vec2 TexCoords;
+
+uniform mat4 projection;
+uniform mat4 model;
+
+void main()
+{
+    gl_Position = vec4(pos_tex.xy, 0.0, 1.0);
+    TexCoords = pos_tex.zw;
+}";
+
+const FRAG: &str = "#version 330 core
+in vec2 TexCoords;
+out vec4 color;
+
+uniform sampler2D image;
+void main() {
+    color = texture(image, TexCoords);
+}";
+
+use glium::implement_vertex;
+#[derive(Clone, Copy)]
+pub struct Vertex {
+    pos_tex: [f32; 4],
+}
+implement_vertex!(Vertex, pos_tex);
+
+extern crate nalgebra_glm as glm;
+
 fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Result<()> {
     let mut event_pump = context.event_pump().unwrap();
-    let il = gen_il(&emu.bus.memory);
+    let program = glium::Program::from_source(video, VERT, FRAG, None)?;
+    let mut framebuffer: PixelData = [[0; 256]; 256];
+    let texture =
+        glium::Texture2d::empty_with_mipmaps(video, MipmapsOption::NoMipmap, 256, 256).unwrap();
+
+    let quad = [
+        Vertex {
+            pos_tex: [-1.0, 1.0, 0.0, 1.0], // top left
+        },
+        Vertex {
+            pos_tex: [1.0, -1.0, 1.0, 0.0], // bottom right
+        },
+        Vertex {
+            pos_tex: [-1.0, -1.0, 0.0, 0.0], // bottom left
+        },
+        Vertex {
+            pos_tex: [1.0, 1.0, 1.0, 1.0], // top right
+        },
+    ];
+    let vertex_buffer = VertexBuffer::new(video, &quad).unwrap();
+    // building the index buffer
+    let index_buffer =
+        IndexBuffer::new(video, PrimitiveType::TrianglesList, &[0u16, 1, 2, 0, 3, 1]).unwrap();
+
+    let projection = glm::ortho::<f32>(-256 as _, 256 as _, 256 as _, -256 as _, -1 as _, 1 as _);
 
     loop {
         let now = Instant::now();
@@ -135,8 +202,52 @@ fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Resul
         delta_clock = emu.bus.clock - before;
         // }
         // Render to framebuffer and copy.
-        emu.bus.gpu.render(&mut emu.framebuffer);
+        emu.bus.gpu.render_to(&mut framebuffer);
         let (h, v) = emu.bus.gpu.scroll();
+        let mut target = video.draw();
+
+        unsafe {
+            let flat = std::mem::transmute::<PixelData, PixelMap>(framebuffer);
+            // let raw = RawImage2d {
+            //     data: Cow::from(&flat[..]),
+            //     width: 256,
+            //     height: 256,
+            //     format: ClientFormat::U8U8U8U8,
+            // };
+            let raw = RawImage2d::from_raw_rgba_reversed(&flat, (256, 256));
+            texture.write(
+                glium::Rect {
+                    left: 0,
+                    bottom: 0,
+                    width: 256,
+                    height: 256,
+                },
+                raw,
+            );
+        }
+
+        let sampler = texture
+            .sampled()
+            .magnify_filter(uniforms::MagnifySamplerFilter::Nearest)
+            .minify_filter(uniforms::MinifySamplerFilter::Nearest);
+
+        use num_traits::identities::One;
+        let uniforms = uniform! {
+            image: sampler,
+            offset: (h, v)
+        };
+
+        target
+            .draw(
+                &vertex_buffer,
+                &index_buffer,
+                &program,
+                &uniforms,
+                &Default::default(),
+            )
+            .unwrap();
+        target.finish().unwrap();
+
         // TODO HERE
         // texture.copy_window(h, v, &emu.framebuffer);
         // video.copy(&texture, None, None).unwrap();
