@@ -783,6 +783,21 @@ dependencies = [
 
 [[package]]
 name = "glium"
+version = "0.29.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a58e115545ab8ce2238630c06a60f30a835271e3aff861db08d81561643d7a9"
+dependencies = [
+ "backtrace",
+ "fnv",
+ "gl_generator",
+ "lazy_static",
+ "memoffset 0.6.4",
+ "smallvec",
+ "takeable-option",
+]
+
+[[package]]
+name = "glium"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6dfaf64eee4e23d1d5429945816ab083cb94b44e00c3c5f9f9aebfd09ec63df"
@@ -800,10 +815,10 @@ dependencies = [
 [[package]]
 name = "glium-glue"
 version = "0.1.0"
-source = "git+https://github.com/ngynkvn/glium-glue#820ba44f32a879562a35c810ce7aba595fe2d204"
 dependencies = [
- "glium",
+ "glium 0.30.1",
  "sdl2",
+ "thiserror",
 ]
 
 [[package]]
@@ -923,6 +938,16 @@ dependencies = [
  "bitflags",
  "imgui-sys",
  "parking_lot",
+]
+
+[[package]]
+name = "imgui-glium-renderer"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c295c510c0d7209cf2304741808425bcd8e421142679d2448a38d4aa51762f3"
+dependencies = [
+ "glium 0.29.1",
+ "imgui",
 ]
 
 [[package]]
@@ -1648,9 +1673,10 @@ dependencies = [
  "criterion",
  "crossterm",
  "gl",
- "glium",
+ "glium 0.30.1",
  "glium-glue",
  "imgui",
+ "imgui-glium-renderer",
  "imgui-opengl-renderer",
  "log",
  "nalgebra-glm",
@@ -1658,6 +1684,7 @@ dependencies = [
  "rustyline",
  "sdl2",
  "spin_sleep",
+ "walkdir",
 ]
 
 [[package]]
@@ -2137,9 +2164,9 @@ checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
 
 [[package]]
 name = "walkdir"
-version = "2.3.1"
+version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "777182bc735b6424e1a57516d35ed72cb8019d85c8c9bf536dccb3445c1a2f7d"
+checksum = "808cf2735cd4b6866113f648b791c6adc5714537bc222d9347bb203386ffda56"
 dependencies = [
  "same-file",
  "winapi",

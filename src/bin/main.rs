@@ -10,6 +10,11 @@ use crate::constants::WINDOW_HEIGHT;
 use crate::constants::WINDOW_WIDTH;
 
 use crate::debugger::Imgui;
+use color_eyre::eyre;
+use color_eyre::Report;
+use glium::backend::Backend;
+use glium::backend::Facade;
+use glium::draw_parameters::PolygonMode;
 use glium::index::PrimitiveType;
 use glium::texture::ClientFormat;
 use glium::texture::MipmapsOption;
@@ -22,15 +27,17 @@ use glium::Surface;
 use glium::VertexBuffer;
 use glium_glue::sdl2::SDL2Facade;
 use imgui::im_str;
+use imgui::Condition;
 use imgui::Slider;
 
+use imgui::Window;
 use rust_emu::gpu::PixelMap;
 use sdl2::event::Event;
+use sdl2::event::WindowEvent;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::rect::Rect;
 use sdl2::render::Texture;
-use sdl2::video::Window;
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt::Display;
@@ -60,6 +67,7 @@ struct Settings {
     bootrom: PathBuf,
 }
 
+use crate::eyre::eyre;
 use color_eyre::Result;
 use glium_glue::sdl2::DisplayBuild;
 fn main() -> Result<()> {
@@ -67,14 +75,15 @@ fn main() -> Result<()> {
     // When the program starts up, parse command line arguments and setup additional systems.
     let settings = Settings::parse();
     info!("Running SDL Main");
-    let mut emu = Emu::from_path(settings.input, settings.bootrom).unwrap();
-    let context = sdl2::init().unwrap();
+    let mut emu = Emu::from_path(settings.input, settings.bootrom)?;
+
+    let context = sdl2::init().map_err(|s| eyre!("Unable to create SDL2 Context: {}", s))?;
 
     let video = context.video().unwrap();
     let mut rsboy = video
-        .window(".rsboy", WINDOW_WIDTH * 3, WINDOW_HEIGHT * 3)
-        .build_glium()
-        .unwrap();
+        .window(".rsboy", WINDOW_WIDTH, WINDOW_HEIGHT)
+        .resizable()
+        .build_glium()?;
 
     sdl_main(&mut rsboy, &context, &mut emu).unwrap();
     map_viewer(&context, &emu).unwrap();
@@ -83,33 +92,36 @@ fn main() -> Result<()> {
 }
 
 const VERT: &str = "#version 330 core
-in vec4 pos_tex;
-out vec2 TexCoords;
+in vec2 pos;
+in vec2 tex;
+
+out vec2 tc;
 
 uniform mat4 projection;
 uniform mat4 model;
 
 void main()
 {
-    gl_Position = vec4(pos_tex.xy, 0.0, 1.0);
-    TexCoords = pos_tex.zw;
+    gl_Position = vec4(pos, 0.0, 1.0);
+    tc = tex;
 }";
 
 const FRAG: &str = "#version 330 core
-in vec2 TexCoords;
+in vec2 tc;
 out vec4 color;
 
 uniform sampler2D image;
 void main() {
-    color = texture(image, TexCoords);
+    color = texelFetch(image, ivec2(tc.xy * vec2(256.0)), 0);
 }";
 
 use glium::implement_vertex;
 #[derive(Clone, Copy)]
 pub struct Vertex {
-    pos_tex: [f32; 4],
+    pos: [f32; 2],
+    tex: [f32; 2],
 }
-implement_vertex!(Vertex, pos_tex);
+implement_vertex!(Vertex, pos, tex);
 
 extern crate nalgebra_glm as glm;
 
@@ -117,31 +129,55 @@ fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Resul
     let mut event_pump = context.event_pump().unwrap();
     let program = glium::Program::from_source(video, VERT, FRAG, None)?;
     let mut framebuffer: PixelData = [[0; 256]; 256];
-    let texture =
-        glium::Texture2d::empty_with_mipmaps(video, MipmapsOption::NoMipmap, 256, 256).unwrap();
+    let texture = glium::Texture2d::empty_with_mipmaps(video, MipmapsOption::NoMipmap, 256, 256)?;
 
-    let quad = [
+    let mut quad = [
         Vertex {
-            pos_tex: [-1.0, 1.0, 0.0, 1.0], // top left
+            pos: [-1.0, 1.0],
+            tex: [0.0, 1.0], // top left
         },
         Vertex {
-            pos_tex: [1.0, -1.0, 1.0, 0.0], // bottom right
+            pos: [1.0, -1.0],
+            tex: [1.0, 0.0], // bottom right
         },
         Vertex {
-            pos_tex: [-1.0, -1.0, 0.0, 0.0], // bottom left
+            pos: [-1.0, -1.0],
+            tex: [0.0, 0.0], // bottom left
         },
         Vertex {
-            pos_tex: [1.0, 1.0, 1.0, 1.0], // top right
+            pos: [1.0, 1.0],
+            tex: [1.0, 1.0], // top right
         },
     ];
-    let vertex_buffer = VertexBuffer::new(video, &quad).unwrap();
+    // TEMP
+    // Insetting the vertices for the display.
+    for v in &mut quad {
+        if v.pos[0] < 0.0 {
+            v.pos[0] += 0.05;
+        } else {
+            v.pos[0] += -0.05;
+        }
+        if v.pos[1] < 0.0 {
+            v.pos[1] += 0.05;
+        } else {
+            v.pos[1] += -0.05;
+        }
+    }
+    let vertex_buffer = VertexBuffer::new(video, &quad)?;
     // building the index buffer
     let index_buffer =
-        IndexBuffer::new(video, PrimitiveType::TrianglesList, &[0u16, 1, 2, 0, 3, 1]).unwrap();
+        IndexBuffer::new(video, PrimitiveType::TrianglesList, &[0u16, 1, 2, 0, 3, 1])?;
 
     let projection = glm::ortho::<f32>(-256 as _, 256 as _, 256 as _, -256 as _, -1 as _, 1 as _);
+    let mut imgui = imgui::Context::create();
+    let mut imgui_renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| unsafe {
+        video.backend.get_proc_address(s)
+    });
+    imgui.fonts().build_rgba32_texture();
+    imgui.io_mut().display_size = [WINDOW_WIDTH as _, WINDOW_HEIGHT as _];
 
     loop {
+        let io = imgui.io_mut();
         let now = Instant::now();
         for event in event_pump.poll_iter() {
             emu.bus.directions |= 0x0F;
@@ -152,6 +188,12 @@ fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Resul
                     keycode: Some(Keycode::Escape),
                     ..
                 } => return Ok(()),
+                Event::Window {
+                    win_event: WindowEvent::SizeChanged(w, h),
+                    ..
+                } => {
+                    io.display_size = [w as _, h as _];
+                }
                 Event::KeyDown {
                     keycode: Some(keycode),
                     ..
@@ -186,12 +228,17 @@ fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Resul
                         println!("{:?}", key);
                     }
                 },
+                Event::MouseMotion { x, y, .. } => {
+                    io.mouse_pos = [x as _, y as _];
+                }
                 Event::MouseWheel { y, .. } => {
-                    // debugger.imgui.io_mut().mouse_wheel = y as f32;
+                    io.mouse_wheel = y as _;
                 }
                 _ => {}
             }
         }
+        let mouse_state = event_pump.mouse_state();
+        io.mouse_down = [mouse_state.left(), mouse_state.right(), false, false, false];
 
         let mut delta_clock = 0;
         // if !pause {
@@ -208,12 +255,6 @@ fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Resul
 
         unsafe {
             let flat = std::mem::transmute::<PixelData, PixelMap>(framebuffer);
-            // let raw = RawImage2d {
-            //     data: Cow::from(&flat[..]),
-            //     width: 256,
-            //     height: 256,
-            //     format: ClientFormat::U8U8U8U8,
-            // };
             let raw = RawImage2d::from_raw_rgba_reversed(&flat, (256, 256));
             texture.write(
                 glium::Rect {
@@ -237,16 +278,40 @@ fn sdl_main(video: &mut SDL2Facade, context: &sdl2::Sdl, emu: &mut Emu) -> Resul
             offset: (h, v)
         };
 
-        target
-            .draw(
-                &vertex_buffer,
-                &index_buffer,
-                &program,
-                &uniforms,
-                &Default::default(),
-            )
-            .unwrap();
-        target.finish().unwrap();
+        let imgui = imgui.frame();
+        Window::new(im_str!("Test"))
+            .size([100.0, 100.0], Condition::Once)
+            .scroll_bar(false)
+            .build(&imgui, || {
+                imgui.text(im_str!("Test"));
+            });
+        imgui.show_about_window(&mut true);
+        imgui.show_demo_window(&mut true);
+        imgui.show_metrics_window(&mut true);
+
+        // imgui
+
+        target.clear_color(0.2, 0.2, 0.2, 1.0);
+
+        target.draw(
+            &vertex_buffer,
+            &index_buffer,
+            &program,
+            &uniforms,
+            &Default::default(),
+        )?;
+        target.draw(
+            &vertex_buffer,
+            &index_buffer,
+            &program,
+            &uniforms,
+            &DrawParameters {
+                polygon_mode: PolygonMode::Line,
+                ..Default::default()
+            },
+        )?;
+        imgui_renderer.render(imgui);
+        target.finish()?;
 
         // TODO HERE
         // texture.copy_window(h, v, &emu.framebuffer);

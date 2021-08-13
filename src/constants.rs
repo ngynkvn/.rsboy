@@ -1,4 +1,3 @@
-
 use std::error::Error;
 
 use std::time::Duration;
@@ -12,6 +11,6 @@ pub const GB_CYCLE_SPEED: usize = 4194304;
 pub type MaybeErr<T> = Result<T, Box<dyn Error>>;
 
 // GPU Output settings
-pub const WINDOW_HEIGHT: u32 = 144;
-pub const WINDOW_WIDTH: u32 = 160;
+pub const WINDOW_HEIGHT: u32 = 144 * 3;
+pub const WINDOW_WIDTH: u32 = 160 * 3;
 pub const MAP_WIDTH: u32 = 256;

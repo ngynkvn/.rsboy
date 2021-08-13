@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::{error::Error, fs::File, io::Read, path::PathBuf};
 
 use crate::bus::Bus;
@@ -5,6 +6,8 @@ use crate::instructions::Instr;
 use crate::instructions::INSTR_DATA_LENGTHS;
 use crate::instructions::INSTR_TABLE;
 use crate::{cpu::CPU, gpu::PixelData};
+use color_eyre::eyre::Context;
+use color_eyre::Result;
 
 #[derive(Clone, Debug, Default)]
 pub struct InstrListing {
@@ -78,10 +81,13 @@ impl Emu {
         })
     }
 
-    pub fn from_path(input: PathBuf, bootrom: PathBuf) -> Result<Emu, Box<dyn Error>> {
-        let mut file = File::open(input)?;
+    pub fn from_path(input: PathBuf, bootrom: PathBuf) -> Result<Emu> {
+        let mut file = File::open(input.clone())
+            .wrap_err_with(|| diagnose_input_file(input.clone()))
+            .wrap_err_with(|| format!("Unable to open file requested: {:?}", input))?;
         let mut rom = Vec::new();
-        file.read_to_end(&mut rom)?;
+        file.read_to_end(&mut rom)
+            .wrap_err_with(|| format!("Unable to read file to end: {:?}", input))?;
         let cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
         Ok(Emu {
@@ -131,5 +137,30 @@ impl Emu {
                 )
             })
             .to_vec()
+    }
+}
+
+use walkdir::WalkDir;
+
+fn diagnose_input_file(mut input: PathBuf) -> String {
+    if input.pop() {
+        if input.is_dir() {
+            let mut files: Vec<String> = vec![];
+            for entry in WalkDir::new(input)
+                .max_depth(1)
+                .into_iter()
+                .filter_map(Result::ok)
+            {
+                let path = entry.path();
+                if let Some("gb") = path.extension().and_then(OsStr::to_str) {
+                    files.push(path.to_string_lossy().into());
+                }
+            }
+            format!("Available roms:\n{}", files.join("\n"))
+        } else {
+            format!("Invalid path specified.")
+        }
+    } else {
+        format!("Path did not have a parent (?)")
     }
 }
