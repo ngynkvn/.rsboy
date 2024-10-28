@@ -1,4 +1,3 @@
-use crate::cpu::value::Value::U16;
 use crate::instructions::Bus;
 use crate::instructions::Location;
 use crate::instructions::Register;
@@ -24,7 +23,7 @@ pub fn ldsp(cpu: &mut CPU, bus: &mut Bus) {
     let result = cpu.registers.sp.wrapping_add(offset); // todo ?
     let half_carry = (cpu.registers.sp & 0x0F).wrapping_add(offset & 0x0F) > 0x0F;
     let carry = (cpu.registers.sp & 0xFF).wrapping_add(offset & 0xFF) > 0xFF;
-    cpu.write_into(Location::Register(Register::HL), U16(result), bus);
+    cpu.write_into(Location::Register(Register::HL), result, bus);
     bus.generic_cycle();
     cpu.registers.set_zf(false);
     cpu.registers.set_nf(false);

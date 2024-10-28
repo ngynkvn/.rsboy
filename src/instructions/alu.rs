@@ -1,4 +1,3 @@
-use crate::cpu::value::Value::U16;
 use crate::instructions::Bus;
 use crate::instructions::Location;
 use crate::instructions::Memory;
@@ -92,21 +91,18 @@ pub fn sub(location: Location, cpu: &mut CPU, bus: &mut Bus) {
 
 pub fn addhl(location: Location, cpu: &mut CPU, bus: &mut Bus) {
     let hl = cpu.registers.hl();
-    if let U16(value) = cpu.read_from(location, bus) {
-        if location.is_dual_register() {
-            bus.generic_cycle();
-        }
-        let (result, overflow) = hl.overflowing_add(value);
-        let [h, l] = result.to_be_bytes();
-        cpu.registers.h = h;
-        cpu.registers.l = l;
-        cpu.registers.set_nf(false);
-        cpu.registers
-            .set_hf((hl & 0xfff) + (value & 0xfff) > 0x0fff);
-        cpu.registers.set_cf(overflow);
-    } else {
-        unimplemented!()
+    let value = cpu.read_from(location, bus);
+    if location.is_dual_register() {
+        bus.generic_cycle();
     }
+    let (result, overflow) = hl.overflowing_add(value);
+    let [h, l] = result.to_be_bytes();
+    cpu.registers.h = h;
+    cpu.registers.l = l;
+    cpu.registers.set_nf(false);
+    cpu.registers
+        .set_hf((hl & 0xfff) + (value & 0xfff) > 0x0fff);
+    cpu.registers.set_cf(overflow);
 }
 
 pub fn adc(location: Location, cpu: &mut CPU, bus: &mut Bus) {

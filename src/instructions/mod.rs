@@ -46,7 +46,6 @@ pub enum Location {
     MemOffsetImm,
     MemoryImmediate,
     MemOffsetC,
-    Literal(Value),
 }
 
 #[derive(Debug, PartialEq, Copy, Clone)]

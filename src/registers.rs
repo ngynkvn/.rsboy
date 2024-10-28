@@ -190,7 +190,7 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch(&self, reg: Register) -> Value {
+    pub fn fetch<T>(&self, reg: Register) -> Value<T> {
         match reg {
             A => Value::from(self.a),
             B => Value::from(self.b),

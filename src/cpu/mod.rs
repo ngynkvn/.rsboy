@@ -7,7 +7,6 @@ use crate::bus::{Bus, Memory};
 use crate::instructions::*;
 use crate::registers::RegisterState;
 use value::Value;
-use value::Value::*;
 use value::Writable;
 
 #[derive(Debug, Clone)]
@@ -80,22 +79,22 @@ impl CPU {
     // ld a, b
     // cpu.parse_op | read_from(location) | write_to(location)
 
-    pub fn read_from(&mut self, location: Location, bus: &mut Bus) -> Value {
+    pub fn read_from<T>(&mut self, location: Location, bus: &mut Bus) -> Value<T> {
         match location {
-            Location::Immediate(1) => U8(self.next_u8(bus)),
-            Location::Immediate(2) => U16(self.next_u16(bus)),
+            Location::Immediate(1) => Value{ t: self.next_u8(bus) },
+            Location::Immediate(2) => Value{ t: self.next_u16(bus)},
             Location::Immediate(_) => panic!(),
             Location::MemoryImmediate => {
                 let address = self.next_u16(bus);
-                U8(bus.read_cycle(address))
+                Value {t: bus.read_cycle(address)}
             }
             Location::Register(r) => self.registers.fetch(r),
-            Location::Memory(r) => U8(bus.read_cycle(self.registers.get_dual_reg(r).unwrap())),
+            Location::Memory(r) => Value{t: bus.read_cycle(self.registers.get_dual_reg(r).unwrap())},
             Location::MemOffsetImm => {
                 let next = self.next_u8(bus);
-                U8(bus.read_cycle_high(next))
+                Value{t:bus.read_cycle_high(next)}
             }
-            Location::MemOffsetC => U8(bus.read_cycle_high(self.registers.c)),
+            Location::MemOffsetC => Value{t:bus.read_cycle_high(self.registers.c)},
             Location::Literal(x) => x,
         }
     }

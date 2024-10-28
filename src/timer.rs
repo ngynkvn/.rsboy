@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use crate::cpu;
 
+
 pub const DIV: usize = 0xFF04;
 pub const TIMA: usize = 0xFF05;
 pub const TMA: usize = 0xFF06;

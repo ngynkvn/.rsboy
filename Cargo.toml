@@ -22,9 +22,6 @@ imgui-opengl-renderer = "*"
 gl = "*"
 structopt = "*"
 rustyline = "6.3.0"
-minitrace = { git = "https://github.com/tikv/minitrace-rust.git" }
-minitrace-jaeger = { git = "https://github.com/tikv/minitrace-rust.git" }
-minitrace-macro = { git = "https://github.com/tikv/minitrace-rust.git" }
 
 
 [dev-dependencies]

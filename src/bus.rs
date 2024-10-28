@@ -4,7 +4,6 @@ use crate::gpu::OAM_START;
 use crate::gpu::VRAM_END;
 use crate::gpu::VRAM_START;
 use crate::timer;
-use crate::timer::Timer;
 use std::io::Read;
 use std::path::PathBuf;
 use std::{fmt::Display, fs::File};

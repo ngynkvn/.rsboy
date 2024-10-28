@@ -1,56 +1,45 @@
 use crate::{bus::Bus, instructions::Register, registers::RegisterState};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum Value {
-    U16(u16),
-    U8(u8),
+// #[repr(u8)]
+// #[derive(Clone, Copy)]
+// enum Tag {W, B}
+
+
+// #[derive(Clone, Copy)]
+// union U {
+//     word: u16,
+//     byte: u8,
+// }
+
+// pub struct Value {
+//     u: U,
+//     tag: Tag
+// }
+
+pub struct Value<T> {
+    t: T
 }
 
-impl From<u8> for Value {
+impl From<u8> for Value<u8> {
     fn from(v: u8) -> Self {
-        Value::U8(v)
+        // Value {tag: Tag::B, u: U { byte: v }}
+        Value {t: v}
     }
 }
-impl Into<u8> for Value {
+impl Into<u8> for Value<u8> {
     fn into(self) -> u8 {
-        if let Value::U8(value) = self {
-            value
-        } else {
-            panic!("Tried to convert U16 into U8.")
-        }
+        self.t
     }
 }
 
-impl From<u16> for Value {
+impl From<u16> for Value<u16> {
     fn from(v: u16) -> Self {
-        Value::U16(v)
+        Value {t: v}
     }
 }
-impl Into<u16> for Value {
+impl Into<u16> for Value<u16> {
     fn into(self) -> u16 {
-        if let Value::U16(value) = self {
-            value
-        } else {
-            panic!("Tried to convert U16 into U8.")
-        }
-    }
-}
-
-impl Writable for Value {
-    fn to_memory_address(self, address: u16, b: &mut Bus) {
-        if let Value::U16(value) = self {
-            value.to_memory_address(address, b)
-        } else if let Value::U8(value) = self {
-            value.to_memory_address(address, b)
-        }
-    }
-
-    fn to_register(self, registers: &mut RegisterState, r: Register) {
-        if let Value::U16(value) = self {
-            value.to_register(registers, r);
-        } else if let Value::U8(value) = self {
-            value.to_register(registers, r);
-        }
+        self.t
     }
 }
 
@@ -58,6 +47,16 @@ pub trait Writable {
     fn to_memory_address(self, address: u16, b: &mut Bus);
     fn to_register(self, registers: &mut RegisterState, r: Register);
 }
+impl Writable for Value<u8> {
+    fn to_memory_address(self, address: u16, b: &mut Bus) {
+        self.t.to_memory_address(address, b);
+    }
+
+    fn to_register(self, registers: &mut RegisterState, r: Register) {
+        self.t.to_register(registers, r);
+    }
+}
+
 impl Writable for u8 {
     fn to_memory_address(self, address: u16, b: &mut Bus) {
         b.write_cycle(address, self);
