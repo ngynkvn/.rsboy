@@ -1,6 +1,15 @@
-![Rust](https://github.com/ngynkvn/.rsboy/workflows/Rust/badge.svg)
+> [!CAUTION]
+> Firstly, this doesn't compile and from the brief 30 minutes I put into it, is not trivial to fix
+> This is very bad rust code. It is not performant at all. I [rebuilt a Go version](https://github.com/ngynkvn/gogb) in a couple weeks that beats this in about every metric.
+>
+> I only leave it up here for those that are nonetheless curious.
+>
+> For me, at the time I remember being very obsessed with understanding algebraic data types and definitely approached this project with the mentality that [a single hammer was all I needed.](https://en.wikipedia.org/wiki/Law_of_the_instrument#:~:text=The%20law%20of%20the%20instrument,original%20to%20either%20of%20them.)
+> This was a learning moment for me that simplicity cannot be understated, and to be considerate about the techniques you choose to deploy in your applications.
+>
+> Regardless, I'm still proud that I put a lot of effort into trying to make it work !
 
-<img src="docs/rsboy.png" style="display:block;margin:0 auto" width=300px/>
+![Rust](https://github.com/ngynkvn/.rsboy/workflows/Rust/badge.svg)
 
 ## A gameboy emulator in Rust
 
