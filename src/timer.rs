@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use crate::cpu;
 
-
 pub const DIV: usize = 0xFF04;
 pub const TIMA: usize = 0xFF05;
 pub const TMA: usize = 0xFF06;
@@ -18,7 +17,7 @@ pub struct Timer {
 }
 
 impl Timer {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             tima: 0,
             tma: 0,
@@ -28,7 +27,7 @@ impl Timer {
         }
     }
 
-    pub fn div(&self) -> u8 {
+    pub const fn div(&self) -> u8 {
         (self.internal >> 8) as u8
     }
 
@@ -38,10 +37,10 @@ impl Timer {
         let clock_select = control & 0b11;
 
         let mask = match clock_select {
-            0b00 => (1 << 9),
-            0b01 => (1 << 3),
-            0b10 => (1 << 5),
-            0b11 => (1 << 7),
+            0b00 => 1 << 9,
+            0b01 => 1 << 3,
+            0b10 => 1 << 5,
+            0b11 => 1 << 7,
             _ => unreachable!(),
         };
 

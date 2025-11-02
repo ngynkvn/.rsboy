@@ -3,16 +3,11 @@ mod cb;
 mod jp;
 mod ld;
 mod misc;
-use self::Flag::*;
-use self::Instr::*;
-use self::Location::*;
-use self::Register::*;
-use crate::{
-    bus::Bus,
-    cpu::{value::Value, CPU},
-};
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+use self::{Flag::*, Instr::*, Register::*, location::Address::*};
+use crate::{bus::Bus, cpu::CPU, instructions::location::Address};
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Register {
     A,
     B,
@@ -30,7 +25,7 @@ pub enum Register {
     AF,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Flag {
     FlagNZ,
     FlagZ,
@@ -38,83 +33,173 @@ pub enum Flag {
     FlagNC,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum Location {
-    Memory(Register),
-    Immediate(usize), // Bytes
-    Register(Register),
-    MemOffsetImm,
-    MemoryImmediate,
-    MemOffsetC,
+pub mod location {
+
+    use tap::Pipe;
+
+    use crate::{
+        bus::Bus,
+        cpu::{CPU, value::Writable},
+        instructions::Register,
+    };
+
+    #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+    pub enum Address {
+        Memory(Register),
+        Register(Register),
+        ImmediateByte, // Bytes
+        ImmediateWord, // Words
+        MemOffsetImm,
+        MemoryImmediate,
+        MemOffsetC,
+    }
+
+    impl Address {
+        pub fn read(self, cpu: &mut CPU, bus: &mut Bus) -> Read {
+            use Register::*;
+            match self {
+                Self::ImmediateByte => Read::Byte(cpu.next_u8(bus)),
+                Self::ImmediateWord => Read::Word(cpu.next_u16(bus)),
+                Self::MemoryImmediate => Read::Byte(cpu.next_u16(bus).pipe(|x| bus.read_cycle(x))),
+                Self::MemOffsetImm => Read::Byte(cpu.next_u8(bus).pipe(|x| bus.read_cycle_high(x))),
+                Self::MemOffsetC => Read::Byte(cpu.registers.c.pipe(|x| bus.read_cycle_high(x))),
+                Self::Memory(reg) => {
+                    Read::Byte(cpu.registers.fetch_u16(reg).pipe(|x| bus.read_cycle(x)))
+                }
+                Self::Register(reg @ (A | B | C | D | E | H | L | F)) => {
+                    Read::Byte(cpu.registers.fetch_u8(reg))
+                }
+                Self::Register(reg @ (AF | BC | DE | HL | SP | PC)) => {
+                    Read::Word(cpu.registers.fetch_u16(reg))
+                }
+            }
+        }
+        pub fn write<T>(self, cpu: &mut CPU, bus: &mut Bus, write_value: T)
+        where
+            T: Writable,
+        {
+            match self {
+                Self::ImmediateWord | Self::MemoryImmediate => {
+                    let address = cpu.next_u16(bus);
+                    write_value.to_memory_address(address, bus);
+                }
+                Self::Memory(r) => {
+                    let address = cpu
+                        .registers
+                        .get_dual_reg(r)
+                        .expect("I tried to access a u8 as a bus address.");
+                    write_value.to_memory_address(address, bus);
+                }
+                Self::MemOffsetImm => {
+                    let next = cpu.next_u8(bus);
+                    write_value.to_memory_address(0xFF00 + u16::from(next), bus);
+                }
+                Self::MemOffsetC => {
+                    write_value.to_memory_address(0xFF00 + u16::from(cpu.registers.c), bus);
+                }
+                Self::Register(r) => write_value.to_register(&mut cpu.registers, r),
+                Self::ImmediateByte => unimplemented!("{:?}", self),
+            }
+        }
+    }
+
+    /// Result of a read operation.
+    #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+    pub enum Read {
+        Byte(u8),
+        Word(u16),
+    }
+
+    impl From<Read> for u8 {
+        fn from(val: Read) -> Self {
+            #[allow(clippy::cast_possible_truncation)]
+            match val {
+                Read::Byte(x) => x,
+                Read::Word(x) => x as Self,
+            }
+        }
+    }
+
+    impl From<Read> for u16 {
+        fn from(val: Read) -> Self {
+            match val {
+                Read::Byte(x) => Self::from(x),
+                Read::Word(x) => x,
+            }
+        }
+    }
+
+    impl From<u8> for Read {
+        fn from(val: u8) -> Self {
+            Self::Byte(val)
+        }
+    }
+    impl From<u16> for Read {
+        fn from(val: u16) -> Self {
+            Self::Word(val)
+        }
+    }
+
+    impl Address {
+        pub const fn is_word_register(self) -> bool {
+            match self {
+                Register(r) => r.is_word_register(),
+                _ => false,
+            }
+        }
+    }
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Direction {
     LEFT,
     RIGHT,
 }
-
-type Condition = Option<Flag>;
 
 pub trait Executable {
     fn execute(self, cpu: &mut CPU, bus: &mut Bus);
 }
 
 impl Register {
-    pub fn is_dual_register(self) -> bool {
-        match self {
-            HL => true,
-            BC => true,
-            DE => true,
-            SP => true,
-            _ => false,
-        }
+    pub const fn is_word_register(self) -> bool {
+        matches!(self, HL | BC | DE | SP)
     }
 }
 
-impl Location {
-    pub fn is_dual_register(self) -> bool {
-        if let Register(r) = self {
-            r.is_dual_register()
-        } else {
-            false
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub enum Instr {
+    #[default]
     NOOP,
     UNIMPLEMENTED,
-    LD(Location, Location), // (To, From)
-    LDD(Location, Location),
-    LDI(Location, Location),
+    LD(Address, Address), // (To, From)
+    LDD(Address, Address),
+    LDI(Address, Address),
     LDSP,
-    INC(Location),
-    DEC(Location),
-    ADD(Location),
-    ADDHL(Location),
-    ADC(Location),
-    SUB(Location),
-    AND(Location),
-    XOR(Location),
-    OR(Location),
-    CP(Location),
-    SBC(Location),
+    INC(Address),
+    DEC(Address),
+    ADD(Address),
+    ADDHL(Address),
+    ADC(Address),
+    SUB(Address),
+    AND(Address),
+    XOR(Address),
+    OR(Address),
+    CP(Address),
+    SBC(Address),
     CB,
-    JR(Condition),
+    JR(Option<Flag>),
     STOP,
     DisableInterrupts,
     EnableInterrupts,
-    JP(Condition),
+    JP(Option<Flag>),
     JpHl,
-    RET(Condition),
+    RET(Option<Flag>),
     RETI,
     DAA,
     POP(Register),
     PUSH(Register),
-    NOT(Location),
-    CALL(Condition),
+    NOT(Address),
+    CALL(Option<Flag>),
     RLCA,
     RRCA,
     RLA,
@@ -126,12 +211,6 @@ pub enum Instr {
     RST(u8),
 }
 
-impl Default for Instr {
-    fn default() -> Instr {
-        NOOP
-    }
-}
-
 impl From<u8> for Instr {
     fn from(op: u8) -> Self {
         INSTR_TABLE[op as usize]
@@ -141,7 +220,7 @@ impl From<u8> for Instr {
 impl Instr {
     pub fn run(self, cpu: &mut CPU, bus: &mut Bus) {
         match self {
-            NOOP => {} // empty !
+            NOOP | STOP => {} // empty / TODO
             LD(from, to) => ld::ld((from, to), cpu, bus),
             LDI(from, to) => ld::ldi((from, to), cpu, bus),
             LDD(from, to) => ld::ldd((from, to), cpu, bus),
@@ -165,7 +244,7 @@ impl Instr {
             CCF => alu::ccf(cpu, bus),
             ADDSP => alu::addsp(cpu, bus),
             SCF => alu::scf(cpu, bus),
-            RST(addr) => jp::rst(addr as u16, cpu, bus),
+            RST(addr) => jp::rst(u16::from(addr), cpu, bus),
             JP(flag) => jp::jp(flag, cpu, bus),
             JR(flag) => jp::jr(flag, cpu, bus),
             JpHl => jp::jp_hl(cpu, bus),
@@ -173,12 +252,11 @@ impl Instr {
             RETI => jp::reti(cpu, bus),
             CALL(flag) => jp::call(flag, cpu, bus),
             CB => cb::cb(cpu, bus),
-            STOP => {} // TODO
             DisableInterrupts => bus.disable_interrupts(),
             EnableInterrupts => bus.enable_interrupts(),
             DAA => misc::daa(cpu, bus),
-            POP(l) => misc::pop(l, cpu, bus),
-            PUSH(l) => misc::push(l, cpu, bus),
+            POP(r) => misc::pop(r, cpu, bus),
+            PUSH(r) => misc::push(r, cpu, bus),
             HALT => misc::halt(cpu, bus),
             UNIMPLEMENTED => unimplemented!(),
         }
@@ -186,28 +264,28 @@ impl Instr {
 }
 pub const INSTR_TABLE: [Instr; 256] = [
     NOOP,                             //0x00
-    LD(Register(BC), Immediate(2)),   //0x01
+    LD(Register(BC), ImmediateWord),  //0x01
     LD(Memory(BC), Register(A)),      //0x02
     INC(Register(BC)),                //0x03
     INC(Register(B)),                 //0x04
     DEC(Register(B)),                 //0x05
-    LD(Register(B), Immediate(1)),    //0x06
+    LD(Register(B), ImmediateByte),   //0x06
     RLCA,                             //0x07
-    LD(Immediate(2), Register(SP)),   //0x08
+    LD(ImmediateWord, Register(SP)),  //0x08
     ADDHL(Register(BC)),              //0x09
     LD(Register(A), Memory(BC)),      //0x0A
     DEC(Register(BC)),                //0x0B
     INC(Register(C)),                 //0x0C
     DEC(Register(C)),                 //0x0D
-    LD(Register(C), Immediate(1)),    //0x0E
+    LD(Register(C), ImmediateByte),   //0x0E
     RRCA,                             //0x0F
     STOP,                             //0x10
-    LD(Register(DE), Immediate(2)),   //0x11
+    LD(Register(DE), ImmediateWord),  //0x11
     LD(Memory(DE), Register(A)),      //0x12
     INC(Register(DE)),                //0x13
     INC(Register(D)),                 //0x14
     DEC(Register(D)),                 //0x15
-    LD(Register(D), Immediate(1)),    //0x16
+    LD(Register(D), ImmediateByte),   //0x16
     RLA,                              //0x17
     JR(None),                         //0x18
     ADDHL(Register(DE)),              //0x19
@@ -215,15 +293,15 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Register(DE)),                //0x1B
     INC(Register(E)),                 //0x1C
     DEC(Register(E)),                 //0x1D
-    LD(Register(E), Immediate(1)),    //0x1E
+    LD(Register(E), ImmediateByte),   //0x1E
     RRA,                              //0x1F
     JR(Some(FlagNZ)),                 //0x20
-    LD(Register(HL), Immediate(2)),   //0x21
+    LD(Register(HL), ImmediateWord),  //0x21
     LDI(Memory(HL), Register(A)),     //0x22
     INC(Register(HL)),                //0x23
     INC(Register(H)),                 //0x24
     DEC(Register(H)),                 //0x25
-    LD(Register(H), Immediate(1)),    //0x26
+    LD(Register(H), ImmediateByte),   //0x26
     DAA,                              //0x27
     JR(Some(FlagZ)),                  //0x28
     ADDHL(Register(HL)),              //0x29
@@ -231,15 +309,15 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Register(HL)),                //0x2B
     INC(Register(L)),                 //0x2C
     DEC(Register(L)),                 //0x2D
-    LD(Register(L), Immediate(1)),    //0x2E
+    LD(Register(L), ImmediateByte),   //0x2E
     NOT(Register(A)),                 //0x2F
     JR(Some(FlagNC)),                 //0x30
-    LD(Register(SP), Immediate(2)),   //0x31
+    LD(Register(SP), ImmediateWord),  //0x31
     LDD(Memory(HL), Register(A)),     //0x32
     INC(Register(SP)),                //0x33
     INC(Memory(HL)),                  //0x34
     DEC(Memory(HL)),                  //0x35
-    LD(Memory(HL), Immediate(1)),     //0x36
+    LD(Memory(HL), ImmediateByte),    //0x36
     SCF,                              //0x37
     JR(Some(FlagC)),                  //0x38
     ADDHL(Register(SP)),              //0x39
@@ -247,7 +325,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     DEC(Register(SP)),                //0x3B
     INC(Register(A)),                 //0x3C
     DEC(Register(A)),                 //0x3D
-    LD(Register(A), Immediate(1)),    //0x3E
+    LD(Register(A), ImmediateByte),   //0x3E
     CCF,                              //0x3F
     LD(Register(B), Register(B)),     //0x40
     LD(Register(B), Register(C)),     //0x41
@@ -378,12 +456,12 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CP(Memory(HL)),                   //0xBE
     CP(Register(A)),                  //0xBF
     RET(Some(FlagNZ)),                //0xC0
-    POP(Register::BC),                //0xC1
+    POP(BC),                          //0xC1
     JP(Some(FlagNZ)),                 //0xC2
     JP(None),                         //0xC3
     CALL(Some(FlagNZ)),               //0xC4
-    PUSH(Register::BC),               //0xC5
-    ADD(Immediate(1)),                //0xC6
+    PUSH(BC),                         //0xC5
+    ADD(ImmediateByte),               //0xC6
     RST(0x0),                         //0xC7
     RET(Some(FlagZ)),                 //0xC8
     RET(None),                        //0xC9
@@ -391,15 +469,15 @@ pub const INSTR_TABLE: [Instr; 256] = [
     CB,                               //0xCB
     CALL(Some(FlagZ)),                //0xCC
     CALL(None),                       //0xCD
-    ADC(Immediate(1)),                //0xCE
+    ADC(ImmediateByte),               //0xCE
     RST(0x8),                         //0xCF
     RET(Some(FlagNC)),                //0xD0
-    POP(Register::DE),                //0xD1
+    POP(DE),                          //0xD1
     JP(Some(FlagNC)),                 //0xD2
     UNIMPLEMENTED,                    //0xD3
     CALL(Some(FlagNC)),               //0xD4
-    PUSH(Register::DE),               //0xD5
-    SUB(Immediate(1)),                //0xD6
+    PUSH(DE),                         //0xD5
+    SUB(ImmediateByte),               //0xD6
     RST(0x10),                        //0xD7
     RET(Some(FlagC)),                 //0xD8
     RETI,                             //0xD9
@@ -407,15 +485,15 @@ pub const INSTR_TABLE: [Instr; 256] = [
     UNIMPLEMENTED,                    //0xDB
     CALL(Some(FlagC)),                //0xDC
     UNIMPLEMENTED,                    //0xDD
-    SBC(Immediate(1)),                //0xDE
+    SBC(ImmediateByte),               //0xDE
     RST(0x18),                        //0xDF
     LD(MemOffsetImm, Register(A)),    //0xE0
-    POP(Register::HL),                //0xE1
+    POP(HL),                          //0xE1
     LD(MemOffsetC, Register(A)),      //0xE2
     UNIMPLEMENTED,                    //0xE3
     UNIMPLEMENTED,                    //0xE4
-    PUSH(Register::HL),               //0xE5
-    AND(Immediate(1)),                //0xE6
+    PUSH(HL),                         //0xE5
+    AND(ImmediateByte),               //0xE6
     RST(0x20),                        //0xE7
     ADDSP,                            //0xE8
     JpHl,                             //0xE9
@@ -423,15 +501,15 @@ pub const INSTR_TABLE: [Instr; 256] = [
     UNIMPLEMENTED,                    //0xEB
     UNIMPLEMENTED,                    //0xEC
     UNIMPLEMENTED,                    //0xED
-    XOR(Immediate(1)),                //0xEE
+    XOR(ImmediateByte),               //0xEE
     RST(0x28),                        //0xEF
     LD(Register(A), MemOffsetImm),    //0xF0
-    POP(Register::AF),                //0xF1
+    POP(AF),                          //0xF1
     LD(Register(A), MemOffsetC),      //0xF2
     DisableInterrupts,                //0xF3
     UNIMPLEMENTED,                    //0xF4
-    PUSH(Register::AF),               //0xF5
-    OR(Immediate(1)),                 //0xF6
+    PUSH(AF),                         //0xF5
+    OR(ImmediateByte),                //0xF6
     RST(0x30),                        //0xF7
     LDSP,                             //0xF8
     LD(Register(SP), Register(HL)),   //0xF9
@@ -439,7 +517,7 @@ pub const INSTR_TABLE: [Instr; 256] = [
     EnableInterrupts,                 //0xFB
     UNIMPLEMENTED,                    //0xFC
     UNIMPLEMENTED,                    //0xFD
-    CP(Immediate(1)),                 //0xFE
+    CP(ImmediateByte),                //0xFE
     RST(0x38),                        //0xFF
 ];
 

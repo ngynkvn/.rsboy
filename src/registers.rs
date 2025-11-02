@@ -1,7 +1,4 @@
-use crate::cpu::value::Value;
-
-use crate::instructions::Register;
-use crate::instructions::Register::*;
+use crate::instructions::{Register, Register::*, location::Read};
 use std::fmt;
 
 // Global emu struct.
@@ -20,17 +17,17 @@ pub struct RegisterState {
 }
 
 /**
- * u16_reg(n, a, b) will create a u16 "register" named `n` defined as a | b
+ * `u16_reg(n, a, b)` will create a u16 "register" named `n` defined as a | b
  */
 macro_rules! u16_reg {
     ($fn_name:ident, $r1:ident, $r2:ident) => {
-        pub fn $fn_name(&self) -> u16 {
+        pub const fn $fn_name(&self) -> u16 {
             ((self.$r1 as u16) << 8) | (self.$r2 as u16)
         }
     };
 
     ($fn_name:ident) => {
-        pub fn $fn_name(&self) -> u16 {
+        pub const fn $fn_name(&self) -> u16 {
             self.$fn_name
         }
     };
@@ -38,7 +35,7 @@ macro_rules! u16_reg {
 
 macro_rules! u8_reg {
     ($fn_name: ident) => {
-        pub fn $fn_name(&self) -> u8 {
+        pub const fn $fn_name(&self) -> u8 {
             self.$fn_name
         }
     };
@@ -63,23 +60,28 @@ macro_rules! DEC {
 
 impl RegisterState {
     pub fn new() -> Self {
-        Default::default()
+        Self::default()
     }
 
-    pub fn set_cf(&mut self, b: bool) {
+    pub const fn set_flags(&mut self, value: [bool; 4]) {
+        self.f = flags(value[0], value[1], value[2], value[3]);
+    }
+
+    pub const fn set_cf(&mut self, b: bool) {
         self.f = (self.f & !(1 << 4)) | ((b as u8) << 4);
     }
-    pub fn set_hf(&mut self, b: bool) {
+    pub const fn set_hf(&mut self, b: bool) {
         self.f = (self.f & !(1 << 5)) | ((b as u8) << 5);
     }
-    pub fn set_nf(&mut self, b: bool) {
+    pub const fn set_nf(&mut self, b: bool) {
         self.f = (self.f & !(1 << 6)) | ((b as u8) << 6);
     }
-    pub fn set_zf(&mut self, b: bool) {
+    pub const fn set_zf(&mut self, b: bool) {
         self.f = (self.f & !(1 << 7)) | ((b as u8) << 7);
     }
 
-    pub fn jump(&self, address: u16) -> Self {
+    #[must_use]
+    pub const fn jump(&self, address: u16) -> Self {
         Self {
             pc: address,
             ..(*self)
@@ -116,7 +118,7 @@ impl RegisterState {
             E => INC!(self, e),
             H => INC!(self, h),
             L => INC!(self, l),
-            _ => panic!("inc not impl for {:?}", reg),
+            _ => panic!("inc not impl for {reg:?}"),
         }
     }
 
@@ -150,7 +152,7 @@ impl RegisterState {
             E => DEC!(self, e),
             H => DEC!(self, h),
             L => DEC!(self, l),
-            _ => panic!("dec not impl for {:?}", reg),
+            _ => panic!("dec not impl for {reg:?}"),
         }
     }
 
@@ -162,7 +164,9 @@ impl RegisterState {
             D => self.d,
             E => self.e,
             F => self.f,
-            _ => unreachable!(),
+            H => self.h,
+            L => self.l,
+            _ => panic!("fetch_u8 not impl for {reg:?}"),
         }
     }
 
@@ -174,11 +178,11 @@ impl RegisterState {
             DE => self.de(),
             HL => self.hl(),
             AF => self.af(),
-            _ => panic!(),
+            _ => panic!("fetch_u16 not impl for {reg:?}"),
         }
     }
 
-    pub fn get_dual_reg(&self, reg: Register) -> Option<u16> {
+    pub const fn get_dual_reg(&self, reg: Register) -> Option<u16> {
         match reg {
             SP => Some(self.sp()),
             PC => Some(self.pc()),
@@ -190,48 +194,36 @@ impl RegisterState {
         }
     }
 
-    pub fn fetch<T>(&self, reg: Register) -> Value<T> {
+    pub fn fetch(&self, reg: Register) -> Read {
         match reg {
-            A => Value::from(self.a),
-            B => Value::from(self.b),
-            C => Value::from(self.c),
-            D => Value::from(self.d),
-            E => Value::from(self.e),
-            F => Value::from(self.f),
-            H => Value::from(self.h),
-            L => Value::from(self.l),
-            BC => Value::from(self.bc()),
-            DE => Value::from(self.de()),
-            HL => Value::from(self.hl()),
-            AF => Value::from(self.af()),
-            SP => Value::from(self.sp),
-            PC => Value::from(self.pc),
+            A | B | C | D | E | F | H | L => Read::Byte(self.fetch_u8(reg)),
+            BC | DE | HL | AF | SP | PC => Read::Word(self.fetch_u16(reg)),
         }
     }
-    // TODO See if swapping these makes a difference..
-    // Probably not
-    pub fn flg_z(&self) -> bool {
+    // todo see if swapping these makes a difference..
+    // probably not
+    pub const fn flg_z(&self) -> bool {
         (self.f & 0b1000_0000) != 0
     }
-    pub fn flg_nz(&self) -> bool {
+    pub const fn flg_nz(&self) -> bool {
         !self.flg_z()
     }
-    pub fn flg_n(&self) -> bool {
+    pub const fn flg_n(&self) -> bool {
         (self.f & 0b0100_0000) != 0
     }
-    pub fn flg_nn(&self) -> bool {
+    pub const fn flg_nn(&self) -> bool {
         !self.flg_n()
     }
-    pub fn flg_h(&self) -> bool {
+    pub const fn flg_h(&self) -> bool {
         (self.f & 0b0010_0000) != 0
     }
-    pub fn flg_nh(&self) -> bool {
+    pub const fn flg_nh(&self) -> bool {
         !self.flg_h()
     }
-    pub fn flg_c(&self) -> bool {
+    pub const fn flg_c(&self) -> bool {
         (self.f & 0b0001_0000) != 0
     }
-    pub fn flg_nc(&self) -> bool {
+    pub const fn flg_nc(&self) -> bool {
         !self.flg_c()
     }
 
@@ -253,7 +245,8 @@ impl RegisterState {
     u16_reg!(hl, h, l);
 }
 
-pub fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
+#[allow(clippy::fn_params_excessive_bools)]
+pub const fn flags(z: bool, n: bool, h: bool, c: bool) -> u8 {
     ((z as u8) << 7) | ((n as u8) << 6) | ((h as u8) << 5) | ((c as u8) << 4)
 }
 impl fmt::Display for RegisterState {

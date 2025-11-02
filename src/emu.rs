@@ -1,10 +1,12 @@
-use std::{error::Error, fs::File, io::Read, path::PathBuf};
+use color_eyre::Result;
+use std::{fs::File, io::Read, path::PathBuf};
 
-use crate::bus::Bus;
-use crate::instructions::Instr;
-use crate::instructions::INSTR_DATA_LENGTHS;
-use crate::instructions::INSTR_TABLE;
-use crate::{cpu::CPU, gpu::PixelData};
+use crate::{
+    bus::Bus,
+    cpu::CPU,
+    gpu::PixelData,
+    instructions::{INSTR_DATA_LENGTHS, INSTR_TABLE, Instr},
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct InstrListing {
@@ -15,6 +17,8 @@ pub struct InstrListing {
 pub struct InstrList {
     pub il: Vec<InstrListing>,
 }
+
+#[must_use]
 pub fn gen_il(mem: &[u8]) -> Vec<InstrListing> {
     let mut view = vec![];
     let mut i = 0;
@@ -24,7 +28,7 @@ pub fn gen_il(mem: &[u8]) -> Vec<InstrListing> {
         let data_length = INSTR_DATA_LENGTHS[op as usize];
         let data = match data_length {
             0 => None,
-            1 => Some(mem[i + 1] as u16),
+            1 => Some(u16::from(mem[i + 1])),
             2 => Some(u16::from_le_bytes([mem[i + 1], mem[i + 2]])),
             _ => unreachable!(),
         };
@@ -38,6 +42,7 @@ pub fn gen_il(mem: &[u8]) -> Vec<InstrListing> {
     view
 }
 
+#[must_use]
 pub fn str_il(il: &[InstrListing]) -> String {
     il.iter().fold(String::new(), |res, il| {
         res + &format!("{:04x}: {:?} {:?}\n", il.addr, il.instr, il.data)
@@ -48,39 +53,50 @@ pub fn str_il(il: &[InstrListing]) -> String {
 pub struct Emu {
     pub cpu: CPU,
     pub bus: Bus,
-    pub framebuffer: Box<PixelData>,
+    pub framebuffer: PixelData,
 }
 
 impl Emu {
     pub fn emulate_step(&mut self) {
         // self.prev = self.cpu.clone();
-        // println!("{}", self.cpu);
+        // info!("{}", self.cpu);
         self.cpu.step(&mut self.bus);
     }
 
-    pub fn new(rom: Vec<u8>, bootrom: Option<PathBuf>) -> Emu {
+    pub fn run_until(&mut self, target_clock: usize) -> usize {
+        while self.bus.clock < target_clock {
+            self.emulate_step();
+        }
+        self.bus.clock
+    }
+
+    #[must_use]
+    pub fn new(rom: &[u8], bootrom: Option<PathBuf>) -> Self {
         let cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
-        Emu {
+        let buf = ndarray::Array2::<u32>::zeros((256, 256));
+        Self {
             cpu,
             bus,
-            framebuffer: Box::new([[0; 256]; 256]),
+            framebuffer: buf,
         }
     }
 
-    pub fn from_path(input: PathBuf, bootrom: Option<PathBuf>) -> Result<Emu, Box<dyn Error>> {
+    /// # Errors
+    pub fn from_path(input: PathBuf, bootrom: Option<PathBuf>) -> Result<Self> {
         let mut file = File::open(input)?;
         let mut rom = Vec::new();
         file.read_to_end(&mut rom)?;
         let cpu = CPU::new();
-        let bus = Bus::new(rom, bootrom);
-        Ok(Emu {
+        let bus = Bus::new(&rom, bootrom);
+        Ok(Self {
             cpu,
             bus,
-            framebuffer: Box::new([[0; 256]; 256]),
+            framebuffer: ndarray::Array2::<u32>::zeros((256, 256)),
         })
     }
 
+    #[must_use]
     pub fn gen_il(&self, mem: &[u8]) -> Vec<InstrListing> {
         let mut view = vec![];
         let mut i = 0;
@@ -90,7 +106,7 @@ impl Emu {
             let data_length = INSTR_DATA_LENGTHS[op as usize];
             let data = match data_length {
                 0 => None,
-                1 => Some(mem[i + 1] as u16),
+                1 => Some(u16::from(mem[i + 1])),
                 2 => Some(u16::from_le_bytes([mem[i + 1], mem[i + 2]])),
                 _ => unreachable!(),
             };

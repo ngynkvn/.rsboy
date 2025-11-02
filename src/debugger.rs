@@ -1,78 +1,101 @@
-extern crate imgui_opengl_renderer;
-use crate::constants::MaybeErr;
-use crate::emu::InstrListing;
-
-use imgui::{Context, Ui};
-use imgui_opengl_renderer::Renderer;
-use sdl2::video::Window;
-use sdl2::{video::GLContext};
 use std::collections::VecDeque;
+
+use crate::emu::InstrListing;
+use color_eyre::{Result, eyre};
+
+use glow::HasContext;
+use imgui::{Context, Ui};
+use imgui_glow_renderer::AutoRenderer;
+use imgui_sdl2_support::SdlPlatform;
+use sdl2::video::{GLContext, Window};
 
 #[derive(Default)]
 pub struct Info {
-    pub frame_times: Vec<f32>,
-    f_i: usize,
+    pub frame_times: VecDeque<f32>,
+    pub before_sleep: VecDeque<f32>,
+    pub memory_usage_peak: VecDeque<f32>,
+    pub memory_usage_curr: VecDeque<f32>,
+    pub cpu_hz: VecDeque<f32>,
     pub il: Vec<InstrListing>,
 }
 
-pub struct Imgui<'a> {
+pub struct Imgui {
     pub imgui: Context,
-    pub renderer: Renderer,
-    pub window: &'a Window,
-    pub _gl_context: GLContext,
+    pub renderer: AutoRenderer,
+    pub platform: SdlPlatform,
+    pub window: Window,
     pub info: Info,
+    pub gl_context: GLContext,
 }
 
-impl<'a> Imgui<'a> {
-    pub fn new(window: &'a Window) -> MaybeErr<Self> {
+impl Imgui {
+    /// # Errors
+    ///
+    /// This function will return an error if the window's GL context cannot be created.
+    pub fn new(window: Window) -> Result<Self> {
+        let gl_context = window.gl_create_context().map_err(|e| eyre::eyre!(e))?;
+        let gl = unsafe {
+            glow::Context::from_loader_function(|s| {
+                window.subsystem().gl_get_proc_address(s).cast()
+            })
+        };
         let mut imgui = imgui::Context::create();
-        imgui.fonts().build_rgba32_texture();
-        let _gl_context = window.gl_create_context()?;
-        gl::load_with(|s| window.subsystem().gl_get_proc_address(s) as _);
+        imgui
+            .fonts()
+            .add_font(&[imgui::FontSource::DefaultFontData { config: None }]);
 
-        let renderer = imgui_opengl_renderer::Renderer::new(&mut imgui, |s| {
-            window.subsystem().gl_get_proc_address(s) as _
-        });
+        /* create platform and renderer */
+        let platform = SdlPlatform::new(&mut imgui);
+        let renderer = AutoRenderer::new(gl, &mut imgui)?;
 
-        let mut info: Info = Default::default();
+        let mut info: Info = Info::default();
         info.frame_times.resize(200, 0.0);
 
         Ok(Self {
             imgui,
             renderer,
+            platform,
             window,
-            _gl_context,
             info,
+            gl_context,
         })
     }
-    pub fn capture_io(&mut self, event_pump: &mut sdl2::EventPump) {
-        let io = self.imgui.io_mut();
-        let state = event_pump.mouse_state();
-        let (width, height) = self.window.drawable_size();
-        io.display_size = [width as f32, height as f32];
-        io.mouse_down = [
-            state.left(),
-            state.right(),
-            state.middle(),
-            state.x1(),
-            state.x2(),
-        ];
-        io.mouse_pos = [state.x() as f32, state.y() as f32];
-    }
+
+    /// # Panics
+    ///
+    /// This function will panic if the renderer fails to render.
     pub fn frame<F: FnOnce(&mut Info, &Ui)>(&mut self, event_pump: &mut sdl2::EventPump, f: F) {
-        self.capture_io(event_pump);
-        let ui = self.imgui.frame();
-        unsafe {
-            gl::ClearColor(0.2, 0.2, 0.2, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+        /* call prepare_frame before calling imgui.new_frame() */
+        self.platform
+            .prepare_frame(&mut self.imgui, &self.window, event_pump);
+        let ui = self.imgui.new_frame();
+
+        f(&mut self.info, ui);
+        let draw_data = self.imgui.render();
+        if draw_data.draw_lists_count() > 0 {
+            unsafe {
+                self.renderer.gl_context().clear(glow::COLOR_BUFFER_BIT);
+            }
+            self.renderer.render(draw_data).unwrap();
+            self.window.gl_swap_window();
         }
-        f(&mut self.info, &ui);
-        self.renderer.render(ui);
-        self.window.gl_swap_window();
     }
+}
+
+impl Info {
     pub fn add_frame_time(&mut self, time: f32) {
-        self.info.frame_times[self.info.f_i] = time * 1000.0;
-        self.info.f_i += 1;
-        self.info.f_i %= self.info.frame_times.capacity();
+        self.frame_times.push_back(time * 1000.0);
+        self.frame_times.truncate_front(100);
+    }
+
+    pub fn add_before_sleep_time(&mut self, time: f32) {
+        self.before_sleep.push_back(time * 1000.0);
+        self.before_sleep.truncate_front(100);
+    }
+    pub fn add_memory_usage(&mut self, usage: (f32, f32)) {
+        self.memory_usage_curr.push_back(usage.0);
+        self.memory_usage_peak.push_back(usage.1);
+        self.memory_usage_curr.truncate_front(100);
+        self.memory_usage_peak.truncate_front(100);
     }
 }

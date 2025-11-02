@@ -1,9 +1,12 @@
-use crate::{bus::Bus, instructions::Register, registers::RegisterState};
+use crate::{
+    bus::Bus,
+    instructions::{Register, location::Read},
+    registers::RegisterState,
+};
 
 // #[repr(u8)]
 // #[derive(Clone, Copy)]
 // enum Tag {W, B}
-
 
 // #[derive(Clone, Copy)]
 // union U {
@@ -16,44 +19,34 @@ use crate::{bus::Bus, instructions::Register, registers::RegisterState};
 //     tag: Tag
 // }
 
-pub struct Value<T> {
-    t: T
-}
-
-impl From<u8> for Value<u8> {
-    fn from(v: u8) -> Self {
-        // Value {tag: Tag::B, u: U { byte: v }}
-        Value {t: v}
-    }
-}
-impl Into<u8> for Value<u8> {
-    fn into(self) -> u8 {
-        self.t
-    }
-}
-
-impl From<u16> for Value<u16> {
-    fn from(v: u16) -> Self {
-        Value {t: v}
-    }
-}
-impl Into<u16> for Value<u16> {
-    fn into(self) -> u16 {
-        self.t
-    }
-}
-
+pub struct Val<T>(pub T);
 pub trait Writable {
     fn to_memory_address(self, address: u16, b: &mut Bus);
     fn to_register(self, registers: &mut RegisterState, r: Register);
 }
-impl Writable for Value<u8> {
+
+impl Writable for Read {
     fn to_memory_address(self, address: u16, b: &mut Bus) {
-        self.t.to_memory_address(address, b);
+        match self {
+            Self::Byte(x) => x.to_memory_address(address, b),
+            Self::Word(x) => x.to_memory_address(address, b),
+        }
+    }
+    fn to_register(self, registers: &mut RegisterState, r: Register) {
+        match self {
+            Self::Byte(x) => x.to_register(registers, r),
+            Self::Word(x) => x.to_register(registers, r),
+        }
+    }
+}
+
+impl Writable for Val<u8> {
+    fn to_memory_address(self, address: u16, b: &mut Bus) {
+        self.0.to_memory_address(address, b);
     }
 
     fn to_register(self, registers: &mut RegisterState, r: Register) {
-        self.t.to_register(registers, r);
+        self.0.to_register(registers, r);
     }
 }
 

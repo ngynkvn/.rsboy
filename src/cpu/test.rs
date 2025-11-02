@@ -1,9 +1,7 @@
-use super::*;
-use crate::instructions::{Instr, Location::*};
-
 //https://github.com/CTurt/Cinoop/blob/990e7d92b759892e98a450b4979e887865d6757f/source/cpu.c
 // TODO, Add tests that have variable tick timings.
 // A value of 0 means that instruction is ignored in testing.
+#[allow(dead_code)]
 pub const EXPECTED_TICKS: [usize; 256] = [
     4, 12, 8, 8, 4, 4, 8, 4, 20, 8, 8, 8, 4, 4, 8, 4, 4, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4,
     8, 4, 0, 12, 8, 8, 4, 4, 8, 4, 0, 8, 8, 8, 4, 4, 8, 4, 0, 12, 8, 8, 12, 12, 12, 4, 0, 8, 8, 8,
@@ -39,7 +37,7 @@ pub const EXPECTED_TICKS: [usize; 256] = [
 //             time,
 //             EXPECTED_TICKS[i] / 4
 //         );
-//         println!("OK");
+//         info!("OK");
 //         i += 1
 //     }
 // }
@@ -118,8 +116,6 @@ pub const EXPECTED_TICKS: [usize; 256] = [
 //         assert_eq!(time, 3);
 //     }
 // }
-
-
 
 // #[test]
 // fn pop_af() {

@@ -4,9 +4,13 @@ use std::fmt::Display;
 
 use crate::bus::{Bus, Memory};
 
-use crate::instructions::*;
-use crate::registers::RegisterState;
-use value::Value;
+use crate::{
+    instructions::{
+        Instr,
+        location::{Address, Read},
+    },
+    registers::RegisterState,
+};
 use value::Writable;
 
 #[derive(Debug, Clone)]
@@ -38,6 +42,7 @@ impl Default for CPU {
 }
 
 impl CPU {
+    #[must_use]
     pub fn new() -> Self {
         // TODO
         Self {
@@ -79,55 +84,19 @@ impl CPU {
     // ld a, b
     // cpu.parse_op | read_from(location) | write_to(location)
 
-    pub fn read_from<T>(&mut self, location: Location, bus: &mut Bus) -> Value<T> {
-        match location {
-            Location::Immediate(1) => Value{ t: self.next_u8(bus) },
-            Location::Immediate(2) => Value{ t: self.next_u16(bus)},
-            Location::Immediate(_) => panic!(),
-            Location::MemoryImmediate => {
-                let address = self.next_u16(bus);
-                Value {t: bus.read_cycle(address)}
-            }
-            Location::Register(r) => self.registers.fetch(r),
-            Location::Memory(r) => Value{t: bus.read_cycle(self.registers.get_dual_reg(r).unwrap())},
-            Location::MemOffsetImm => {
-                let next = self.next_u8(bus);
-                Value{t:bus.read_cycle_high(next)}
-            }
-            Location::MemOffsetC => Value{t:bus.read_cycle_high(self.registers.c)},
-            Location::Literal(x) => x,
-        }
+    /// # Panics
+    /// - If the address is not a valid address.
+    pub fn read_from(&mut self, location: Address, bus: &mut Bus) -> Read {
+        location.read(self, bus)
     }
 
-    pub fn write_into<T>(&mut self, into: Location, write_value: T, bus: &mut Bus)
+    /// # Panics
+    /// - If the address is not a valid address.
+    pub fn write_into<T>(&mut self, into: Address, write_value: T, bus: &mut Bus)
     where
         T: Writable,
     {
-        match into {
-            Location::Immediate(2) => {
-                let address = self.next_u16(bus);
-                write_value.to_memory_address(address, bus);
-            }
-            Location::MemoryImmediate => {
-                let address = self.next_u16(bus);
-                write_value.to_memory_address(address, bus);
-            }
-            Location::Register(r) => write_value.to_register(&mut self.registers, r),
-            Location::Memory(r) => match self.registers.get_dual_reg(r) {
-                Some(address) => {
-                    write_value.to_memory_address(address, bus);
-                }
-                None => panic!("I tried to access a u8 as a bus address."),
-            },
-            Location::MemOffsetImm => {
-                let next = self.next_u8(bus);
-                write_value.to_memory_address(0xFF00 + next as u16, bus);
-            }
-            Location::MemOffsetC => {
-                write_value.to_memory_address(0xFF00 + self.registers.c as u16, bus);
-            }
-            _ => unimplemented!("{:?}", into),
-        };
+        into.write(self, bus, write_value);
     }
 
     pub fn push_stack(&mut self, value: u16, bus: &mut Bus) {
@@ -146,7 +115,7 @@ impl CPU {
         u16::from_le_bytes([lo, hi])
     }
 
-    pub fn bcd_adjust(&mut self, value: u8) -> u8 {
+    pub const fn bcd_adjust(&mut self, value: u8) -> u8 {
         let mut value = value;
         if self.registers.flg_nn() {
             if self.registers.flg_c() || value > 0x99 {
@@ -169,7 +138,7 @@ impl CPU {
         value
     }
 
-    pub fn interrupt_detected(&mut self, bus: &mut Bus) -> bool {
+    pub const fn interrupt_detected(&mut self, bus: &mut Bus) -> bool {
         bus.ime != 0 && (bus.int_enabled & bus.int_flags) != 0
     }
 
@@ -249,9 +218,10 @@ impl CPU {
         bus.write(0xFF4A, 0x00); // WY
         bus.write(0xFF4B, 0x00); // WX
         bus.write(0xFFFF, 0x00); // IE
-                                 // assert_eq!(bus.memory[0xFF04], 0xAB);
+        // assert_eq!(bus.memory[0xFF04], 0xAB);
     }
 
+    /// # Panics
     pub fn step(&mut self, bus: &mut Bus) {
         if bus.rom_start_signal {
             bus.rom_start_signal = false;

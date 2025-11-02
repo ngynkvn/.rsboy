@@ -10,7 +10,7 @@ pub fn rst(size: u16, cpu: &mut CPU, bus: &mut Bus) {
     cpu.registers.pc = size;
 }
 
-fn check_flag(cpu: &mut CPU, flag: Flag) -> bool {
+const fn check_flag(cpu: &CPU, flag: Flag) -> bool {
     match flag {
         Flag::FlagC => cpu.registers.flg_c(),
         Flag::FlagNC => cpu.registers.flg_nc(),
@@ -25,7 +25,7 @@ pub fn jumping<F: FnOnce(&mut CPU, &mut Bus)>(
     bus: &mut Bus,
     f: F,
 ) {
-    if let Some(false) = jt.map(|flag| check_flag(cpu, flag)) {
+    if jt.is_some_and(|flag| !check_flag(cpu, flag)) {
         return;
     }
     f(cpu, bus);
@@ -39,13 +39,16 @@ pub fn jp(jump_type: Option<Flag>, cpu: &mut CPU, bus: &mut Bus) {
 
 pub fn jr(jump_type: Option<Flag>, cpu: &mut CPU, bus: &mut Bus) {
     let offset = cpu.next_u8(bus) as i8;
-    let address = cpu.registers.pc.wrapping_add(offset as u16);
+    let address = cpu
+        .registers
+        .pc
+        .wrapping_add(i16::from(offset).cast_unsigned());
     jumping(jump_type, cpu, bus, |cpu, _| {
         cpu.registers.pc = address;
     });
 }
 
-pub fn jp_hl(cpu: &mut CPU, _bus: &mut Bus) {
+pub const fn jp_hl(cpu: &mut CPU, _bus: &mut Bus) {
     cpu.registers.pc = cpu.registers.hl();
 }
 
@@ -77,13 +80,13 @@ mod test {
     use crate::{
         bus::Bus,
         cpu::CPU,
-        instructions::{jp::jr, Flag},
+        instructions::{Flag, jp::jr},
     };
 
     #[test]
     fn _jr() {
         let mut cpu = CPU::new();
-        let mut bus = Bus::new(vec![], None);
+        let mut bus = Bus::new(&[], None);
         cpu.registers.pc = 0x000A + 1;
         bus.bootrom[0x0007] = 0x76;
         bus.bootrom[0x000A] = 0x20;
@@ -98,7 +101,7 @@ mod test {
     fn _jr2() {
         for i in 0..0xFF {
             let mut cpu = CPU::new();
-            let mut bus = Bus::new(vec![], None);
+            let mut bus = Bus::new(&[], None);
             cpu.registers.pc = 0x000A + 1;
             bus.bootrom[i] = i as u8;
             bus.bootrom[0x000A] = 0x20;

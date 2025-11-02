@@ -1,11 +1,11 @@
 use crate::{
     bus::Bus,
-    cpu::{value::Writable, CPU},
+    cpu::{CPU, value::Writable},
 };
 
 use super::Register;
 
-pub fn daa(cpu: &mut CPU, _bus: &mut Bus) {
+pub const fn daa(cpu: &mut CPU, _bus: &mut Bus) {
     cpu.registers.a = cpu.bcd_adjust(cpu.registers.a);
 }
 pub fn push(register: Register, cpu: &mut CPU, bus: &mut Bus) {
@@ -18,7 +18,7 @@ pub fn pop(register: Register, cpu: &mut CPU, bus: &mut Bus) {
     addr.to_register(&mut cpu.registers, register);
 }
 
-pub fn halt(cpu: &mut CPU, _bus: &mut Bus) {
+pub const fn halt(cpu: &mut CPU, _bus: &mut Bus) {
     //todo
     cpu.halt = true;
 }

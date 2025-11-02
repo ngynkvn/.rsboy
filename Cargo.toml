@@ -2,7 +2,8 @@
 name = "rust-emu"
 version = "0.1.0"
 authors = ["Kevin Nguyen <ngynkvn@gmail.com>"]
-edition = "2018"
+edition = "2024"
+description = "A Game Boy emulator in Rust"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -11,21 +12,23 @@ name = "main"
 
 
 [dependencies]
-sdl2 = "0.32.2"
-fern = "0.6.0"
-log = "0.4.8"
-crossterm = "0.17.7"
-arraydeque = "0.4.5"
-spin_sleep = "1.0.0"
-imgui = "0.5.0"
-imgui-opengl-renderer = "*"
-gl = "*"
+log = "0.4.28"
+spin_sleep = "1.3.3"
 structopt = "*"
-rustyline = "6.3.0"
+tap = "1.0.1"
+ndarray = "0.17.1"
+imgui = "0.12.0"
+imgui-sdl2-support = "0.13.0"
+sdl2 = { version = "0.37.0", features = ["use_mac_framework", "use-pkgconfig"] }
+imgui-glow-renderer = "0.13.0"
+glow = "0.14.2"
+color-eyre = "0.6.5"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.7"
 
 [[bench]]
 name = "emu"
@@ -37,3 +40,25 @@ incremental = true
 
 [profile.release]
 debug = true
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+allow_attributes_without_reason = "allow"
+missing_docs_in_private_items = "allow"
+multiple_crate_versions = "allow"         # Transitive dependencies
+cargo_common_metadata = "allow"
+wildcard_dependencies = "allow"
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+missing_panics_doc = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+wildcard_imports = "allow"
+pub_underscore_fields = "allow"
+enum_glob_use = "allow"

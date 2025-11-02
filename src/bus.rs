@@ -1,12 +1,11 @@
-use crate::gpu::GPU;
-use crate::gpu::OAM_END;
-use crate::gpu::OAM_START;
-use crate::gpu::VRAM_END;
-use crate::gpu::VRAM_START;
-use crate::timer;
-use std::io::Read;
-use std::path::PathBuf;
-use std::{fmt::Display, fs::File};
+use tracing::info;
+
+use crate::{
+    gpu::{GPU, OAM_END, OAM_START, VRAM_END, VRAM_START},
+    timer,
+    timer::Timer,
+};
+use std::{fmt::Display, fs::File, io::Read, path::PathBuf};
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -21,8 +20,8 @@ pub enum Select {
 
 // Global emu struct.
 pub struct Bus {
-    pub memory: [u8; 0x10000],
-    pub bootrom: [u8; 0x100],
+    pub memory: Box<[u8]>,
+    pub bootrom: Box<[u8]>,
     pub in_bios: u8,
     pub int_enabled: u8,
     pub int_flags: u8,
@@ -39,28 +38,33 @@ pub struct Bus {
 
 impl Display for Bus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            clock,
+            int_enabled,
+            int_flags,
+            timer,
+            keypresses,
+            directions,
+            ..
+        } = self;
         f.write_fmt(format_args!(
-            r#"CLK: {}, IE: {}, IF: {:08b}
-[TIMER]: {}
-[BTNS]: {:08b}
-[ARWS]: {:08b}"#,
-            self.clock,
-            self.int_enabled,
-            self.int_flags,
-            self.timer,
-            self.keypresses,
-            self.directions,
+            r"CLK: {clock}, IE: {int_enabled}, IF: {int_flags:08b}
+[TIMER]: {timer}
+[BTNS]: {keypresses:08b}
+[ARWS]: {directions:08b}",
         ))
     }
 }
 
 impl Bus {
-    pub fn new(rom_vec: Vec<u8>, bootrom_path: Option<PathBuf>) -> Self {
-        let memory = [0; 0x10000];
-        let mut buffer = Vec::new();
-        let bootrom = [0; 0x100];
+    /// # Panics
+    /// If the bootrom file cannot be read.
+    #[must_use]
+    pub fn new(rom_vec: &[u8], bootrom_path: Option<PathBuf>) -> Self {
+        let memory = vec![0; 0x10000].into_boxed_slice();
+        let bootrom = vec![0; 0x100].into_boxed_slice();
 
-        let mut bus = Bus {
+        let mut bus = Self {
             memory,
             bootrom,
             in_bios: 0,
@@ -77,29 +81,35 @@ impl Bus {
             io: String::new(),
         };
 
-        if let Ok(mut file) = File::open(bootrom_path.unwrap_or("dmg_boot.bin".into())) {
+        let file = bootrom_path
+            .or_else(|| Some(PathBuf::from("dmg_boot.bin")))
+            .map(File::open)
+            .transpose()
+            .expect("Couldn't open bootrom file.");
+        if let Some(mut file) = file {
+            let mut buffer = Vec::new();
             file.read_to_end(&mut buffer)
                 .expect("Couldn't read the file.");
             bus.bootrom[..].clone_from_slice(&buffer[..]);
         } else {
             bus.in_bios = 1;
             bus.rom_start_signal = true;
-            println!("No bootrom provided.");
+            info!("No bootrom provided.");
         }
-        bus.memory[..rom_vec.len()].clone_from_slice(&rom_vec[..]);
+        bus.memory[..rom_vec.len()].clone_from_slice(rom_vec);
 
         bus
     }
 
-    pub fn enable_interrupts(&mut self) {
+    pub const fn enable_interrupts(&mut self) {
         self.ime = 1;
     }
 
-    pub fn disable_interrupts(&mut self) {
+    pub const fn disable_interrupts(&mut self) {
         self.ime = 0;
     }
 
-    pub fn ack_interrupt(&mut self, flag: u8) {
+    pub const fn ack_interrupt(&mut self, flag: u8) {
         self.ime = 0;
         self.int_flags &= !flag;
     }
@@ -118,12 +128,12 @@ impl Bus {
 
     pub fn read_cycle_high(&mut self, addr: u8) -> u8 {
         self.generic_cycle();
-        self.read(0xFF00 | (addr as u16))
+        self.read(0xFF00 | u16::from(addr))
     }
 
     pub fn write_cycle(&mut self, addr: u16, value: u8) {
         self.generic_cycle();
-        self.write(addr, value)
+        self.write(addr, value);
     }
 }
 
@@ -151,8 +161,8 @@ impl Memory for Bus {
                 Select::None => 0xFF,
             },
             // 0xFFFF => &self.gpu.,
-            // 0xFF01 => {println!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
-            // 0xFF02 => {println!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
+            // 0xFF01 => {info!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
+            // 0xFF02 => {info!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
             VRAM_START..=VRAM_END => self.gpu[address],
             OAM_START..=OAM_END => self.gpu.oam[address as usize - OAM_START],
             _ => self.memory[address as usize],
@@ -172,7 +182,7 @@ impl Memory for Bus {
             0xff44 => self.gpu.scanline = value,
             0xff46 => {
                 //OAM Transfer request
-                let value = value as u16;
+                let value = u16::from(value);
                 if value <= 0xF1 {
                     let range = ((value << 8) as usize)..=((value << 8) as usize | 0xFF);
                     self.gpu.oam.copy_from_slice(&self.memory[range]);
@@ -192,20 +202,17 @@ impl Memory for Bus {
                 if value != 0 && !self.rom_start_signal {
                     self.rom_start_signal = true;
                 }
-                self.in_bios = value
-            }
-            0xff80 => {
-                self.memory[address as usize] = value;
+                self.in_bios = value;
             }
             0xff00 => {
                 self.select = match value & 0xF0 {
                     0b0001_0000 => Select::Buttons,
                     0b0010_0000 => Select::Directions,
-                    0b0011_0000 => Select::None,
+                    // 0b0011_0000 => Select::None,
                     _ => Select::None,
                 }
             }
-            0xff01 => {
+            0xff01 | 0xff80 => {
                 self.memory[address as usize] = value;
             }
             0xff02 => {
@@ -218,7 +225,7 @@ impl Memory for Bus {
             OAM_START..=OAM_END => self.gpu.oam[address as usize - OAM_START] = value,
             _ => {
                 if address >= 0x8000 {
-                    self.memory[address as usize] = value
+                    self.memory[address as usize] = value;
                 }
             }
         }

@@ -1,28 +1,32 @@
-use crate::{bus::Bus, cpu::CPU, instructions::Location, instructions::Register::*};
+use crate::{
+    bus::Bus,
+    cpu::CPU,
+    instructions::{Register::*, location::Address},
+};
 
+#[allow(clippy::too_many_lines)]
 pub fn cb(cpu: &mut CPU, bus: &mut Bus) {
     let opcode = cpu.next_u8(bus);
     let target = {
-        let opcode = opcode;
         match opcode & 0x0F {
-            0x00 | 0x08 => Location::Register(B),
-            0x01 | 0x09 => Location::Register(C),
-            0x02 | 0x0a => Location::Register(D),
-            0x03 | 0x0b => Location::Register(E),
-            0x04 | 0x0c => Location::Register(H),
-            0x05 | 0x0d => Location::Register(L),
-            0x06 | 0x0e => Location::Memory(HL),
-            0x07 | 0x0f => Location::Register(A),
+            0x00 | 0x08 => Address::Register(B),
+            0x01 | 0x09 => Address::Register(C),
+            0x02 | 0x0a => Address::Register(D),
+            0x03 | 0x0b => Address::Register(E),
+            0x04 | 0x0c => Address::Register(H),
+            0x05 | 0x0d => Address::Register(L),
+            0x06 | 0x0e => Address::Memory(HL),
+            0x07 | 0x0f => Address::Register(A),
             _ => panic!(),
         }
     };
-    let value = cpu.read_from(target, bus);
+    let value = cpu.read_from(target, bus).into();
     match opcode {
         0x00..=0x07 => {
             //RLC
             let carry = value & 0x80 != 0;
-            let result = value << 1 | carry as u8;
-            cpu.registers.set_zf(result == 0);
+            let result = value << 1 | u8::from(carry);
+            cpu.registers.set_zf(result == 0u8);
             cpu.registers.set_hf(false);
             cpu.registers.set_nf(false);
             cpu.registers.set_cf(carry);
@@ -31,8 +35,8 @@ pub fn cb(cpu: &mut CPU, bus: &mut Bus) {
         0x08..=0x0F => {
             //RRC
             let carry = value & 0x01 != 0;
-            let result = ((carry as u8) << 7) | (value >> 1);
-            cpu.registers.set_zf(result == 0);
+            let result = (u8::from(carry) << 7) | (value >> 1);
+            cpu.registers.set_zf(result == 0u8);
             cpu.registers.set_hf(false);
             cpu.registers.set_nf(false);
             cpu.registers.set_cf(carry);
@@ -40,8 +44,8 @@ pub fn cb(cpu: &mut CPU, bus: &mut Bus) {
         }
         0x10..=0x17 => {
             //RL
-            let result = value << 1 | cpu.registers.flg_c() as u8;
-            cpu.registers.set_zf(result == 0);
+            let result = value << 1 | u8::from(cpu.registers.flg_c());
+            cpu.registers.set_zf(result == 0u8);
             cpu.registers.set_nf(false);
             cpu.registers.set_hf(false);
             cpu.registers.set_cf(value & 0x80 != 0);
@@ -49,8 +53,8 @@ pub fn cb(cpu: &mut CPU, bus: &mut Bus) {
         }
         0x18..=0x1F => {
             //RR
-            let result = (value >> 1) | ((cpu.registers.flg_c() as u8) << 7);
-            cpu.registers.set_zf(result == 0);
+            let result = (value >> 1) | (u8::from(cpu.registers.flg_c()) << 7);
+            cpu.registers.set_zf(result == 0u8);
             cpu.registers.set_nf(false);
             cpu.registers.set_hf(false);
             cpu.registers.set_cf(value & 0x01 != 0);
@@ -75,7 +79,7 @@ pub fn cb(cpu: &mut CPU, bus: &mut Bus) {
             cpu.registers.set_zf(check_zero);
             cpu.registers.set_nf(false);
             cpu.registers.set_hf(true);
-            if let Location::Memory(_) = target {
+            if let Address::Memory(_) = target {
                 bus.generic_cycle();
             }
         }
@@ -123,22 +127,17 @@ pub fn cb(cpu: &mut CPU, bus: &mut Bus) {
             let result = value & !(1 << bit_index);
             cpu.write_into(target, result, bus);
         }
-    };
+    }
 }
 
 #[inline]
-pub fn swapped_nibbles(byte: u8) -> u8 {
+pub const fn swapped_nibbles(byte: u8) -> u8 {
     let [hi, lo] = [byte >> 4, byte & 0xF];
     (lo << 4) | hi
 }
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        bus::Bus,
-        cpu::CPU,
-        instructions::{Instr, Location},
-    };
 
     // #[test]
     // fn ticks_cb_instr() {
