@@ -1,7 +1,9 @@
-use crate::instructions::{Register, Register::*, location::Read};
+use crate::{
+    instructions::{Register, Register::*},
+    location::Read,
+};
 use std::fmt;
 
-// Global emu struct.
 #[derive(Default, Debug, Clone)]
 pub struct RegisterState {
     pub a: u8,
@@ -16,9 +18,7 @@ pub struct RegisterState {
     pub pc: u16,
 }
 
-/**
- * `u16_reg(n, a, b)` will create a u16 "register" named `n` defined as a | b
- */
+/// `u16_reg(n, a, b)` will create a u16 "register" named `n` defined as a | b
 macro_rules! u16_reg {
     ($fn_name:ident, $r1:ident, $r2:ident) => {
         pub const fn $fn_name(&self) -> u16 {

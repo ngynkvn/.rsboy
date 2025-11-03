@@ -1,4 +1,4 @@
-use crate::instructions::{Bus, CPU, Register, location::Address};
+use crate::{bus::Bus, cpu::CPU, instructions::Register, location::Address};
 
 pub fn ld((into, from): (Address, Address), cpu: &mut CPU, bus: &mut Bus) {
     let from_value = cpu.read_from(from, bus);

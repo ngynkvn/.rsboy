@@ -1,13 +1,18 @@
-use color_eyre::{Result, eyre::eyre};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-
-//SDL
-
 use crate::{
     constants::{CYCLES_PER_FRAME, FRAME_TIME, MAP_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH},
     debugger::Imgui,
 };
-
+use clap::Parser;
+use color_eyre::{Result, eyre::eyre};
+use gpu::PixelData;
+use rust_emu::{
+    constants::{self, setup_logger},
+    cpu::interrupts,
+    debugger,
+    emu::{self, Emu, gen_il},
+    gpu,
+    prelude::*,
+};
 use sdl2::{
     event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect, render::Texture,
     video::Window,
@@ -18,44 +23,23 @@ use std::{
 };
 use tap::Tap;
 
-//File IO
-use log::info;
-
-use gpu::PixelData;
-use rust_emu::{
-    cpu::JOYPAD,
-    debugger,
-    emu::{Emu, gen_il},
-};
-use structopt::StructOpt;
-
-use rust_emu::{constants, emu, gpu};
-
-#[derive(StructOpt)]
-#[structopt(name = ".rsboy", about = "Rust emulator")]
+#[derive(Parser)]
+#[command(name = ".rsboy", about = "Rust emulator")]
 struct Settings {
-    #[structopt(parse(from_os_str))]
+    #[arg()]
     input: PathBuf,
-    #[structopt(parse(from_os_str))]
+    #[arg(short, long)]
     _logfile: Option<PathBuf>,
-    #[structopt(short = "-b")]
+    #[arg(short, long)]
     bootrom: Option<PathBuf>,
-    #[structopt(short = "-r")]
+    #[arg(short, long)]
     _repl: bool,
 }
 
-fn setup_logger() -> Result<()> {
-    color_eyre::install()?;
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init()?;
-    Ok(())
-}
-
 fn main() -> Result<()> {
+    println!("Starting program");
     // When the program starts up, parse command line arguments and setup additional systems.
-    let settings = Settings::from_args();
+    let settings = Settings::parse();
     info!("Setup logging");
     setup_logger()?;
     info!("Running SDL Main");
@@ -163,23 +147,23 @@ fn parse_event(debugger: &mut Imgui, emu: &mut Emu, event: &Event) -> Option<Res
         } => match *keycode {
             Keycode::Down => {
                 emu.bus.directions &= !0b1000;
-                emu.bus.int_flags |= JOYPAD;
+                emu.bus.int_flags |= interrupts::JOYPAD;
             }
             Keycode::Up => {
                 emu.bus.directions &= !0b0100;
-                emu.bus.int_flags |= JOYPAD;
+                emu.bus.int_flags |= interrupts::JOYPAD;
             }
             Keycode::Left => {
                 emu.bus.directions &= !0b0010;
-                emu.bus.int_flags |= JOYPAD;
+                emu.bus.int_flags |= interrupts::JOYPAD;
             }
             Keycode::Right => {
                 emu.bus.directions &= !0b0001;
-                emu.bus.int_flags |= JOYPAD;
+                emu.bus.int_flags |= interrupts::JOYPAD;
             }
             Keycode::Return => {
                 emu.bus.keypresses &= !0b1000;
-                emu.bus.int_flags |= JOYPAD;
+                emu.bus.int_flags |= interrupts::JOYPAD;
             }
             // Keycode::Z => {
             //     //A?

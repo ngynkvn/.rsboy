@@ -1,7 +1,6 @@
-use tracing::info;
-
 use crate::{
     gpu::{GPU, OAM_END, OAM_START, VRAM_END, VRAM_START},
+    prelude::*,
     timer,
     timer::Timer,
 };
@@ -115,22 +114,26 @@ impl Bus {
     }
 
     // Cycle refers to 1 T-cycle
+    #[instrument(ret, level = "trace", skip(self), fields(clock = self.clock, to = self.clock + 1))]
     pub fn generic_cycle(&mut self) {
         self.clock += 1;
         self.gpu.cycle(&mut self.int_flags);
         self.timer.tick_timer_counter(&mut self.int_flags);
     }
 
+    #[instrument(ret, skip(self), fields(clock = self.clock))]
     pub fn read_cycle(&mut self, addr: u16) -> u8 {
         self.generic_cycle();
         self.read(addr)
     }
 
+    #[instrument(ret, skip(self), fields(clock = self.clock))]
     pub fn read_cycle_high(&mut self, addr: u8) -> u8 {
         self.generic_cycle();
         self.read(0xFF00 | u16::from(addr))
     }
 
+    #[instrument(ret, skip(self), fields(clock = self.clock))]
     pub fn write_cycle(&mut self, addr: u16, value: u8) {
         self.generic_cycle();
         self.write(addr, value);

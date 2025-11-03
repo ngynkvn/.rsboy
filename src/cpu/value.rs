@@ -1,8 +1,4 @@
-use crate::{
-    bus::Bus,
-    instructions::{Register, location::Read},
-    registers::RegisterState,
-};
+use crate::{bus::Bus, instructions::Register, location::Read, registers::RegisterState};
 
 // #[repr(u8)]
 // #[derive(Clone, Copy)]

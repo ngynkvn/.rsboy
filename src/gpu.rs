@@ -1,6 +1,4 @@
-use tracing::info;
-
-use crate::{cpu, texture::*};
+use crate::{cpu, prelude::*, texture::*};
 use std::{
     fmt::Display,
     ops::{Index, Range, RangeInclusive},
@@ -265,7 +263,7 @@ impl GPU {
                 gpu.scanline += 1;
                 if gpu.scanline == END_HBLANK {
                     gpu.vblank_count += 1;
-                    *flag |= cpu::VBLANK;
+                    *flag |= cpu::interrupts::VBLANK;
                     gpu.mode = GpuMode::VBlank;
                 } else {
                     gpu.mode = GpuMode::Oam;

@@ -4,6 +4,7 @@ pub mod cpu;
 pub mod emu;
 pub mod gpu;
 pub mod instructions;
+pub mod location;
 pub mod registers;
 pub mod texture;
 // pub mod tui;
@@ -14,6 +15,11 @@ pub mod timer;
 // extern crate wasm_bindgen;
 
 mod utils;
+pub mod prelude {
+    pub use tap::Tap;
+    pub use tracing::*;
+    pub use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+}
 
 // use cfg_if::cfg_if;
 // use wasm_bindgen::prelude::*;

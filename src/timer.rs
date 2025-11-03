@@ -51,7 +51,7 @@ impl Timer {
         if enable && was_one && now_zero {
             let (value, overflow) = self.tima.overflowing_add(1);
             if overflow {
-                *flags |= cpu::TIMER;
+                *flags |= cpu::interrupts::TIMER;
                 self.tima = self.tma;
             } else {
                 self.tima = value;

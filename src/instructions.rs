@@ -4,10 +4,18 @@ mod jp;
 mod ld;
 mod misc;
 
-use self::{Flag::*, Instr::*, Register::*, location::Address::*};
-use crate::{bus::Bus, cpu::CPU, instructions::location::Address};
+use std::{collections::HashMap, sync::LazyLock};
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+use strum_macros::IntoStaticStr;
+
+use self::{Flag::*, Instr::*, Register::*};
+use crate::{
+    bus::Bus,
+    cpu::CPU,
+    location::{Address, Address::*},
+};
+
+#[derive(Debug, PartialEq, Eq, Copy, Clone, IntoStaticStr, Hash)]
 pub enum Register {
     A,
     B,
@@ -25,129 +33,12 @@ pub enum Register {
     AF,
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, IntoStaticStr, Hash)]
 pub enum Flag {
     FlagNZ,
     FlagZ,
     FlagC,
     FlagNC,
-}
-
-pub mod location {
-
-    use tap::Pipe;
-
-    use crate::{
-        bus::Bus,
-        cpu::{CPU, value::Writable},
-        instructions::Register,
-    };
-
-    #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-    pub enum Address {
-        Memory(Register),
-        Register(Register),
-        ImmediateByte, // Bytes
-        ImmediateWord, // Words
-        MemOffsetImm,
-        MemoryImmediate,
-        MemOffsetC,
-    }
-
-    impl Address {
-        pub fn read(self, cpu: &mut CPU, bus: &mut Bus) -> Read {
-            use Register::*;
-            match self {
-                Self::ImmediateByte => Read::Byte(cpu.next_u8(bus)),
-                Self::ImmediateWord => Read::Word(cpu.next_u16(bus)),
-                Self::MemoryImmediate => Read::Byte(cpu.next_u16(bus).pipe(|x| bus.read_cycle(x))),
-                Self::MemOffsetImm => Read::Byte(cpu.next_u8(bus).pipe(|x| bus.read_cycle_high(x))),
-                Self::MemOffsetC => Read::Byte(cpu.registers.c.pipe(|x| bus.read_cycle_high(x))),
-                Self::Memory(reg) => {
-                    Read::Byte(cpu.registers.fetch_u16(reg).pipe(|x| bus.read_cycle(x)))
-                }
-                Self::Register(reg @ (A | B | C | D | E | H | L | F)) => {
-                    Read::Byte(cpu.registers.fetch_u8(reg))
-                }
-                Self::Register(reg @ (AF | BC | DE | HL | SP | PC)) => {
-                    Read::Word(cpu.registers.fetch_u16(reg))
-                }
-            }
-        }
-        pub fn write<T>(self, cpu: &mut CPU, bus: &mut Bus, write_value: T)
-        where
-            T: Writable,
-        {
-            match self {
-                Self::ImmediateWord | Self::MemoryImmediate => {
-                    let address = cpu.next_u16(bus);
-                    write_value.to_memory_address(address, bus);
-                }
-                Self::Memory(r) => {
-                    let address = cpu
-                        .registers
-                        .get_dual_reg(r)
-                        .expect("I tried to access a u8 as a bus address.");
-                    write_value.to_memory_address(address, bus);
-                }
-                Self::MemOffsetImm => {
-                    let next = cpu.next_u8(bus);
-                    write_value.to_memory_address(0xFF00 + u16::from(next), bus);
-                }
-                Self::MemOffsetC => {
-                    write_value.to_memory_address(0xFF00 + u16::from(cpu.registers.c), bus);
-                }
-                Self::Register(r) => write_value.to_register(&mut cpu.registers, r),
-                Self::ImmediateByte => unimplemented!("{:?}", self),
-            }
-        }
-    }
-
-    /// Result of a read operation.
-    #[derive(Debug, PartialEq, Eq, Copy, Clone)]
-    pub enum Read {
-        Byte(u8),
-        Word(u16),
-    }
-
-    impl From<Read> for u8 {
-        fn from(val: Read) -> Self {
-            #[allow(clippy::cast_possible_truncation)]
-            match val {
-                Read::Byte(x) => x,
-                Read::Word(x) => x as Self,
-            }
-        }
-    }
-
-    impl From<Read> for u16 {
-        fn from(val: Read) -> Self {
-            match val {
-                Read::Byte(x) => Self::from(x),
-                Read::Word(x) => x,
-            }
-        }
-    }
-
-    impl From<u8> for Read {
-        fn from(val: u8) -> Self {
-            Self::Byte(val)
-        }
-    }
-    impl From<u16> for Read {
-        fn from(val: u16) -> Self {
-            Self::Word(val)
-        }
-    }
-
-    impl Address {
-        pub const fn is_word_register(self) -> bool {
-            match self {
-                Register(r) => r.is_word_register(),
-                _ => false,
-            }
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -166,7 +57,7 @@ impl Register {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, IntoStaticStr, Hash)]
 pub enum Instr {
     #[default]
     NOOP,
@@ -211,9 +102,14 @@ pub enum Instr {
     RST(u8),
 }
 
+impl From<Instr> for u8 {
+    fn from(val: Instr) -> Self {
+        INSTR_OPCODE[&val]
+    }
+}
 impl From<u8> for Instr {
-    fn from(op: u8) -> Self {
-        INSTR_TABLE[op as usize]
+    fn from(value: u8) -> Self {
+        INSTR_TABLE[value as usize]
     }
 }
 
@@ -221,9 +117,9 @@ impl Instr {
     pub fn run(self, cpu: &mut CPU, bus: &mut Bus) {
         match self {
             NOOP | STOP => {} // empty / TODO
-            LD(from, to) => ld::ld((from, to), cpu, bus),
-            LDI(from, to) => ld::ldi((from, to), cpu, bus),
-            LDD(from, to) => ld::ldd((from, to), cpu, bus),
+            LD(to, from) => ld::ld((to, from), cpu, bus),
+            LDI(to, from) => ld::ldi((to, from), cpu, bus),
+            LDD(to, from) => ld::ldd((to, from), cpu, bus),
             LDSP => ld::ldsp(cpu, bus),
             INC(location) => alu::inc(location, cpu, bus),
             DEC(location) => alu::dec(location, cpu, bus),
@@ -521,6 +417,14 @@ pub const INSTR_TABLE: [Instr; 256] = [
     RST(0x38),                        //0xFF
 ];
 
+static INSTR_OPCODE: LazyLock<HashMap<&Instr, u8>> = std::sync::LazyLock::new(|| {
+    INSTR_TABLE
+        .iter()
+        .enumerate()
+        .map(|(opcode, instr)| (instr, opcode as u8))
+        .collect::<HashMap<_, _>>()
+});
+
 pub const INSTR_DATA_LENGTHS: [usize; 256] = [
     0, // 0x00
     2, // 0x01
@@ -779,3 +683,29 @@ pub const INSTR_DATA_LENGTHS: [usize; 256] = [
     1, // 0xfe
     0, // 0xff
 ];
+
+impl std::fmt::Display for Instr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NOOP | LDSP | UNIMPLEMENTED | RLCA | RRCA | RLA | RRA | SCF | CCF | ADDSP | HALT
+            | CB | STOP | DisableInterrupts | EnableInterrupts | JpHl | RETI | DAA | RST(_) => {
+                write!(f, "{}", <&str>::from(self))
+            }
+            LD(to, from) | LDD(to, from) | LDI(to, from) => {
+                write!(f, "{}({to}, {from})", <&str>::from(self))
+            }
+            INC(a) | DEC(a) | ADD(a) | ADDHL(a) | ADC(a) | SUB(a) | AND(a) | XOR(a) | OR(a)
+            | CP(a) | NOT(a) | SBC(a) => write!(f, "{}({a})", <&str>::from(self)),
+
+            JR(flag) | JP(flag) | RET(flag) | CALL(flag) => {
+                write!(
+                    f,
+                    "{}({})",
+                    <&str>::from(self),
+                    flag.map(<&str>::from).unwrap_or("-")
+                )
+            }
+            POP(r) | PUSH(r) => write!(f, "{}({r})", <&str>::from(self)),
+        }
+    }
+}

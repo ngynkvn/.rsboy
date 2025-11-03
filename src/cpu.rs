@@ -1,23 +1,42 @@
 pub mod value;
 
+// use bitflags::bitflags;
 use std::fmt::Display;
 
 use crate::bus::{Bus, Memory};
 
 use crate::{
-    instructions::{
-        Instr,
-        location::{Address, Read},
-    },
+    cpu,
+    instructions::Instr,
+    location::{Address, Read},
+    prelude::*,
     registers::RegisterState,
 };
 use value::Writable;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
 pub enum CPUState {
-    Running,
-    Interrupted,
+    #[default]
+    Boot,
+    Running(Stage),
+    Interrupted(Stage),
     Halted,
+}
+
+impl CPUState {
+    pub const fn stage(&self) -> Option<Stage> {
+        match &self {
+            Self::Running(stage) | Self::Interrupted(stage) => Some(*stage),
+            Self::Boot | Self::Halted => None,
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Stage {
+    #[default]
+    Fetch,
+    Execute,
 }
 // Global emu struct.
 #[derive(Debug, Clone)]
@@ -29,11 +48,24 @@ pub struct CPU {
     pub halt: bool,
 }
 
-pub const VBLANK: u8 = 0b1;
-pub const LCDSTAT: u8 = 0b10;
-pub const TIMER: u8 = 0b100;
-pub const SERIAL: u8 = 0b1000;
-pub const JOYPAD: u8 = 0b10000;
+// bitflags! {
+//     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+//     pub struct Interrupts: u8 {
+//         const VBLANK  = 0b0000_0001;
+//         const LCDSTAT = 0b0000_0010;
+//         const TIMER   = 0b0000_0100;
+//         const SERIAL  = 0b0000_1000;
+//         const JOYPAD = 0b0001_0000;
+//     }
+// }
+pub mod interrupts {
+    pub const VBLANK: u8 = 0b0000_0001;
+    pub const LCDSTAT: u8 = 0b0000_0010;
+    pub const TIMER: u8 = 0b0000_0100;
+    pub const SERIAL: u8 = 0b0000_1000;
+    pub const JOYPAD: u8 = 0b0001_0000;
+}
+use interrupts::*;
 
 impl Default for CPU {
     fn default() -> Self {
@@ -49,25 +81,36 @@ impl CPU {
             registers: RegisterState::new(),
             opcode: 0,
             op_addr: 0,
-            state: CPUState::Running,
+            state: CPUState::Running(Stage::Fetch),
             halt: false,
         }
     }
 
-    fn execute_op(&mut self, bus: &mut Bus) {
+    pub fn execute_op(&mut self, bus: &mut Bus) -> CPUState {
+        // M2: execute
         Instr::from(self.opcode).run(self, bus);
+        CPUState::Running(Stage::Fetch)
     }
 
-    pub fn prefetch_op(&mut self, bus: &mut Bus, addr: u16) -> CPUState {
-        let opcode = bus.read_cycle(addr);
-        self.op_addr = addr;
+    pub fn fetch_op(&mut self, bus: &mut Bus) -> CPUState {
+        // M1: fetch
+        let opcode = bus.read_cycle(self.registers.pc);
+        self.op_addr = self.registers.pc;
         self.opcode = opcode;
+        info!(
+            opcode = self.opcode,
+            "opcode changed to: {} {:?}",
+            Instr::from(opcode),
+            &bus.memory[0..10]
+        );
         if self.interrupt_detected(bus) {
-            return CPUState::Interrupted;
+            let stage = self.state.stage().unwrap_or_default();
+            return CPUState::Interrupted(stage);
         }
         self.registers.pc = self.registers.pc.wrapping_add(1);
-        CPUState::Running
+        CPUState::Running(Stage::Execute)
     }
+
     pub fn next_u8(&mut self, bus: &mut Bus) -> u8 {
         let addr = self.registers.pc;
         self.registers.pc = self.registers.pc.wrapping_add(1);
@@ -142,36 +185,36 @@ impl CPU {
         bus.ime != 0 && (bus.int_enabled & bus.int_flags) != 0
     }
 
-    pub fn handle_interrupts(&mut self, bus: &mut Bus) {
+    pub fn handle_interrupts(&mut self, bus: &mut Bus) -> CPUState {
         let fired = bus.int_enabled & bus.int_flags;
         bus.generic_cycle();
         self.push_stack(self.registers.pc, bus);
+        // let fired = Interrupts::from_bits_truncate(fired);
         if fired & VBLANK != 0 {
             bus.ack_interrupt(VBLANK);
             self.registers.pc = 0x40;
-            let opcode = self.next_u8(bus);
-            self.opcode = opcode;
+            self.opcode = self.next_u8(bus);
         } else if fired & LCDSTAT != 0 {
             bus.ack_interrupt(LCDSTAT);
             self.registers.pc = 0x48;
-            let opcode = self.next_u8(bus);
-            self.opcode = opcode;
+            self.opcode = self.next_u8(bus);
         } else if fired & TIMER != 0 {
             bus.ack_interrupt(TIMER);
             self.registers.pc = 0x50;
-            let opcode = self.next_u8(bus);
-            self.opcode = opcode;
+            self.opcode = self.next_u8(bus);
         } else if fired & SERIAL != 0 {
             bus.ack_interrupt(SERIAL);
             self.registers.pc = 0x58;
-            let opcode = self.next_u8(bus);
-            self.opcode = opcode;
+            self.opcode = self.next_u8(bus);
         } else if fired & JOYPAD != 0 {
             bus.ack_interrupt(JOYPAD);
             self.registers.pc = 0x60;
-            let opcode = self.next_u8(bus);
-            self.opcode = opcode;
+            self.opcode = self.next_u8(bus);
         }
+        let CPUState::Interrupted(stage) = self.state else {
+            unreachable!()
+        };
+        CPUState::Running(stage)
     }
 
     // TODO hide this
@@ -223,23 +266,25 @@ impl CPU {
 
     /// # Panics
     pub fn step(&mut self, bus: &mut Bus) {
-        if bus.rom_start_signal {
-            bus.rom_start_signal = false;
-            self.load_start_values(bus);
-        }
-        match &self.state {
-            CPUState::Running => {
-                // self.opcode.execute(self, bus);
-                self.execute_op(bus);
-                self.state = self.prefetch_op(bus, self.registers.pc);
+        let _span = info_span!("Step", state = ?self.state).entered();
+        debug!(
+            "{: ^32} [{: >4}] {: >16}",
+            format!("{}", Instr::from(self.opcode)),
+            cpu::test::EXPECTED_TICKS[self.opcode as usize],
+            bus.clock,
+        );
+        self.state = match &mut self.state {
+            CPUState::Boot => {
+                if bus.rom_start_signal {
+                    bus.rom_start_signal = false;
+                    self.load_start_values(bus);
+                }
+                CPUState::Running(Stage::Fetch)
             }
-            CPUState::Interrupted => {
-                self.handle_interrupts(bus);
-                self.state = CPUState::Running;
-            }
-            CPUState::Halted => {
-                panic!();
-            }
+            CPUState::Running(Stage::Fetch) => self.fetch_op(bus),
+            CPUState::Running(Stage::Execute) => self.execute_op(bus),
+            CPUState::Interrupted(_) => self.handle_interrupts(bus),
+            CPUState::Halted => panic!(),
         }
     }
 }
@@ -250,5 +295,5 @@ impl Display for CPU {
     }
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 mod test;

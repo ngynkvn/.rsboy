@@ -1,8 +1,4 @@
-use crate::{
-    bus::Bus,
-    cpu::CPU,
-    instructions::{Register::*, location::Address},
-};
+use crate::{bus::Bus, cpu::CPU, instructions::Register::*, location::Address};
 
 #[allow(clippy::too_many_lines)]
 pub fn cb(cpu: &mut CPU, bus: &mut Bus) {
