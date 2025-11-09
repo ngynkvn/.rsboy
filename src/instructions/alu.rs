@@ -1,3 +1,4 @@
+
 use crate::{bus::Bus, cpu::CPU, instructions::Register, location::Address};
 
 pub fn inc(location: Address, cpu: &mut CPU, bus: &mut Bus) {

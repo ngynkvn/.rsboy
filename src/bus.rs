@@ -24,7 +24,7 @@ pub struct Bus {
     pub in_bios: u8,
     pub int_enabled: u8,
     pub int_flags: u8,
-    pub clock: usize,
+    mclock: usize, // CPU clock M-cycles
     pub ime: u8,
     pub select: Select,
     pub directions: u8,
@@ -35,10 +35,16 @@ pub struct Bus {
     pub io: String,
 }
 
+impl Bus {
+    pub const fn mclock(&self) -> usize {
+        self.mclock
+    }
+}
+
 impl Display for Bus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let Self {
-            clock,
+            mclock: clock,
             int_enabled,
             int_flags,
             timer,
@@ -47,7 +53,7 @@ impl Display for Bus {
             ..
         } = self;
         f.write_fmt(format_args!(
-            r"CLK: {clock}, IE: {int_enabled}, IF: {int_flags:08b}
+            r"CLK: {clock}, IE: {int_enabled:08b}, IF: {int_flags:08b}
 [TIMER]: {timer}
 [BTNS]: {keypresses:08b}
 [ARWS]: {directions:08b}",
@@ -69,7 +75,7 @@ impl Bus {
             in_bios: 0,
             int_enabled: 0,
             int_flags: 0,
-            clock: 0,
+            mclock: 0,
             ime: 0,
             select: Select::Buttons,
             directions: 0,
@@ -100,43 +106,48 @@ impl Bus {
         bus
     }
 
-    pub const fn enable_interrupts(&mut self) {
+    pub fn enable_interrupts(&mut self) {
+        trace!("Enabling interrupts at clock {}", self.mclock);
         self.ime = 1;
     }
 
-    pub const fn disable_interrupts(&mut self) {
+    pub fn disable_interrupts(&mut self) {
+        trace!("Disabling interrupts at clock {}", self.mclock);
         self.ime = 0;
     }
 
     pub const fn ack_interrupt(&mut self, flag: u8) {
-        self.ime = 0;
         self.int_flags &= !flag;
     }
 
     // Cycle refers to 1 T-cycle
-    #[instrument(ret, level = "trace", skip(self), fields(clock = self.clock, to = self.clock + 1))]
+    #[instrument(ret, skip(self), fields(clock = self.mclock, to = self.mclock + 1))]
     pub fn generic_cycle(&mut self) {
-        self.clock += 1;
+        self.mclock += 1;
         self.gpu.cycle(&mut self.int_flags);
         self.timer.tick_timer_counter(&mut self.int_flags);
     }
 
-    #[instrument(ret, skip(self), fields(clock = self.clock))]
+    #[instrument(ret, skip(self), fields(clock = self.mclock))]
     pub fn read_cycle(&mut self, addr: u16) -> u8 {
         self.generic_cycle();
         self.read(addr)
     }
 
-    #[instrument(ret, skip(self), fields(clock = self.clock))]
+    #[instrument(ret, skip(self), fields(clock = self.mclock))]
     pub fn read_cycle_high(&mut self, addr: u8) -> u8 {
         self.generic_cycle();
         self.read(0xFF00 | u16::from(addr))
     }
 
-    #[instrument(ret, skip(self), fields(clock = self.clock))]
+    #[instrument(ret, skip(self), fields(clock = self.mclock))]
     pub fn write_cycle(&mut self, addr: u16, value: u8) {
         self.generic_cycle();
         self.write(addr, value);
+        info!(
+            "Wrote {:#02x} to {:#04x} at clock {}",
+            value, addr, self.mclock
+        );
     }
 }
 
@@ -153,7 +164,7 @@ impl Memory for Bus {
             0xFF42 => self.gpu.scrolly,
             0xFF43 => self.gpu.scrollx,
             0xFF44 => self.gpu.scanline,
-            0xFF47 => panic!("0xFF47 (bg_palette) is WRITE ONLY"),
+            0xFF47 => self.gpu.bgrdpal,
             0xFF4A => self.gpu.windowy,
             0xFF4B => self.gpu.windowx,
             0xffff => self.int_enabled,
@@ -174,8 +185,8 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address as usize {
             0x0000..=0x0100 if self.in_bios == 0 => panic!(),
-            timer::DIV => self.timer.update_internal(&mut self.int_flags, 0),
-            timer::TAC => self.timer.tac = 0b1111_1000 | value,
+            timer::DIV => self.timer.write_div(value),
+            timer::TAC => self.timer.write_tac(value),
             timer::TIMA => self.timer.tima = value,
             timer::TMA => self.timer.tma = value,
             0xff40 => self.gpu.lcdc = value,
@@ -198,9 +209,7 @@ impl Memory for Bus {
             0xff4a => self.gpu.windowy = value,
             0xff4b => self.gpu.windowx = value,
             0xffff => self.int_enabled = value,
-            0xff0f => {
-                self.int_flags |= value;
-            }
+            0xff0f => self.int_flags = value,
             0xff50 => {
                 if value != 0 && !self.rom_start_signal {
                     self.rom_start_signal = true;
@@ -221,6 +230,7 @@ impl Memory for Bus {
             0xff02 => {
                 if value == 0x81 {
                     self.io.push(char::from(self.memory[0xff01]));
+                    print!("{}", char::from(self.memory[0xff01]));
                 }
                 self.memory[address as usize] = value;
             }

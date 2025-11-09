@@ -1,4 +1,7 @@
+#![allow(clippy::used_underscore_binding)]
 use std::fmt::Display;
+
+use tracing::trace;
 
 use crate::cpu;
 
@@ -7,13 +10,14 @@ pub const TIMA: usize = 0xFF05;
 pub const TMA: usize = 0xFF06;
 pub const TAC: usize = 0xFF07;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Timer {
     pub tima: u8,
     pub tma: u8,
     pub tac: u8,
-    pub clock: usize,
+    pub mclock: usize,
     pub internal: u16,
+    pub _debug: usize,
 }
 
 impl Timer {
@@ -22,13 +26,44 @@ impl Timer {
             tima: 0,
             tma: 0,
             tac: 0,
-            clock: 0,
+            mclock: 0,
             internal: 0,
+            _debug: 0,
         }
+    }
+
+    pub fn read_tac(&self) -> u8 {
+        trace!("Reading TAC: {:03b}", self.tac & 0b111);
+        self.tac & 0b111
+    }
+
+    pub fn write_tac(&mut self, value: u8) {
+        trace!("Writing TAC: {:03b}", value & 0b111);
+        self.tac = 0b1111_1000 | (value & 0b111);
+    }
+
+    pub fn read_div(&self) -> u8 {
+        trace!("Reading DIV: {:02x}", self.div());
+        self.div()
+    }
+
+    pub fn write_div(&mut self, value: u8) {
+        trace!("Writing DIV: {:02x}", self.div());
+        self.internal = u16::from(value);
     }
 
     pub const fn div(&self) -> u8 {
         (self.internal >> 8) as u8
+    }
+
+    pub const fn speed(tac: u8) -> Speed {
+        match tac & 0b11 {
+            0b00 => Speed::Hz4096,
+            0b01 => Speed::Hz262144,
+            0b10 => Speed::Hz65536,
+            0b11 => Speed::Hz16384,
+            _ => unreachable!(),
+        }
     }
 
     pub fn update_internal(&mut self, flags: &mut u8, new: u16) {
@@ -60,20 +95,30 @@ impl Timer {
     }
 
     pub fn tick_timer_counter(&mut self, flags: &mut u8) {
-        self.clock += 1;
-        self.update_internal(flags, self.internal.wrapping_add(1));
+        self.mclock += 1;
+        for _ in 0..4 {
+            self.update_internal(flags, self.internal.wrapping_add(1));
+        }
     }
 }
 
 impl Display for Timer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "DIV:{:02x}\nTIMA:{:02x}\nTMA:{:02x}\nTAC:{:08b}\n{:016b}",
+            "DIV:{:02x}\nTIMA:{:02x}\nTMA:{:02x}\nTAC:{:?}\n{:016b}",
             self.div(),
             self.tima,
             self.tma,
-            self.tac,
+            Self::speed(self.tac),
             self.internal,
         ))
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Speed {
+    Hz4096,
+    Hz262144,
+    Hz65536,
+    Hz16384,
 }

@@ -114,9 +114,13 @@ impl From<u8> for Instr {
 }
 
 impl Instr {
-    pub fn run(self, cpu: &mut CPU, bus: &mut Bus) {
+    #[must_use]
+    pub fn run(self, cpu: &mut CPU, bus: &mut Bus) -> Self {
         match self {
-            NOOP | STOP => {} // empty / TODO
+            NOOP => {} // empty / TODO
+            STOP => {
+                todo!()
+            }
             LD(to, from) => ld::ld((to, from), cpu, bus),
             LDI(to, from) => ld::ldi((to, from), cpu, bus),
             LDD(to, from) => ld::ldd((to, from), cpu, bus),
@@ -156,6 +160,7 @@ impl Instr {
             HALT => misc::halt(cpu, bus),
             UNIMPLEMENTED => unimplemented!(),
         }
+        self
     }
 }
 pub const INSTR_TABLE: [Instr; 256] = [

@@ -64,10 +64,10 @@ impl Emu {
     }
 
     pub fn run_until(&mut self, target_clock: usize) -> usize {
-        while self.bus.clock < target_clock {
+        while self.bus.mclock() < target_clock {
             self.emulate_step();
         }
-        self.bus.clock
+        self.bus.mclock()
     }
 
     #[must_use]

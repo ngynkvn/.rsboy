@@ -61,7 +61,7 @@ fn ticks_expected() {
 #[allow(dead_code)]
 fn time_instr(instr: u8, cpu: &mut CPU, bus: &mut Bus) -> usize {
     const UPPER_LIMIT: usize = 10;
-    let before = bus.clock;
+    let before = bus.mclock();
     let mut prev = cpu.state;
     let _span = info_span!("Instr", instr = %Instr::from(instr)).entered();
     for _ in 0..UPPER_LIMIT {
@@ -77,14 +77,14 @@ fn time_instr(instr: u8, cpu: &mut CPU, bus: &mut Bus) -> usize {
         prev = cpu.state;
         cpu.step(bus);
         tracing::info!(
-            clock = bus.clock,
+            clock = bus.mclock(),
             prev = ?prev,
             cpu.state = ?cpu.state,
             "Memory: {:?}",
             &bus.memory[0..10]
         );
     }
-    let after = bus.clock;
+    let after = bus.mclock();
     after - before
 }
 

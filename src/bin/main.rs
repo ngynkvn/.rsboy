@@ -34,6 +34,9 @@ struct Settings {
     bootrom: Option<PathBuf>,
     #[arg(short, long)]
     _repl: bool,
+    #[allow(clippy::option_option)]
+    #[arg(long)]
+    headless: Option<Option<usize>>,
 }
 
 fn main() -> Result<()> {
@@ -45,6 +48,16 @@ fn main() -> Result<()> {
     info!("Running SDL Main");
 
     let mut emu = Emu::from_path(settings.input, settings.bootrom).map_err(|e| eyre!(e))?;
+    if let Some(cycles) = settings.headless {
+        let cycles = cycles.unwrap_or(100_000_000);
+        emu.run_until(cycles);
+        error!("Emulated {cycles} cycles");
+        error!("CPU: {}", emu.cpu);
+        error!("Bus: {}", emu.bus);
+        error!("{}", emu.bus.timer);
+        return Ok(());
+    }
+
     let context = sdl2::init().map_err(|e| eyre!(e))?;
     let video = context.video().map_err(|e| eyre!(e))?;
     let gl_attr = video.gl_attr();
@@ -107,6 +120,12 @@ fn sdl_main(
             debugger.platform.handle_event(&mut debugger.imgui, &event);
         }
 
+        let dt = if running {
+            emu.run_until(emu.bus.mclock() + CYCLES_PER_FRAME) - emu.bus.mclock()
+        } else {
+            0
+        };
+
         // Render to framebuffer and copy.
         emu.bus.gpu.render(&mut emu.framebuffer);
         let (h, v) = emu.bus.gpu.scroll();
@@ -129,7 +148,7 @@ fn sdl_main(
             //     PEAK_ALLOC.current_usage_as_kb(),
             //     PEAK_ALLOC.peak_usage_as_kb(),
             // ));
-            draw_debugger(info, ui, &mut running, &mut cycle_jump, emu);
+            draw_debugger(info, ui, dt, &mut running, &mut cycle_jump, emu);
         });
     }
 }
@@ -341,6 +360,7 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<()> {
 fn draw_debugger(
     info: &mut debugger::Info,
     ui: &imgui::Ui,
+    dt: usize,
     running: &mut bool,
     cycle_jump: &mut i32,
     emu: &mut Emu,
@@ -353,12 +373,7 @@ fn draw_debugger(
             .build();
 
         #[allow(clippy::cast_precision_loss)]
-        let dt = if *running {
-            emu.run_until(emu.bus.clock + CYCLES_PER_FRAME) - emu.bus.clock
-        } else {
-            0
-        } as f32;
-        let cpu_hz = dt / after_delay;
+        let cpu_hz = dt as f32 / after_delay;
         ui.text(format!("CPU HZ: {cpu_hz}"));
     }
     if let Some(&current) = info.memory_usage_curr.back() {
@@ -387,7 +402,7 @@ fn draw_debugger(
     if ui.button("Go") {
         let target_clock = emu
             .bus
-            .clock
+            .mclock()
             .checked_add_signed(*cycle_jump as isize)
             .unwrap();
         emu.run_until(target_clock);
@@ -401,6 +416,6 @@ fn draw_debugger(
     }
     if ui.button("Frame") {
         info!("Frame");
-        emu.run_until(emu.bus.clock + CYCLES_PER_FRAME);
+        emu.run_until(emu.bus.mclock() + CYCLES_PER_FRAME);
     }
 }

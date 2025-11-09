@@ -1,6 +1,5 @@
-
 use strum_macros::IntoStaticStr;
-use tap::Pipe;
+use tap::{Pipe, Tap};
 use tracing::info;
 
 use crate::{
@@ -23,7 +22,6 @@ pub enum Address {
 impl Address {
     pub fn read(self, cpu: &mut CPU, bus: &mut Bus) -> Read {
         use Register::*;
-        info!("Reading: {}", self);
         match self {
             Self::ImmediateByte => Read::Byte(cpu.next_u8(bus)),
             Self::ImmediateWord => Read::Word(cpu.next_u16(bus)),
@@ -40,12 +38,13 @@ impl Address {
                 Read::Word(cpu.registers.fetch_u16(reg))
             }
         }
+        .tap(|x| info!("Read {self}: {:?} at clock {}", x, bus.mclock()))
     }
     pub fn write<T>(self, cpu: &mut CPU, bus: &mut Bus, write_value: T)
     where
         T: Writable,
     {
-        info!("Writing: {}", self);
+        info!("Writing to {self} at clock {}", bus.mclock());
         match self {
             Self::ImmediateWord | Self::MemoryImmediate => {
                 let address = cpu.next_u16(bus);
@@ -72,6 +71,7 @@ impl Address {
             Self::Register(r) => write_value.to_register(&mut cpu.registers, r),
             Self::ImmediateByte => unimplemented!("{:?}", self),
         }
+        info!("Wrote to {self} at clock {}", bus.mclock());
     }
 }
 

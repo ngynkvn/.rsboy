@@ -19,6 +19,5 @@ pub fn pop(register: Register, cpu: &mut CPU, bus: &mut Bus) {
 }
 
 pub const fn halt(cpu: &mut CPU, _bus: &mut Bus) {
-    //todo
     cpu.halt = true;
 }
