@@ -1,9 +1,9 @@
-// use bitflags::bitflags;
 use std::fmt::Display;
 
-use crate::bus::{Bus, Memory};
+use bitflags::bitflags;
 
-use crate::{cpu, instructions::Instr, prelude::*, registers::RegisterState};
+use crate::bus::{Bus, Memory};
+use crate::{instructions::Instr, prelude::*, registers::RegisterState};
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
 pub enum CPUState {
@@ -20,23 +20,57 @@ pub enum Stage {
     Fetch,
     Execute,
 }
-// Global emu struct.
+
+bitflags! {
+    /// Interrupt flags for the Game Boy's interrupt system.
+    /// Each bit corresponds to a specific interrupt source.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Interrupt: u8 {
+        /// V-Blank interrupt (triggered at start of V-Blank period)
+        const VBLANK  = 0b0000_0001;
+        /// LCD STAT interrupt (triggered by LCD status conditions)
+        const LCDSTAT = 0b0000_0010;
+        /// Timer interrupt (triggered when TIMA overflows)
+        const TIMER   = 0b0000_0100;
+        /// Serial interrupt (triggered after serial transfer)
+        const SERIAL  = 0b0000_1000;
+        /// Joypad interrupt (triggered on button press)
+        const JOYPAD  = 0b0001_0000;
+    }
+}
+
+/// Interrupt handler entry: (interrupt flag, handler address)
+const INTERRUPT_HANDLERS: [(Interrupt, u16); 5] = [
+    (Interrupt::VBLANK, 0x40),
+    (Interrupt::LCDSTAT, 0x48),
+    (Interrupt::TIMER, 0x50),
+    (Interrupt::SERIAL, 0x58),
+    (Interrupt::JOYPAD, 0x60),
+];
+
 #[derive(Debug, Clone)]
 pub struct CPU {
     pub registers: RegisterState,
     pub state: CPUState,
-    pub opcode: u8,
-    pub op_addr: u16,
+    /// Current opcode being executed (for debugging)
+    opcode: u8,
+    /// Address of current opcode (for debugging)
+    op_addr: u16,
 }
 
-pub mod interrupts {
-    pub const VBLANK: u8 = 0b0000_0001;
-    pub const LCDSTAT: u8 = 0b0000_0010;
-    pub const TIMER: u8 = 0b0000_0100;
-    pub const SERIAL: u8 = 0b0000_1000;
-    pub const JOYPAD: u8 = 0b0001_0000;
+impl CPU {
+    /// Returns the current opcode being executed
+    #[inline]
+    pub const fn opcode(&self) -> u8 {
+        self.opcode
+    }
+
+    /// Returns the address of the current opcode
+    #[inline]
+    pub const fn op_addr(&self) -> u16 {
+        self.op_addr
+    }
 }
-use interrupts::*;
 
 impl Default for CPU {
     fn default() -> Self {
@@ -107,36 +141,34 @@ impl CPU {
         u16::from_le_bytes([lo, hi])
     }
 
-    pub const fn interrupt_detected(&mut self, bus: &mut Bus) -> bool {
-        bus.ime != 0 && (bus.int_enabled & bus.int_flags) != 0
+    /// Check if any enabled interrupts are pending
+    pub fn interrupt_detected(&self, bus: &Bus) -> bool {
+        bus.ime && bus.pending_interrupts().intersects(bus.enabled_interrupts())
     }
 
     pub fn handle_interrupts(&mut self, bus: &mut Bus) -> CPUState {
         bus.disable_interrupts();
         bus.generic_cycle();
-        let fired = bus.int_enabled & bus.int_flags;
+
+        let pending = bus.pending_interrupts();
+        let enabled = bus.enabled_interrupts();
+        let fired = pending & enabled;
+
         self.push_stack(self.registers.pc, bus);
 
-        if fired & VBLANK != 0 {
-            bus.ack_interrupt(VBLANK);
-            self.registers.pc = 0x40;
-        } else if fired & LCDSTAT != 0 {
-            bus.ack_interrupt(LCDSTAT);
-            self.registers.pc = 0x48;
-        } else if fired & TIMER != 0 {
-            bus.ack_interrupt(TIMER);
-            self.registers.pc = 0x50;
-        } else if fired & SERIAL != 0 {
-            bus.ack_interrupt(SERIAL);
-            self.registers.pc = 0x58;
-        } else if fired & JOYPAD != 0 {
-            bus.ack_interrupt(JOYPAD);
-            self.registers.pc = 0x60;
+        // Handle highest priority interrupt using the handler table
+        for (interrupt, handler_addr) in INTERRUPT_HANDLERS {
+            if fired.contains(interrupt) {
+                bus.ack_interrupt(interrupt);
+                self.registers.pc = handler_addr;
+                break;
+            }
         }
+
         bus.generic_cycle();
         match self.state {
             CPUState::Interrupted(Stage::Fetch) | CPUState::Halted => self.fetch_op(bus),
-            _ => unreachable!(),
+            _ => unreachable!("handle_interrupts called from invalid state"),
         }
     }
 
@@ -161,8 +193,9 @@ impl CPU {
                 CPUState::Running(Stage::Execute) => self.execute_op(bus),
                 CPUState::Interrupted(_) => self.handle_interrupts(bus),
                 CPUState::Halted => {
-                    if (bus.int_enabled & bus.int_flags) != 0 {
-                        if bus.ime != 0 { self.handle_interrupts(bus) } else { self.fetch_op(bus) }
+                    let has_pending = bus.pending_interrupts().intersects(bus.enabled_interrupts());
+                    if has_pending {
+                        if bus.ime { self.handle_interrupts(bus) } else { self.fetch_op(bus) }
                     } else {
                         bus.generic_cycle();
                         CPUState::Halted
@@ -195,7 +228,7 @@ impl CPU {
         self.registers.l = 0x4d;
         self.registers.sp = 0xfffe;
         self.registers.pc = 0x100;
-        bus.in_bios = 1;
+        bus.in_bios = true;
         bus.timer.internal = 0x1ea0;
         bus.write(0xFF06, 0x00); // TMA
         bus.write(0xFF07, 0x00); // TAC

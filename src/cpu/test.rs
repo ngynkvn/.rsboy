@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 use tracing::info_span;
 
 use crate::{
@@ -7,10 +6,11 @@ use crate::{
     instructions::Instr,
 };
 
-//https://github.com/CTurt/Cinoop/blob/990e7d92b759892e98a450b4979e887865d6757f/source/cpu.c
-// TODO, Add tests that have variable tick timings.
-// A value of 0 means that instruction is ignored in testing.
-pub const EXPECTED_TICKS: [usize; 256] = [
+// https://github.com/CTurt/Cinoop/blob/990e7d92b759892e98a450b4979e887865d6757f/source/cpu.c
+// Expected M-cycle counts for each opcode (T-cycles / 4).
+// A value of 0 means that instruction is skipped in timing tests (conditional or complex timing).
+#[allow(dead_code)]
+const EXPECTED_TICKS: [usize; 256] = [
     4, 12, 8, 8, 4, 4, 8, 4, 20, 8, 8, 8, 4, 4, 8, 4, 4, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4, 0, 12, 8, 8, 4, 4, 8, 4, 0, 8, 8, 8, 4, 4, 8, 4, 0, 12,
     8, 8, 12, 12, 12, 4, 0, 8, 8, 8, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4,
     4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 8, 8, 8, 8, 8, 8, 4, 8, 4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, 4,
@@ -29,7 +29,7 @@ fn ticks_expected() {
         let mut cpu = CPU::new();
         let mut bus = Bus::new(&[], None);
         info!("Memory: {:?}", &bus.memory[0..10]);
-        bus.in_bios = 1;
+        bus.in_bios = true;
         bus.memory[0] = i as u8;
         if EXPECTED_TICKS[i] == 0 {
             continue;
@@ -217,7 +217,7 @@ fn fetch_execute_overlap() {
     ];
     cpu.registers.pc = 0x0A;
     let mut bus = Bus::new(&mem, None);
-    bus.in_bios = 1;
+    bus.in_bios = true;
     for _ in 0..12 {
         cpu.step(&mut bus);
     }

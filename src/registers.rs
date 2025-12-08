@@ -135,21 +135,28 @@ impl RegisterState {
         Self::default()
     }
 
-    pub const fn set_flags(&mut self, value: [bool; 4]) {
+    pub fn set_flags(&mut self, value: [bool; 4]) {
         self.f = flags(value[0], value[1], value[2], value[3]);
     }
 
-    pub const fn set_cf(&mut self, b: bool) {
-        self.f = (self.f & !(1 << 4)) | ((b as u8) << 4);
+    #[inline]
+    pub fn set_cf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 4)) | (u8::from(b) << 4);
     }
-    pub const fn set_hf(&mut self, b: bool) {
-        self.f = (self.f & !(1 << 5)) | ((b as u8) << 5);
+
+    #[inline]
+    pub fn set_hf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 5)) | (u8::from(b) << 5);
     }
-    pub const fn set_nf(&mut self, b: bool) {
-        self.f = (self.f & !(1 << 6)) | ((b as u8) << 6);
+
+    #[inline]
+    pub fn set_nf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 6)) | (u8::from(b) << 6);
     }
-    pub const fn set_zf(&mut self, b: bool) {
-        self.f = (self.f & !(1 << 7)) | ((b as u8) << 7);
+
+    #[inline]
+    pub fn set_zf(&mut self, b: bool) {
+        self.f = (self.f & !(1 << 7)) | (u8::from(b) << 7);
     }
 
     #[must_use]

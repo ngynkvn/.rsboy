@@ -299,7 +299,7 @@ mod tests {
     fn setup() -> (CPU, Bus) {
         let cpu = CPU::new();
         let mut bus = Bus::new(&[], None);
-        bus.in_bios = 1;
+        bus.in_bios = true;
         (cpu, bus)
     }
 

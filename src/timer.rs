@@ -166,7 +166,7 @@ impl Timer {
         if self.is_enabled() && was_high && now_low {
             let (value, overflow) = self.tima.overflowing_add(1);
             if overflow {
-                *flags |= cpu::interrupts::TIMER;
+                *flags |= cpu::Interrupt::TIMER.bits();
                 self.tima = self.tma;
             } else {
                 self.tima = value;
@@ -381,7 +381,7 @@ mod tests {
 
         // Should have triggered interrupt and reloaded from TMA
         assert_eq!(timer.tima, 0x42);
-        assert_ne!(flags & cpu::interrupts::TIMER, 0);
+        assert_ne!(flags & cpu::Interrupt::TIMER.bits(), 0);
     }
 
     #[test]

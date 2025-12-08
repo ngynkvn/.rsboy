@@ -1,4 +1,5 @@
 use crate::{
+    cpu::Interrupt,
     gpu::{self, BackgroundPalette, GPU, LCDC},
     prelude::*,
     timer::{self, Timer},
@@ -28,21 +29,26 @@ pub trait Memory {
     fn write(&mut self, address: u16, value: u8);
 }
 
+/// Joypad selection mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Select {
+    #[default]
     Buttons,
     Directions,
     None,
 }
 
-// Global emu struct.
+/// Memory bus connecting CPU, GPU, Timer, and I/O
 pub struct Bus {
     pub memory: Box<[u8]>,
     pub bootrom: Box<[u8]>,
-    pub in_bios: u8,
-    pub int_enabled: u8,
-    pub int_flags: u8,
-    mclock: usize, // CPU clock M-cycles
-    pub ime: u8,
+    /// Whether bootrom is disabled (true = ROM visible, false = bootrom overlay)
+    pub in_bios: bool,
+    int_enabled: Interrupt,
+    int_flags: Interrupt,
+    mclock: usize,
+    /// Interrupt Master Enable flag
+    pub ime: bool,
     pub select: Select,
     pub directions: u8,
     pub keypresses: u8,
@@ -70,10 +76,12 @@ impl Display for Bus {
             ..
         } = self;
         f.write_fmt(format_args!(
-            r"CLK: {clock}, IE: {int_enabled:08b}, IF: {int_flags:08b}
+            r"CLK: {clock}, IE: {:08b}, IF: {:08b}
 [TIMER]: {timer}
 [BTNS]: {keypresses:08b}
 [ARWS]: {directions:08b}",
+            int_enabled.bits(),
+            int_flags.bits(),
         ))
     }
 }
@@ -89,12 +97,12 @@ impl Bus {
         let mut bus = Self {
             memory,
             bootrom,
-            in_bios: 0,
-            int_enabled: 0,
-            int_flags: 0,
+            in_bios: false,
+            int_enabled: Interrupt::empty(),
+            int_flags: Interrupt::empty(),
             mclock: 0,
-            ime: 0,
-            select: Select::Buttons,
+            ime: false,
+            select: Select::default(),
             directions: 0,
             keypresses: 0,
             gpu: GPU::new(),
@@ -113,7 +121,7 @@ impl Bus {
             file.read_to_end(&mut buffer).expect("Couldn't read the file.");
             bus.bootrom[..].clone_from_slice(&buffer[..]);
         } else {
-            bus.in_bios = 1;
+            bus.in_bios = true;
             bus.rom_start_signal = true;
             info!("No bootrom provided.");
         }
@@ -122,26 +130,47 @@ impl Bus {
         bus
     }
 
+    /// Returns currently enabled interrupts
+    #[inline]
+    pub const fn enabled_interrupts(&self) -> Interrupt {
+        self.int_enabled
+    }
+
+    /// Returns currently pending (flagged) interrupts
+    #[inline]
+    pub const fn pending_interrupts(&self) -> Interrupt {
+        self.int_flags
+    }
+
     pub fn enable_interrupts(&mut self) {
         trace!("Enabling interrupts at clock {}", self.mclock);
-        self.ime = 1;
+        self.ime = true;
     }
 
     pub fn disable_interrupts(&mut self) {
         trace!("Disabling interrupts at clock {}", self.mclock);
-        self.ime = 0;
+        self.ime = false;
     }
 
-    pub const fn ack_interrupt(&mut self, flag: u8) {
-        self.int_flags &= !flag;
+    /// Acknowledge (clear) an interrupt flag
+    pub fn ack_interrupt(&mut self, flag: Interrupt) {
+        self.int_flags.remove(flag);
+    }
+
+    /// Request an interrupt (set the flag)
+    pub fn request_interrupt(&mut self, flag: Interrupt) {
+        self.int_flags.insert(flag);
     }
 
     /// Advance emulation by 1 M-cycle (4 T-cycles)
     #[instrument(ret, skip(self), fields(clock = self.mclock, to = self.mclock + 1))]
     pub fn generic_cycle(&mut self) {
         self.mclock += 1;
-        self.gpu.cycle(&mut self.int_flags);
-        self.timer.tick(&mut self.int_flags);
+        // GPU and timer may request interrupts
+        let mut int_flags = self.int_flags.bits();
+        self.gpu.cycle(&mut int_flags);
+        self.timer.tick(&mut int_flags);
+        self.int_flags = Interrupt::from_bits_truncate(int_flags);
     }
 
     #[instrument(ret, skip(self), fields(clock = self.mclock))]
@@ -168,8 +197,8 @@ impl Memory for Bus {
     #[allow(clippy::match_same_arms)]
     fn read(&self, address: u16) -> u8 {
         match address {
-            // Bootrom overlay
-            0x0000..=0x00FF if self.in_bios == 0 => self.bootrom[address as usize],
+            // Bootrom overlay (visible when in_bios is false)
+            0x0000..=0x00FF if !self.in_bios => self.bootrom[address as usize],
 
             // Timer registers
             timer::addr::DIV => self.timer.read_div(),
@@ -188,8 +217,8 @@ impl Memory for Bus {
             gpu::addr::WX_ADDR => self.gpu.windowx,
 
             // Interrupt registers
-            addr::IE => self.int_enabled,
-            addr::IF => self.int_flags,
+            addr::IE => self.int_enabled.bits(),
+            addr::IF => self.int_flags.bits(),
 
             // Joypad
             addr::JOYPAD => match self.select {
@@ -211,7 +240,7 @@ impl Memory for Bus {
     fn write(&mut self, address: u16, value: u8) {
         match address {
             // Bootrom area is read-only when bootrom is active
-            0x0000..=0x00FF if self.in_bios == 0 => {
+            0x0000..=0x00FF if !self.in_bios => {
                 warn!("Attempted write to bootrom area: {address:#06x}");
             }
 
@@ -251,15 +280,15 @@ impl Memory for Bus {
             gpu::addr::WX_ADDR => self.gpu.windowx = value,
 
             // Interrupt registers
-            addr::IE => self.int_enabled = value,
-            addr::IF => self.int_flags = value,
+            addr::IE => self.int_enabled = Interrupt::from_bits_truncate(value),
+            addr::IF => self.int_flags = Interrupt::from_bits_truncate(value),
 
             // Bootrom disable
             addr::BOOTROM_DISABLE => {
                 if value != 0 && !self.rom_start_signal {
                     self.rom_start_signal = true;
                 }
-                self.in_bios = value;
+                self.in_bios = value != 0;
             }
 
             // Joypad
@@ -307,16 +336,19 @@ impl Memory for Bus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cpu::Interrupt;
+    use crate::gpu::addr as gpu;
+    use crate::timer::addr as timer_addr;
 
     fn setup() -> Bus {
         let mut bus = Bus::new(&[], None);
-        bus.in_bios = 1; // Skip bootrom
+        bus.in_bios = true; // Skip bootrom
         bus
     }
 
     fn setup_with_rom(rom: &[u8]) -> Bus {
         let mut bus = Bus::new(rom, None);
-        bus.in_bios = 1;
+        bus.in_bios = true;
         bus
     }
 
@@ -420,7 +452,7 @@ mod tests {
     fn interrupt_enable_read_write() {
         let mut bus = setup();
         bus.write(addr::IE, 0x1F);
-        assert_eq!(bus.int_enabled, 0x1F);
+        assert_eq!(bus.enabled_interrupts().bits(), 0x1F);
         assert_eq!(bus.read(addr::IE), 0x1F);
     }
 
@@ -428,32 +460,32 @@ mod tests {
     fn interrupt_flags_read_write() {
         let mut bus = setup();
         bus.write(addr::IF, 0x0F);
-        assert_eq!(bus.int_flags, 0x0F);
+        assert_eq!(bus.pending_interrupts().bits(), 0x0F);
         assert_eq!(bus.read(addr::IF), 0x0F);
     }
 
     #[test]
     fn enable_interrupts_sets_ime() {
         let mut bus = setup();
-        assert_eq!(bus.ime, 0);
+        assert!(!bus.ime);
         bus.enable_interrupts();
-        assert_eq!(bus.ime, 1);
+        assert!(bus.ime);
     }
 
     #[test]
     fn disable_interrupts_clears_ime() {
         let mut bus = setup();
-        bus.ime = 1;
+        bus.ime = true;
         bus.disable_interrupts();
-        assert_eq!(bus.ime, 0);
+        assert!(!bus.ime);
     }
 
     #[test]
     fn ack_interrupt_clears_flag() {
         let mut bus = setup();
-        bus.int_flags = 0b0001_1111;
-        bus.ack_interrupt(0b0000_0100); // Clear timer flag
-        assert_eq!(bus.int_flags, 0b0001_1011);
+        bus.write(addr::IF, 0b0001_1111);
+        bus.ack_interrupt(Interrupt::TIMER);
+        assert_eq!(bus.pending_interrupts().bits(), 0b0001_1011);
     }
 
     // Joypad tests
@@ -486,11 +518,11 @@ mod tests {
     #[test]
     fn bootrom_disable_sets_flag() {
         let mut bus = setup();
-        bus.in_bios = 0;
+        bus.in_bios = false;
         bus.rom_start_signal = false;
 
         bus.write(addr::BOOTROM_DISABLE, 0x01);
-        assert_eq!(bus.in_bios, 0x01);
+        assert!(bus.in_bios);
         assert!(bus.rom_start_signal);
     }
 
@@ -502,7 +534,7 @@ mod tests {
         for i in 0..0x100 {
             bus.bootrom[i] = i as u8;
         }
-        bus.in_bios = 0; // Bootrom active
+        bus.in_bios = false; // Bootrom active (false = bootrom visible)
 
         // Should read from bootrom, not ROM
         assert_eq!(bus.read(0x00), 0x00);
@@ -516,7 +548,7 @@ mod tests {
         rom[0x00] = 0x31;
         rom[0x50] = 0xAB;
         let mut bus = Bus::new(&rom, None);
-        bus.in_bios = 1; // Bootrom disabled
+        bus.in_bios = true; // Bootrom disabled (true = ROM visible)
 
         assert_eq!(bus.read(0x00), 0x31);
         assert_eq!(bus.read(0x50), 0xAB);
@@ -635,7 +667,7 @@ mod tests {
     #[test]
     fn write_to_bootrom_area_when_active_is_ignored() {
         let mut bus = setup();
-        bus.in_bios = 0; // Bootrom active
+        bus.in_bios = false; // Bootrom active (false = bootrom visible)
         bus.bootrom[0x50] = 0xAA;
         bus.write(0x0050, 0xBB);
         assert_eq!(bus.bootrom[0x50], 0xAA); // Unchanged

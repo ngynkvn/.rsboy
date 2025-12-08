@@ -40,17 +40,20 @@ pub mod addr {
     pub const WX_ADDR: u16 = 0xFF4B;
 }
 
-#[derive(Debug)]
+/// GPU rendering mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum GpuMode {
     HBlank, // 0
     VBlank, // 1
     Oam,    // 2
     Vram,   // 3
 }
-#[derive(Debug)]
+
+/// Sprite size mode (8x8 or 8x16)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SpriteSize {
-    Square,
-    Tall,
+    Square, // 8x8
+    Tall,   // 8x16
 }
 
 // Global GPU struct.
@@ -230,18 +233,22 @@ impl GPU {
         if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) { 0x1C00 } else { 0x1800 }
     }
 
-    /// Decode a single pixel from tile data.
-    /// `tile_data` should be 16 bytes (8 rows × 2 bytes per row).
+    /// Get raw color index (0-3) from tile data at given position.
+    /// `tile_data` should be at least (row+1)*2 bytes.
     /// `row` is 0-7, `col` is 0-7.
     #[inline]
-    fn decode_pixel(palette: u8, tile_data: &[u8], row: usize, col: usize) -> u32 {
+    fn get_color_index(tile_data: &[u8], row: usize, col: usize) -> u8 {
         let lo_byte = tile_data[row * 2];
         let hi_byte = tile_data[row * 2 + 1];
         let bit = 7 - col;
         let lo_bit = (lo_byte >> bit) & 1;
         let hi_bit = (hi_byte >> bit) & 1;
-        let color_index = (hi_bit << 1) | lo_bit;
-        let color = (palette >> (color_index << 1)) & 0b11;
+        (hi_bit << 1) | lo_bit
+    }
+
+    /// Convert a palette color (0-3) to RGBA pixel value.
+    #[inline]
+    const fn color_to_rgba(color: u8) -> u32 {
         match color {
             0b00 => 0xE0F8_D0FF, // White
             0b01 => 0x88C0_70FF, // Light Gray
@@ -249,6 +256,22 @@ impl GPU {
             0b11 => 0x0818_20FF, // Black
             _ => 0,
         }
+    }
+
+    /// Apply palette to a color index and convert to RGBA.
+    #[inline]
+    fn apply_palette(palette: u8, color_index: u8) -> u32 {
+        let color = (palette >> (color_index << 1)) & 0b11;
+        Self::color_to_rgba(color)
+    }
+
+    /// Decode a single pixel from tile data with palette.
+    /// `tile_data` should be 16 bytes (8 rows × 2 bytes per row).
+    /// `row` is 0-7, `col` is 0-7.
+    #[inline]
+    fn decode_pixel(palette: u8, tile_data: &[u8], row: usize, col: usize) -> u32 {
+        let color_index = Self::get_color_index(tile_data, row, col);
+        Self::apply_palette(palette, color_index)
     }
 
     fn draw_line(&mut self) {
@@ -334,12 +357,7 @@ impl GPU {
                 }
 
                 let col = if flags.xflip { 7 - pixel_col } else { pixel_col };
-                let lo_byte = tile_data[sprite_row * 2];
-                let hi_byte = tile_data[sprite_row * 2 + 1];
-                let bit = 7 - col;
-                let lo_bit = (lo_byte >> bit) & 1;
-                let hi_bit = (hi_byte >> bit) & 1;
-                let color_index = (hi_bit << 1) | lo_bit;
+                let color_index = Self::get_color_index(tile_data, sprite_row, col);
 
                 // Color index 0 is transparent for sprites
                 if color_index == 0 {
@@ -351,14 +369,7 @@ impl GPU {
                     // TODO: check if BG pixel is color 0
                 }
 
-                let color = (palette >> (color_index << 1)) & 0b11;
-                let pixel = match color {
-                    0b00 => 0xE0F8_D0FF,
-                    0b01 => 0x88C0_70FF,
-                    0b10 => 0x3468_56FF,
-                    0b11 => 0x0818_20FF,
-                    _ => 0,
-                };
+                let pixel = Self::apply_palette(palette, color_index);
                 self.framebuffer[(self.scanline as usize, dest_x)] = pixel;
             }
         }
@@ -389,7 +400,7 @@ impl GPU {
                             if self.scanline == END_HBLANK {
                                 self.vblank_count += 1;
                                 self.mode = GpuMode::VBlank;
-                                *flag |= cpu::interrupts::VBLANK;
+                                *flag |= cpu::Interrupt::VBLANK.bits();
                             } else {
                                 self.mode = GpuMode::Oam;
                             }

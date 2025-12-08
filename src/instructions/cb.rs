@@ -155,7 +155,7 @@ mod tests {
     fn setup() -> (CPU, Bus) {
         let cpu = CPU::new();
         let mut bus = Bus::new(&[], None);
-        bus.in_bios = 1; // Skip bootrom
+        bus.in_bios = true; // Skip bootrom
         (cpu, bus)
     }
 

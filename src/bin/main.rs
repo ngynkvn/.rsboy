@@ -7,7 +7,7 @@ use color_eyre::{Result, eyre::eyre};
 use gpu::PixelData;
 use rust_emu::{
     constants::{self, setup_logger},
-    cpu::interrupts,
+    cpu::Interrupt,
     debugger,
     emu::{Emu, disassemble},
     gpu,
@@ -150,39 +150,39 @@ fn parse_event(debugger: &mut Imgui, emu: &mut Emu, event: &Event) -> Option<Res
         Event::KeyDown { keycode: Some(keycode), .. } => match *keycode {
             Keycode::Down => {
                 emu.bus.directions &= !0b1000;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             Keycode::Up => {
                 emu.bus.directions &= !0b0100;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             Keycode::Left => {
                 emu.bus.directions &= !0b0010;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             Keycode::Right => {
                 emu.bus.directions &= !0b0001;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             Keycode::Return => {
                 // Start
                 emu.bus.keypresses &= !0b1000;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             Keycode::Delete => {
                 // Select
                 emu.bus.keypresses &= !0b0100;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             Keycode::Z => {
                 // A
                 emu.bus.keypresses &= !0b0001;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             Keycode::X => {
                 // B
                 emu.bus.keypresses &= !0b0010;
-                emu.bus.int_flags |= interrupts::JOYPAD;
+                emu.bus.request_interrupt(Interrupt::JOYPAD);
             }
             key => {
                 info!("{key:?}");

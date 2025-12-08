@@ -110,17 +110,17 @@ impl Emu {
 
     /// Get current memory view (bootrom or main memory)
     fn current_memory(&self) -> &[u8] {
-        if self.bus.in_bios == 0 {
-            &self.bus.bootrom[..]
-        } else {
+        if self.bus.in_bios {
             &self.bus.memory[..]
+        } else {
+            &self.bus.bootrom[..]
         }
     }
 
     /// Get instruction listing around current PC
     #[must_use]
     pub fn view(&self) -> Vec<InstrListing> {
-        let pc = self.cpu.op_addr;
+        let pc = self.cpu.op_addr();
         let mem = self.current_memory();
         let listings = disassemble(mem);
 
