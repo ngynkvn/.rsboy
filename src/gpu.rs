@@ -206,11 +206,7 @@ impl GPU {
 
     /// Returns the VRAM offset for the background tile map (0x1800 or 0x1C00)
     const fn bg_tile_map_base(&self) -> usize {
-        if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) {
-            0x1C00
-        } else {
-            0x1800
-        }
+        if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) { 0x1C00 } else { 0x1800 }
     }
 
     /// Decode a single pixel from tile data.
@@ -235,12 +231,12 @@ impl GPU {
     }
 
     fn draw_line(&mut self) {
-        let ly = self.scanline as usize;
+        let ly = self.scanline;
 
         // Draw background
         if self.lcdc.contains(LCDC::BG_DISPLAY_ENABLED) {
             let tile_map_base = self.bg_tile_map_base();
-            let ypos = self.scrolly.wrapping_add(self.scanline) as usize;
+            let ypos = self.scrolly.wrapping_add(ly) as usize;
             let tile_row = ypos / 8;
             let pixel_row = ypos % 8;
 
@@ -258,7 +254,7 @@ impl GPU {
                 let tile_data = &self.vram[tile_data_range];
 
                 let pixel = Self::decode_pixel(self.bgrdpal, tile_data, pixel_row, pixel_col);
-                self.framebuffer[(ly, screen_x)] = pixel;
+                self.framebuffer[(ly as _, screen_x)] = pixel;
             }
         }
 

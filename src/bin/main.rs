@@ -165,15 +165,25 @@ fn parse_event(debugger: &mut Imgui, emu: &mut Emu, event: &Event) -> Option<Res
                 emu.bus.int_flags |= interrupts::JOYPAD;
             }
             Keycode::Return => {
+                // Start
                 emu.bus.keypresses &= !0b1000;
                 emu.bus.int_flags |= interrupts::JOYPAD;
             }
-            // Keycode::Z => {
-            //     //A?
-            // }
-            // Keycode::B => {
-            //     //B?
-            // }
+            Keycode::Delete => {
+                // Select
+                emu.bus.keypresses &= !0b0100;
+                emu.bus.int_flags |= interrupts::JOYPAD;
+            }
+            Keycode::Z => {
+                // A
+                emu.bus.keypresses &= !0b0001;
+                emu.bus.int_flags |= interrupts::JOYPAD;
+            }
+            Keycode::X => {
+                // B
+                emu.bus.keypresses &= !0b0010;
+                emu.bus.int_flags |= interrupts::JOYPAD;
+            }
             key => {
                 info!("{key:?}");
             }
