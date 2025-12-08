@@ -4,7 +4,6 @@ use std::{fs::File, io::Read, path::PathBuf};
 use crate::{
     bus::Bus,
     cpu::CPU,
-    gpu::PixelData,
     instructions::{INSTR_DATA_LENGTHS, INSTR_TABLE, Instr},
 };
 
@@ -48,7 +47,6 @@ pub fn str_il(il: &[InstrListing]) -> String {
 pub struct Emu {
     pub cpu: CPU,
     pub bus: Bus,
-    pub framebuffer: PixelData,
 }
 
 impl Emu {
@@ -69,8 +67,7 @@ impl Emu {
     pub fn new(rom: &[u8], bootrom: Option<PathBuf>) -> Self {
         let cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
-        let buf = ndarray::Array2::<u32>::zeros((256, 256));
-        Self { cpu, bus, framebuffer: buf }
+        Self { cpu, bus }
     }
 
     /// # Errors
@@ -80,11 +77,7 @@ impl Emu {
         file.read_to_end(&mut rom)?;
         let cpu = CPU::new();
         let bus = Bus::new(&rom, bootrom);
-        Ok(Self {
-            cpu,
-            bus,
-            framebuffer: ndarray::Array2::<u32>::zeros((256, 256)),
-        })
+        Ok(Self { cpu, bus })
     }
 
     #[must_use]

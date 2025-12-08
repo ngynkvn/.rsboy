@@ -1,5 +1,5 @@
 use crate::{
-    constants::{CYCLES_PER_FRAME, FRAME_TIME, MAP_WIDTH, WINDOW_HEIGHT, WINDOW_WIDTH},
+    constants::{CYCLES_PER_FRAME, FRAME_TIME, WINDOW_HEIGHT, WINDOW_WIDTH},
     debugger::Imgui,
 };
 use clap::Parser;
@@ -9,15 +9,12 @@ use rust_emu::{
     constants::{self, setup_logger},
     cpu::interrupts,
     debugger,
-    emu::{self, Emu, gen_il},
+    emu::{Emu, gen_il},
     gpu,
     prelude::*,
 };
-use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect, render::Texture, video::Window};
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum, render::Texture, video::Window};
+use std::{path::PathBuf, time::Instant};
 use tap::Tap;
 
 #[derive(Parser)]
@@ -82,8 +79,9 @@ fn main() -> Result<()> {
     // Wrapper struct for imgui to handle frame-by-frame rendering.
     let mut debugger = Imgui::new(debugger).map_err(|e| eyre!(e))?;
     sdl_main(&mut rsboy, &mut debugger, &context, &mut emu).map_err(|e| eyre!(e))?;
-    map_viewer(&context, &emu).map_err(|e| eyre!(e))?;
-    vram_viewer(&context, &emu).map_err(|e| eyre!(e))?;
+    // TODO: Re-implement debug viewers for scanline renderer
+    // map_viewer(&context, &emu).map_err(|e| eyre!(e))?;
+    // vram_viewer(&context, &emu).map_err(|e| eyre!(e))?;
     Ok(())
 }
 
@@ -117,10 +115,8 @@ fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, cont
             0
         };
 
-        // Render to framebuffer and copy.
-        emu.bus.gpu.render(&mut emu.framebuffer);
-        let (h, v) = emu.bus.gpu.scroll();
-        texture.copy_window(h, v, &emu.framebuffer);
+        // Copy from GPU framebuffer (scanline renderer populates this during emulation)
+        texture.copy_framebuffer(&emu.bus.gpu.framebuffer);
         video.copy(&texture, None, None).unwrap();
         video.present();
         let before_sleep = now.elapsed();
@@ -192,146 +188,20 @@ fn parse_event(debugger: &mut Imgui, emu: &mut Emu, event: &Event) -> Option<Res
 }
 
 trait GBWindow {
-    fn copy_window(&mut self, h: u32, v: u32, buffer: &PixelData);
-    fn copy_map(&mut self, buffer: &PixelData);
+    fn copy_framebuffer(&mut self, buffer: &PixelData);
 }
 impl GBWindow for Texture<'_> {
-    fn copy_window(&mut self, horz: u32, vert: u32, framebuffer: &PixelData) {
+    fn copy_framebuffer(&mut self, framebuffer: &PixelData) {
         self.with_lock(None, |buffer, _| {
             let mut i = 0;
-            for y in vert..vert + WINDOW_HEIGHT {
-                let y = (y % MAP_WIDTH) as usize;
-                for x in horz..horz + WINDOW_WIDTH {
-                    let x = (x % MAP_WIDTH) as usize;
-                    let bytes = framebuffer[(y, x)].to_be_bytes();
-                    buffer[i..(i + 4)].copy_from_slice(&bytes);
-                    i += 4;
-                }
+            for pixel in framebuffer {
+                let bytes = pixel.to_be_bytes();
+                buffer[i..(i + 4)].copy_from_slice(&bytes);
+                i += 4;
             }
         })
         .unwrap();
     }
-    fn copy_map(&mut self, buffer: &PixelData) {
-        let mut i = 0;
-        self.with_lock(None, |tbuffer, _| {
-            for y in buffer.rows() {
-                for x in y {
-                    let bytes = x.to_be_bytes();
-                    tbuffer[i..(i + 4)].copy_from_slice(&bytes);
-                    i += 4;
-                }
-            }
-        })
-        .unwrap();
-    }
-}
-
-fn map_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<(), String> {
-    let gpu = &emu.bus.gpu;
-    let video_subsystem = sdl_context.video()?;
-    let window = video_subsystem
-        .window("Map Viewer", 256, 256)
-        .position_centered()
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
-
-    let texture_creator = canvas.texture_creator();
-    let mut texture = texture_creator
-        .create_texture_streaming(PixelFormatEnum::RGBA32, 256, 256)
-        .map_err(|e| e.to_string())?;
-
-    // Pitch = n_bytes(3) * map_w * tile_w
-    texture.copy_map(&emu.framebuffer);
-    canvas.copy(&texture, None, None)?;
-    let (h, v) = gpu.scroll();
-    info!("{h} {v}");
-    canvas
-        .draw_rect(Rect::from((h.cast_signed(), v.cast_signed(), WINDOW_WIDTH, WINDOW_HEIGHT)))
-        .unwrap();
-    canvas.present();
-    let mut event_pump = sdl_context.event_pump()?;
-
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                _ => {}
-            }
-        }
-
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-    }
-
-    Ok(())
-}
-
-fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<()> {
-    let gpu = &emu.bus.gpu;
-    let video_subsystem = sdl_context.video().map_err(|e| eyre!(e))?;
-    let window = video_subsystem.window("VRAM Viewer", 1024, 512).position_centered().build()?;
-    let mut canvas = window.into_canvas().build()?;
-
-    let texture_creator = canvas.texture_creator();
-
-    let mut update = |palette: u8| -> Result<()> {
-        let tiles = gpu.tiles(palette);
-        for (i, t) in tiles.iter().enumerate() {
-            #[allow(clippy::cast_possible_wrap)]
-            let i = i as i32;
-            let mut tex = texture_creator.create_texture_streaming(PixelFormatEnum::RGBA32, 8, 8)?;
-            tex.with_lock(None, |data, _| {
-                let mut c = 0;
-                for i in t.texture {
-                    for j in i {
-                        let d = j.to_be_bytes();
-                        data[c..(c + 4)].copy_from_slice(&d);
-                        c += 4;
-                    }
-                }
-            })
-            .map_err(|e| eyre!(e))?;
-            let rect = ((i % 32) * 32, (i / 32) * 32, 32, 32);
-            let rect = Rect::from(rect);
-            canvas.copy(&tex, None, rect).map_err(|e| eyre!(e))?;
-        }
-        canvas.present();
-        Ok(())
-    };
-    let ps = [gpu.bgrdpal, gpu.obj0pal, gpu.obj1pal];
-    let mut i = 0;
-    update(ps[i])?;
-    let mut event_pump = sdl_context.event_pump().map_err(|e| eyre!(e))?;
-
-    'running: loop {
-        for event in event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
-                    keycode: Some(Keycode::Escape),
-                    ..
-                } => break 'running,
-                Event::KeyDown { keycode: Some(key), .. } => {
-                    if key == Keycode::Return {
-                        i += 1;
-                        i %= ps.len();
-                        info!("{i}");
-                        update(ps[i])?;
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 30));
-        // The rest of the game loop goes here...
-    }
-
-    Ok(())
 }
 
 fn draw_debugger(info: &mut debugger::Info, ui: &imgui::Ui, dt: usize, running: &mut bool, cycle_jump: &mut i32, emu: &mut Emu) {

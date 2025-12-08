@@ -4,12 +4,10 @@ use crate::{
     constants::{WINDOW_HEIGHT, WINDOW_WIDTH},
     cpu,
     prelude::*,
-    texture::*,
 };
 use std::{
     fmt::Display,
     ops::{Index, Range, RangeInclusive},
-    time,
 };
 
 pub const VRAM_START: usize = 0x8000;
@@ -157,17 +155,20 @@ impl GPU {
         }
     }
 
-    const fn bg_tile_data(&self, value: u8) -> Range<usize> {
-        if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) {
-            let start_address = value as usize * 16;
-            let end_address = start_address + 16;
-            start_address..end_address
+    /// Returns the VRAM range for tile data based on tile index.
+    /// When LCDC bit 4 is set: unsigned addressing from 0x8000 (tiles 0-255)
+    /// When LCDC bit 4 is clear: signed addressing from 0x9000 (tiles -128 to 127)
+    const fn tile_data_address(&self, tile_index: u8) -> Range<usize> {
+        if self.lcdc.contains(LCDC::BG_AND_WINDOW_TILES) {
+            // Unsigned: tile_index 0-255 maps to 0x8000-0x8FFF (VRAM 0x0000-0x0FFF)
+            let start = tile_index as usize * 16;
+            start..start + 16
         } else {
-            let offset = value as i8 as i32;
+            // Signed: tile_index as i8, base at 0x9000 (VRAM 0x1000)
+            let offset = tile_index as i8 as isize;
             #[allow(clippy::cast_sign_loss)]
-            let start_address = (0x1000 + offset * 16) as usize;
-            let end_address = start_address + 16;
-            start_address..end_address
+            let start = (0x1000_isize + offset * 16) as usize;
+            start..start + 16
         }
     }
     //   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
@@ -203,93 +204,146 @@ impl GPU {
         self.step(flag);
     }
 
-    pub fn scroll(&self) -> (u32, u32) {
-        (u32::from(self.scrollx), u32::from(self.scrolly))
-    }
-
-    pub fn tiles(&self, palette: u8) -> Vec<Tile> {
-        self.vram[TILE_DATA_RANGE]
-            .chunks_exact(TILE_SIZE) // Tile
-            .map(|tile| Tile::construct(palette, tile))
-            .collect()
-    }
-
-    fn blit_tile(&self, pixels: &mut PixelData, vram_index: usize) {
-        let tile = self.bg_tile_data(self.vram[vram_index]);
-        let mx = (vram_index - 0x1800) % 32;
-        let my = (vram_index - 0x1800) / 32;
-        println!("b grid {} {} = {}[{}]", mx, my, vram_index, self.vram[vram_index]);
-        Tile::write(self.bgrdpal, pixels, (mx, my), &self.vram[tile]);
-    }
-
-    fn blit_to_screen(&self, pixels: &mut PixelData, sx: usize, sy: usize, tile: &Tile) {
-        for row in 0..8 {
-            for col in 0..8 {
-                let (x, y) = self.scroll();
-                let x = sx + col + x as usize;
-                let y = sy + row + y as usize;
-                let &[height, width] = pixels.shape() else {
-                    unreachable!();
-                };
-                if y < height && x < width {
-                    pixels[(y, x)] = tile.texture[row][col];
-                }
-            }
-        }
-    }
-
-    pub fn render(&self, pixels: &mut PixelData) {
-        let _start = time::Instant::now();
-        for i in MAP_DATA_RANGE {
-            self.blit_tile(pixels, i);
-        }
-
-        if self.lcdc.contains(LCDC::OBJ_ENABLED) {
-            self.render_sprites(pixels);
-        }
-    }
-
-    // Renders sprites to the framebuffer using the oam table.
-    fn render_sprites(&self, pixels: &mut PixelData) {
-        // TODO
-        // Need to emulate scanline, and priority rendering
-        for sprite_attributes in self.oam.chunks_exact(4) {
-            if sprite_attributes.iter().all(|x| *x == 0) {
-                continue;
-            }
-            if let [y, x, pattern, flags] = sprite_attributes {
-                let flags = SpriteAttribute::from(flags);
-                let idx = *pattern as usize * 16;
-
-                let palette = if flags.obj0 { self.obj0pal } else { self.obj1pal };
-                let tile = Tile::sprite_construct(palette, &self.vram[Tile::range(idx)]);
-                let screen_x = (*x).wrapping_sub(8);
-                let screen_y = (*y).wrapping_sub(16);
-                self.blit_to_screen(pixels, screen_x as usize, screen_y as usize, &tile);
-            }
-        }
-    }
-
-    fn background_memory_range(&self) -> RangeInclusive<usize> {
+    /// Returns the VRAM offset for the background tile map (0x1800 or 0x1C00)
+    const fn bg_tile_map_base(&self) -> usize {
         if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) {
-            0x1C00..=0x1FFF
+            0x1C00
         } else {
-            0x1800..=0x1BFF
+            0x1800
+        }
+    }
+
+    /// Decode a single pixel from tile data.
+    /// `tile_data` should be 16 bytes (8 rows × 2 bytes per row).
+    /// `row` is 0-7, `col` is 0-7.
+    #[inline]
+    fn decode_pixel(palette: u8, tile_data: &[u8], row: usize, col: usize) -> u32 {
+        let lo_byte = tile_data[row * 2];
+        let hi_byte = tile_data[row * 2 + 1];
+        let bit = 7 - col;
+        let lo_bit = (lo_byte >> bit) & 1;
+        let hi_bit = (hi_byte >> bit) & 1;
+        let color_index = (hi_bit << 1) | lo_bit;
+        let color = (palette >> (color_index << 1)) & 0b11;
+        match color {
+            0b00 => 0xE0F8_D0FF, // White
+            0b01 => 0x88C0_70FF, // Light Gray
+            0b10 => 0x3468_56FF, // Dark Gray
+            0b11 => 0x0818_20FF, // Black
+            _ => 0,
         }
     }
 
     fn draw_line(&mut self) {
-        let ypos = (self.scrolly + self.scanline) as usize;
+        let ly = self.scanline as usize;
+
+        // Draw background
         if self.lcdc.contains(LCDC::BG_DISPLAY_ENABLED) {
-            let map = *self.background_memory_range().start();
-            for i in 0..160 {
-                let xpos = i + self.scrollx as usize;
-                let index = map + ypos + xpos;
-                let tile_data = &self.vram[index..index + 16];
+            let tile_map_base = self.bg_tile_map_base();
+            let ypos = self.scrolly.wrapping_add(self.scanline) as usize;
+            let tile_row = ypos / 8;
+            let pixel_row = ypos % 8;
+
+            for screen_x in 0..WINDOW_WIDTH as usize {
+                let xpos = (self.scrollx as usize + screen_x) & 0xFF;
+                let tile_col = xpos / 8;
+                let pixel_col = xpos % 8;
+
+                // Get tile index from tile map
+                let tile_map_addr = tile_map_base + (tile_row & 31) * 32 + (tile_col & 31);
+                let tile_index = self.vram[tile_map_addr];
+
+                // Get tile data address
+                let tile_data_range = self.tile_data_address(tile_index);
+                let tile_data = &self.vram[tile_data_range];
+
+                let pixel = Self::decode_pixel(self.bgrdpal, tile_data, pixel_row, pixel_col);
+                self.framebuffer[(ly, screen_x)] = pixel;
             }
         }
+
+        // Draw sprites (OBJ)
         if self.lcdc.contains(LCDC::OBJ_ENABLED) {
-            // todo
+            self.draw_sprites_on_line();
+        }
+    }
+
+    fn draw_sprites_on_line(&mut self) {
+        let ly = self.scanline;
+        let sprite_height: u8 = if self.lcdc.contains(LCDC::OBJ_SIZE) { 16 } else { 8 };
+
+        // Scan OAM for sprites on this scanline (max 10 per line on real hardware)
+        for sprite in self.oam.chunks_exact(4) {
+            let [sprite_y, sprite_x, tile_index, flags] = sprite else { continue };
+
+            // Sprite Y is offset by 16, X by 8
+            let screen_y = sprite_y.wrapping_sub(16);
+            let screen_x = sprite_x.wrapping_sub(8);
+
+            // Check if sprite is on this scanline
+            if ly < screen_y || ly >= screen_y.wrapping_add(sprite_height) {
+                continue;
+            }
+
+            let flags = SpriteAttribute::from(flags);
+            let palette = if flags.obj0 { self.obj0pal } else { self.obj1pal };
+
+            // Calculate which row of the sprite we're drawing
+            let mut sprite_row = (ly - screen_y) as usize;
+            if flags.yflip {
+                sprite_row = (sprite_height as usize - 1) - sprite_row;
+            }
+
+            // Get tile data (8x16 sprites use tile_index & 0xFE for top, | 0x01 for bottom)
+            let actual_tile = if sprite_height == 16 {
+                if sprite_row < 8 {
+                    tile_index & 0xFE
+                } else {
+                    sprite_row -= 8;
+                    tile_index | 0x01
+                }
+            } else {
+                *tile_index
+            };
+
+            let tile_start = actual_tile as usize * 16;
+            let tile_data = &self.vram[tile_start..tile_start + 16];
+
+            // Draw 8 pixels of the sprite
+            for pixel_col in 0..8usize {
+                let dest_x = screen_x.wrapping_add(pixel_col as u8) as usize;
+                if dest_x >= WINDOW_WIDTH as usize {
+                    continue;
+                }
+
+                let col = if flags.xflip { 7 - pixel_col } else { pixel_col };
+                let lo_byte = tile_data[sprite_row * 2];
+                let hi_byte = tile_data[sprite_row * 2 + 1];
+                let bit = 7 - col;
+                let lo_bit = (lo_byte >> bit) & 1;
+                let hi_bit = (hi_byte >> bit) & 1;
+                let color_index = (hi_bit << 1) | lo_bit;
+
+                // Color index 0 is transparent for sprites
+                if color_index == 0 {
+                    continue;
+                }
+
+                // BG priority: if set, sprite only shows over BG color 0
+                if flags.above {
+                    // TODO: check if BG pixel is color 0
+                }
+
+                let color = (palette >> (color_index << 1)) & 0b11;
+                let pixel = match color {
+                    0b00 => 0xE0F8_D0FF,
+                    0b01 => 0x88C0_70FF,
+                    0b10 => 0x3468_56FF,
+                    0b11 => 0x0818_20FF,
+                    _ => 0,
+                };
+                self.framebuffer[(self.scanline as usize, dest_x)] = pixel;
+            }
         }
     }
 
@@ -309,7 +363,7 @@ impl GPU {
                 GpuMode::Oam => self.mode = GpuMode::Vram,
                 GpuMode::Vram => {
                     self.draw_line();
-                    self.mode = GpuMode::HBlank
+                    self.mode = GpuMode::HBlank;
                 }
                 GpuMode::HBlank | GpuMode::VBlank => {
                     self.scanline += 1;
