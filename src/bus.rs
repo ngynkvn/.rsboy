@@ -1,5 +1,5 @@
 use crate::{
-    gpu::{self, GPU, OAM_END, OAM_START, VRAM_END, VRAM_START},
+    gpu::{self, BackgroundPalette, GPU, LCDC, OAM_END, OAM_START, VRAM_END, VRAM_START},
     prelude::*,
     timer::{self, Timer},
 };
@@ -154,7 +154,7 @@ impl Memory for Bus {
             timer::TAC => self.timer.tac,
             timer::TMA => self.timer.tma,
             timer::TIMA => self.timer.tima,
-            0xFF40 => self.gpu.lcdc,
+            0xFF40 => self.gpu.lcdc.bits(),
             0xFF41 => self.gpu.lcdstat,
             0xFF42 => self.gpu.scrolly,
             0xFF43 => self.gpu.scrollx,
@@ -184,7 +184,7 @@ impl Memory for Bus {
             timer::TAC => self.timer.write_tac(value),
             timer::TIMA => self.timer.tima = value,
             timer::TMA => self.timer.tma = value,
-            0xff40 => self.gpu.lcdc = value,
+            0xff40 => self.gpu.lcdc = LCDC::from_bits_retain(value),
             0xff41 => self.gpu.lcdstat = value,
             0xff42 => self.gpu.scrolly = value,
             0xff43 => self.gpu.scrollx = value,
@@ -197,9 +197,18 @@ impl Memory for Bus {
                     self.generic_cycle();
                 }
             }
-            0xff47 => self.gpu.bgrdpal = value,
-            0xff48 => self.gpu.obj0pal = value,
-            0xff49 => self.gpu.obj1pal = value,
+            0xff47 => {
+                error!("BGRD Palette: {}", BackgroundPalette(value));
+                self.gpu.bgrdpal = value;
+            }
+            0xff48 => {
+                error!("obj0pal: {}", BackgroundPalette(value));
+                self.gpu.obj0pal = value;
+            }
+            0xff49 => {
+                error!("obj0pal: {}", BackgroundPalette(value));
+                self.gpu.obj1pal = value;
+            }
             0xff4a => self.gpu.windowy = value,
             0xff4b => self.gpu.windowx = value,
             0xffff => self.int_enabled = value,

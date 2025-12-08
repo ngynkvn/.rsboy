@@ -1,4 +1,11 @@
-use crate::{cpu, prelude::*, texture::*};
+use bitflags::bitflags;
+
+use crate::{
+    constants::{WINDOW_HEIGHT, WINDOW_WIDTH},
+    cpu,
+    prelude::*,
+    texture::*,
+};
 use std::{
     fmt::Display,
     ops::{Index, Range, RangeInclusive},
@@ -35,7 +42,7 @@ pub struct GPU {
     pub scanline: u8,
     pub vram: [u8; 0x2000],
     pub oam: [u8; 0x100],
-    pub lcdc: u8,
+    pub lcdc: LCDC,
     pub lcdstat: u8,
     pub scrollx: u8,
     pub scrolly: u8,
@@ -45,6 +52,39 @@ pub struct GPU {
     pub windowx: u8, //
     pub windowy: u8, //
     pub vblank_count: usize,
+    pub framebuffer: PixelData,
+}
+
+bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    pub struct LCDC: u8 {
+        const BG_DISPLAY_ENABLED = 1 << 0;
+        const OBJ_ENABLED = 1 << 1;
+        const OBJ_SIZE = 1 << 2;
+        const BG_TILE_MAP_DISPLAY = 1 << 3;
+        const BG_AND_WINDOW_TILES = 1 << 4;
+        const WINDOW_DISPLAY_ENABLED = 1 << 5;
+        const WINDOW_TILE_MAP = 1 << 6;
+        const LCD_PPU_ENABLE = 1 << 7;
+    }
+}
+
+pub struct BackgroundPalette(pub u8);
+impl Display for BackgroundPalette {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:#08b}\n", self.0))?;
+        for i in 0..4 {
+            let color = (self.0 >> (6 - i * 2)) & 0b11;
+            match color {
+                0b00 => f.write_str("(White)"),
+                0b01 => f.write_str("(Light Gray)"),
+                0b10 => f.write_str("(Dark Gray)"),
+                0b11 => f.write_str("(Black)"),
+                _ => unreachable!(),
+            }?;
+        }
+        Ok(())
+    }
 }
 
 const END_HBLANK: u8 = 144;
@@ -78,13 +118,12 @@ impl Default for GPU {
 }
 
 impl GPU {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             mode: GpuMode::Oam,
             clock: 0,
             scanline: 0,
-            // FFxx Values
-            lcdc: 0,
+            lcdc: LCDC::empty(),
             lcdstat: 0,
             scrolly: 0,
             scrollx: 0,
@@ -97,29 +136,29 @@ impl GPU {
             vblank_count: 0,
             vram: [0; 0x2000],
             oam: [0; 0x100],
+            framebuffer: PixelData::zeros((WINDOW_HEIGHT as usize, WINDOW_WIDTH as usize)),
         }
-    }
-    //   Bit 7 - LCD Display Enable             (0=Off, 1=On)
-    pub const fn is_on(&self) -> bool {
-        self.lcdc & 0b1000_0000 == 0b1000_0000
     }
     //   Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
     const fn window_tile_map_display_select(&self) -> RangeInclusive<usize> {
-        if self.lcdc & 0b0100_0000 != 0 { 0x9C00..=0x9FFF } else { 0x9800..=0x9BFF }
-    }
-
-    //   Bit 5 - Window Display Enable          (0=Off, 1=On)
-    const fn window_display_enabled(&self) -> bool {
-        self.lcdc & 0b0010_0000 == 0b0010_0000
+        if self.lcdc.contains(LCDC::WINDOW_TILE_MAP) {
+            0x9C00..=0x9FFF
+        } else {
+            0x9800..=0x9BFF
+        }
     }
 
     //   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
     const fn bg_and_window_tile_data_select(&self) -> RangeInclusive<usize> {
-        if self.lcdc & 0b0010_0000 != 0 { 0x8000..=0x8FFF } else { 0x8800..=0x97FF }
+        if self.lcdc.contains(LCDC::BG_AND_WINDOW_TILES) {
+            0x0000..=0x0FFF
+        } else {
+            0x0800..=0x17FF
+        }
     }
 
     const fn bg_tile_data(&self, value: u8) -> Range<usize> {
-        if self.lcdc & 0b0001_0000 != 0 {
+        if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) {
             let start_address = value as usize * 16;
             let end_address = start_address + 16;
             start_address..end_address
@@ -133,16 +172,20 @@ impl GPU {
     }
     //   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
     const fn bg_tile_map_display_select(&self) -> RangeInclusive<usize> {
-        if self.lcdc & 0b0001_0000 != 0 { 0x9C00..=0x9FFF } else { 0x9800..=0x9BFF }
+        if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) {
+            0x9C00..=0x9FFF
+        } else {
+            0x9800..=0x9BFF
+        }
     }
 
     //   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
     const fn sprite_size(&self) -> SpriteSize {
-        if self.lcdc & 0b100 == 0b100 { SpriteSize::Square } else { SpriteSize::Tall }
-    }
-    //   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
-    const fn sprite_display_enabled(&self) -> bool {
-        self.lcdc & 0b10 == 0b10
+        if self.lcdc.contains(LCDC::OBJ_SIZE) {
+            SpriteSize::Square
+        } else {
+            SpriteSize::Tall
+        }
     }
     //   Bit 0 - BG Display (for CGB see below) (0=Off, 1=On)
 
@@ -153,7 +196,7 @@ impl GPU {
     }
 
     pub fn cycle(&mut self, flag: &mut u8) {
-        if !self.is_on() {
+        if !self.lcdc.contains(LCDC::LCD_PPU_ENABLE) {
             return;
         }
         self.clock += 1;
@@ -175,6 +218,7 @@ impl GPU {
         let tile = self.bg_tile_data(self.vram[vram_index]);
         let mx = (vram_index - 0x1800) % 32;
         let my = (vram_index - 0x1800) / 32;
+        println!("b grid {} {} = {}[{}]", mx, my, vram_index, self.vram[vram_index]);
         Tile::write(self.bgrdpal, pixels, (mx, my), &self.vram[tile]);
     }
 
@@ -200,7 +244,7 @@ impl GPU {
             self.blit_tile(pixels, i);
         }
 
-        if self.sprite_display_enabled() {
+        if self.lcdc.contains(LCDC::OBJ_ENABLED) {
             self.render_sprites(pixels);
         }
     }
@@ -226,40 +270,66 @@ impl GPU {
         }
     }
 
+    fn background_memory_range(&self) -> RangeInclusive<usize> {
+        if self.lcdc.contains(LCDC::BG_TILE_MAP_DISPLAY) {
+            0x1C00..=0x1FFF
+        } else {
+            0x1800..=0x1BFF
+        }
+    }
+
+    fn draw_line(&mut self) {
+        let ypos = (self.scrolly + self.scanline) as usize;
+        if self.lcdc.contains(LCDC::BG_DISPLAY_ENABLED) {
+            let map = *self.background_memory_range().start();
+            for i in 0..160 {
+                let xpos = i + self.scrollx as usize;
+                let index = map + ypos + xpos;
+                let tile_data = &self.vram[index..index + 16];
+            }
+        }
+        if self.lcdc.contains(LCDC::OBJ_ENABLED) {
+            // todo
+        }
+    }
+
     // This is a huge can of worms to correct emulate the state of the scanline during emulation.
     // I would revisit this later.
-    pub const fn step(&mut self, flag: &mut u8) {
-        match self.mode {
-            GpuMode::Oam => {
-                if self.clock >= 80 {
-                    self.mode = GpuMode::Vram;
-                    self.clock = 0;
+    pub fn step(&mut self, flag: &mut u8) {
+        let triggered = self.clock
+            >= match self.mode {
+                GpuMode::Oam => 80,
+                GpuMode::Vram => 172,
+                GpuMode::HBlank => 204,
+                GpuMode::VBlank => 456,
+            };
+        if triggered {
+            self.clock = 0;
+            match self.mode {
+                GpuMode::Oam => self.mode = GpuMode::Vram,
+                GpuMode::Vram => {
+                    self.draw_line();
+                    self.mode = GpuMode::HBlank
                 }
-            }
-            GpuMode::Vram => {
-                if self.clock >= 172 {
-                    self.mode = GpuMode::HBlank;
-                    self.clock = 0;
-                }
-            }
-            GpuMode::HBlank => {
-                if self.clock >= 204 {
+                GpuMode::HBlank | GpuMode::VBlank => {
                     self.scanline += 1;
-                    if self.scanline == END_HBLANK {
-                        self.vblank_count += 1;
-                        *flag |= cpu::interrupts::VBLANK;
-                        self.mode = GpuMode::VBlank;
-                    } else {
-                        self.mode = GpuMode::Oam;
-                    }
-                }
-            }
-            GpuMode::VBlank => {
-                if self.clock >= 456 {
-                    self.scanline += 1;
-                    if self.scanline == END_VBLANK {
-                        self.mode = GpuMode::Oam;
-                        self.scanline = 0;
+                    match self.mode {
+                        GpuMode::HBlank => {
+                            if self.scanline == END_HBLANK {
+                                self.vblank_count += 1;
+                                self.mode = GpuMode::VBlank;
+                                *flag |= cpu::interrupts::VBLANK;
+                            } else {
+                                self.mode = GpuMode::Oam;
+                            }
+                        }
+                        GpuMode::VBlank => {
+                            if self.scanline == END_VBLANK {
+                                self.scanline = 0;
+                                self.mode = GpuMode::Oam;
+                            }
+                        }
+                        _ => unreachable!(),
                     }
                 }
             }
@@ -301,20 +371,20 @@ BG+Window Tile Data Select: {:04X}-{:04X}
 BG Tile Map Display Select: {:04X}-{:04X}
 Sprite Size: {:?} 
 Sprite Display Enable: {} 
-BG Display: UNIMPLEMENTED
+BG Display: {}
 STAT: {:08b}",
             self.lcdc,
-            self.is_on(),
+            self.lcdc.contains(LCDC::LCD_PPU_ENABLE),
             wtmds.start(),
             wtmds.end(),
-            self.window_display_enabled(),
+            self.lcdc.contains(LCDC::WINDOW_DISPLAY_ENABLED),
             bgwtds.start(),
             bgwtds.end(),
             bgtmds.start(),
             bgtmds.end(),
             self.sprite_size(),
-            self.sprite_display_enabled(),
-            // self.bg_display_enabled(),
+            self.lcdc.contains(LCDC::OBJ_ENABLED),
+            self.lcdc.contains(LCDC::BG_DISPLAY_ENABLED),
             self.lcdstat,
         ))
     }
