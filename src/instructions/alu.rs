@@ -1,4 +1,3 @@
-
 use crate::{bus::Bus, cpu::CPU, instructions::Register, location::Address};
 
 pub fn inc(location: Address, cpu: &mut CPU, bus: &mut Bus) {
@@ -55,8 +54,7 @@ pub fn cp(location: Address, cpu: &mut CPU, bus: &mut Bus) {
     cpu.registers.set_zf(cpu.registers.a == value);
     cpu.registers.set_nf(true);
     //https://github.com/gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu.rs#l156
-    cpu.registers
-        .set_hf((cpu.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0);
+    cpu.registers.set_hf((cpu.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0);
     cpu.registers.set_cf(cpu.registers.a < value);
 }
 
@@ -81,8 +79,7 @@ pub fn sub(location: Address, cpu: &mut CPU, bus: &mut Bus) {
         // mooneye
         (cpu.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
     );
-    cpu.registers
-        .set_cf(u16::from(cpu.registers.a) < u16::from(value));
+    cpu.registers.set_cf(u16::from(cpu.registers.a) < u16::from(value));
     cpu.registers.a = result;
 }
 
@@ -97,8 +94,7 @@ pub fn addhl(location: Address, cpu: &mut CPU, bus: &mut Bus) {
     cpu.registers.h = h;
     cpu.registers.l = l;
     cpu.registers.set_nf(false);
-    cpu.registers
-        .set_hf((hl & 0xfff) + (value & 0xfff) > 0x0fff);
+    cpu.registers.set_hf((hl & 0xfff) + (value & 0xfff) > 0x0fff);
     cpu.registers.set_cf(overflow);
 }
 
@@ -109,10 +105,8 @@ pub fn adc(location: Address, cpu: &mut CPU, bus: &mut Bus) {
     cpu.registers.set_zf(result == 0);
     cpu.registers.set_nf(false);
     // maybe: see https://github.com/gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#l55
-    cpu.registers
-        .set_hf((cpu.registers.a & 0xf) + (value & 0xf) + carry > 0xf);
-    cpu.registers
-        .set_cf(u16::from(cpu.registers.a) + u16::from(value) + u16::from(carry) > 0xff);
+    cpu.registers.set_hf((cpu.registers.a & 0xf) + (value & 0xf) + carry > 0xf);
+    cpu.registers.set_cf(u16::from(cpu.registers.a) + u16::from(value) + u16::from(carry) > 0xff);
     cpu.registers.a = result;
 }
 
@@ -167,14 +161,9 @@ pub fn sbc(l: Address, cpu: &mut CPU, bus: &mut Bus) {
     cpu.registers.set_nf(true);
     cpu.registers.set_hf(
         // mooneye
-        (cpu.registers.a & 0xf)
-            .wrapping_sub(value & 0xf)
-            .wrapping_sub(cy)
-            & (0xf + 1)
-            != 0,
+        (cpu.registers.a & 0xf).wrapping_sub(value & 0xf).wrapping_sub(cy) & (0xf + 1) != 0,
     );
-    cpu.registers
-        .set_cf(u16::from(cpu.registers.a) < u16::from(value) + u16::from(cy));
+    cpu.registers.set_cf(u16::from(cpu.registers.a) < u16::from(value) + u16::from(cy));
     cpu.registers.a = result;
 }
 

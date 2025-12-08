@@ -13,10 +13,7 @@ use rust_emu::{
     gpu,
     prelude::*,
 };
-use sdl2::{
-    event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect, render::Texture,
-    video::Window,
-};
+use sdl2::{event::Event, keyboard::Keycode, pixels::PixelFormatEnum, rect::Rect, render::Texture, video::Window};
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
@@ -90,16 +87,10 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn sdl_main(
-    video: &mut sdl2::render::Canvas<Window>,
-    debugger: &mut Imgui,
-    context: &sdl2::Sdl,
-    emu: &mut Emu,
-) -> Result<()> {
+fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, context: &sdl2::Sdl, emu: &mut Emu) -> Result<()> {
     // Setup gl attributes, then create the texture that we will copy our framebuffer to.
     let tc = video.texture_creator();
-    let mut texture =
-        tc.create_texture_streaming(PixelFormatEnum::RGBA32, WINDOW_WIDTH, WINDOW_HEIGHT)?;
+    let mut texture = tc.create_texture_streaming(PixelFormatEnum::RGBA32, WINDOW_WIDTH, WINDOW_HEIGHT)?;
     // Some UI state
     let mut cycle_jump = 0;
     let mut running = true;
@@ -160,10 +151,7 @@ fn parse_event(debugger: &mut Imgui, emu: &mut Emu, event: &Event) -> Option<Res
             keycode: Some(Keycode::Escape),
             ..
         } => return Some(Ok(())),
-        Event::KeyDown {
-            keycode: Some(keycode),
-            ..
-        } => match *keycode {
+        Event::KeyDown { keycode: Some(keycode), .. } => match *keycode {
             Keycode::Down => {
                 emu.bus.directions &= !0b1000;
                 emu.bus.int_flags |= interrupts::JOYPAD;
@@ -259,12 +247,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<(), String> {
     let (h, v) = gpu.scroll();
     info!("{h} {v}");
     canvas
-        .draw_rect(Rect::from((
-            h.cast_signed(),
-            v.cast_signed(),
-            WINDOW_WIDTH,
-            WINDOW_HEIGHT,
-        )))
+        .draw_rect(Rect::from((h.cast_signed(), v.cast_signed(), WINDOW_WIDTH, WINDOW_HEIGHT)))
         .unwrap();
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
@@ -290,10 +273,7 @@ fn map_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<(), String> {
 fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<()> {
     let gpu = &emu.bus.gpu;
     let video_subsystem = sdl_context.video().map_err(|e| eyre!(e))?;
-    let window = video_subsystem
-        .window("VRAM Viewer", 1024, 512)
-        .position_centered()
-        .build()?;
+    let window = video_subsystem.window("VRAM Viewer", 1024, 512).position_centered().build()?;
     let mut canvas = window.into_canvas().build()?;
 
     let texture_creator = canvas.texture_creator();
@@ -303,8 +283,7 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<()> {
         for (i, t) in tiles.iter().enumerate() {
             #[allow(clippy::cast_possible_wrap)]
             let i = i as i32;
-            let mut tex =
-                texture_creator.create_texture_streaming(PixelFormatEnum::RGBA32, 8, 8)?;
+            let mut tex = texture_creator.create_texture_streaming(PixelFormatEnum::RGBA32, 8, 8)?;
             tex.with_lock(None, |data, _| {
                 let mut c = 0;
                 for i in t.texture {
@@ -336,9 +315,7 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<()> {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => break 'running,
-                Event::KeyDown {
-                    keycode: Some(key), ..
-                } => {
+                Event::KeyDown { keycode: Some(key), .. } => {
                     if key == Keycode::Return {
                         i += 1;
                         i %= ps.len();
@@ -357,20 +334,11 @@ fn vram_viewer(sdl_context: &sdl2::Sdl, emu: &emu::Emu) -> Result<()> {
     Ok(())
 }
 
-fn draw_debugger(
-    info: &mut debugger::Info,
-    ui: &imgui::Ui,
-    dt: usize,
-    running: &mut bool,
-    cycle_jump: &mut i32,
-    emu: &mut Emu,
-) {
+fn draw_debugger(info: &mut debugger::Info, ui: &imgui::Ui, dt: usize, running: &mut bool, cycle_jump: &mut i32, emu: &mut Emu) {
     if let Some(&after_delay) = info.frame_times.back() {
         ui.text(format!("Frame time: {after_delay:?}"));
         let i = info.frame_times.make_contiguous();
-        ui.plot_lines("Frame times", i)
-            .graph_size([300.0, 100.0])
-            .build();
+        ui.plot_lines("Frame times", i).graph_size([300.0, 100.0]).build();
 
         #[allow(clippy::cast_precision_loss)]
         let cpu_hz = dt as f32 / after_delay;
@@ -379,16 +347,12 @@ fn draw_debugger(
     if let Some(&current) = info.memory_usage_curr.back() {
         ui.text(format!("Memory usage: {current:.2} KB"));
         let i = info.memory_usage_curr.make_contiguous();
-        ui.plot_lines("Memory usage", i)
-            .graph_size([400.0, 100.0])
-            .build();
+        ui.plot_lines("Memory usage", i).graph_size([400.0, 100.0]).build();
     }
     if let Some(&current) = info.memory_usage_peak.back() {
         ui.text(format!("Memory usage peak: {current:.2} KB"));
         let i = info.memory_usage_peak.make_contiguous();
-        ui.plot_lines("Memory usage", i)
-            .graph_size([400.0, 100.0])
-            .build();
+        ui.plot_lines("Memory usage", i).graph_size([400.0, 100.0]).build();
     }
 
     ui.text(format!("Register State:\n{}", emu.cpu.registers));
@@ -400,11 +364,7 @@ fn draw_debugger(
     ui.input_int("Run for n cycles", cycle_jump).build();
     _ = ui.slider("##", 0, 69905, cycle_jump);
     if ui.button("Go") {
-        let target_clock = emu
-            .bus
-            .mclock()
-            .checked_add_signed(*cycle_jump as isize)
-            .unwrap();
+        let target_clock = emu.bus.mclock().checked_add_signed(*cycle_jump as isize).unwrap();
         emu.run_until(target_clock);
     }
 

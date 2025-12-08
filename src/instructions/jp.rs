@@ -1,4 +1,3 @@
-
 use crate::instructions::Bus;
 
 use crate::instructions::CPU;
@@ -20,12 +19,7 @@ const fn check_flag(cpu: &CPU, flag: Flag) -> bool {
     }
 }
 
-pub fn jumping<F: FnOnce(&mut CPU, &mut Bus)>(
-    jt: Option<Flag>,
-    cpu: &mut CPU,
-    bus: &mut Bus,
-    f: F,
-) {
+pub fn jumping<F: FnOnce(&mut CPU, &mut Bus)>(jt: Option<Flag>, cpu: &mut CPU, bus: &mut Bus, f: F) {
     if jt.is_some_and(|flag| !check_flag(cpu, flag)) {
         return;
     }
@@ -40,10 +34,7 @@ pub fn jp(jump_type: Option<Flag>, cpu: &mut CPU, bus: &mut Bus) {
 
 pub fn jr(jump_type: Option<Flag>, cpu: &mut CPU, bus: &mut Bus) {
     let offset = cpu.next_u8(bus) as i8;
-    let address = cpu
-        .registers
-        .pc
-        .wrapping_add(i16::from(offset).cast_unsigned());
+    let address = cpu.registers.pc.wrapping_add(i16::from(offset).cast_unsigned());
     jumping(jump_type, cpu, bus, |cpu, _| {
         cpu.registers.pc = address;
     });

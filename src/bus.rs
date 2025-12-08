@@ -1,8 +1,7 @@
 use crate::{
-    gpu::{GPU, OAM_END, OAM_START, VRAM_END, VRAM_START},
+    gpu::{self, GPU, OAM_END, OAM_START, VRAM_END, VRAM_START},
     prelude::*,
-    timer,
-    timer::Timer,
+    timer::{self, Timer},
 };
 use std::{fmt::Display, fs::File, io::Read, path::PathBuf};
 
@@ -93,8 +92,7 @@ impl Bus {
             .expect("Couldn't open bootrom file.");
         if let Some(mut file) = file {
             let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)
-                .expect("Couldn't read the file.");
+            file.read_to_end(&mut buffer).expect("Couldn't read the file.");
             bus.bootrom[..].clone_from_slice(&buffer[..]);
         } else {
             bus.in_bios = 1;
@@ -144,10 +142,7 @@ impl Bus {
     pub fn write_cycle(&mut self, addr: u16, value: u8) {
         self.generic_cycle();
         self.write(addr, value);
-        info!(
-            "Wrote {:#02x} to {:#04x} at clock {}",
-            value, addr, self.mclock
-        );
+        info!("Wrote {:#02x} to {:#04x} at clock {}", value, addr, self.mclock);
     }
 }
 
@@ -194,13 +189,12 @@ impl Memory for Bus {
             0xff42 => self.gpu.scrolly = value,
             0xff43 => self.gpu.scrollx = value,
             0xff44 => self.gpu.scanline = value,
-            0xff46 => {
+            gpu::DRAM_ADDR => {
                 //OAM Transfer request
-                let value = u16::from(value);
-                if value <= 0xF1 {
-                    let range = ((value << 8) as usize)..=((value << 8) as usize | 0xFF);
-                    self.gpu.oam.copy_from_slice(&self.memory[range]);
-                    self.memory[address as usize] = value as u8;
+                let start = (u16::from(value) << 8) as usize;
+                for i in 0..0xA0 {
+                    self.gpu.oam[i] = self.memory[start + i];
+                    self.generic_cycle();
                 }
             }
             0xff47 => self.gpu.bgrdpal = value,

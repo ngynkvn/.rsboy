@@ -12,6 +12,7 @@ pub const OAM_END: usize = 0xFE9F;
 pub const TILE_DATA_RANGE: Range<usize> = 0..0x1800;
 pub const MAP_DATA_RANGE: Range<usize> = 0x1800..0x1C00;
 pub const TILE_SIZE: usize = 16;
+pub const DRAM_ADDR: usize = 0xFF46;
 
 #[derive(Debug)]
 enum GpuMode {
@@ -104,11 +105,7 @@ impl GPU {
     }
     //   Bit 6 - Window Tile Map Display Select (0=9800-9BFF, 1=9C00-9FFF)
     const fn window_tile_map_display_select(&self) -> RangeInclusive<usize> {
-        if self.lcdc & 0b0100_0000 != 0 {
-            0x9C00..=0x9FFF
-        } else {
-            0x9800..=0x9BFF
-        }
+        if self.lcdc & 0b0100_0000 != 0 { 0x9C00..=0x9FFF } else { 0x9800..=0x9BFF }
     }
 
     //   Bit 5 - Window Display Enable          (0=Off, 1=On)
@@ -118,11 +115,7 @@ impl GPU {
 
     //   Bit 4 - BG & Window Tile Data Select   (0=8800-97FF, 1=8000-8FFF)
     const fn bg_and_window_tile_data_select(&self) -> RangeInclusive<usize> {
-        if self.lcdc & 0b0010_0000 != 0 {
-            0x8000..=0x8FFF
-        } else {
-            0x8800..=0x97FF
-        }
+        if self.lcdc & 0b0010_0000 != 0 { 0x8000..=0x8FFF } else { 0x8800..=0x97FF }
     }
 
     const fn bg_tile_data(&self, value: u8) -> Range<usize> {
@@ -140,20 +133,12 @@ impl GPU {
     }
     //   Bit 3 - BG Tile Map Display Select     (0=9800-9BFF, 1=9C00-9FFF)
     const fn bg_tile_map_display_select(&self) -> RangeInclusive<usize> {
-        if self.lcdc & 0b0001_0000 != 0 {
-            0x9C00..=0x9FFF
-        } else {
-            0x9800..=0x9BFF
-        }
+        if self.lcdc & 0b0001_0000 != 0 { 0x9C00..=0x9FFF } else { 0x9800..=0x9BFF }
     }
 
     //   Bit 2 - OBJ (Sprite) Size              (0=8x8, 1=8x16)
     const fn sprite_size(&self) -> SpriteSize {
-        if self.lcdc & 0b100 == 0b100 {
-            SpriteSize::Square
-        } else {
-            SpriteSize::Tall
-        }
+        if self.lcdc & 0b100 == 0b100 { SpriteSize::Square } else { SpriteSize::Tall }
     }
     //   Bit 1 - OBJ (Sprite) Display Enable    (0=Off, 1=On)
     const fn sprite_display_enabled(&self) -> bool {
@@ -167,7 +152,6 @@ impl GPU {
         }
     }
 
-    // Returns true if IRQ is requested.
     pub fn cycle(&mut self, flag: &mut u8) {
         if !self.is_on() {
             return;
@@ -233,11 +217,7 @@ impl GPU {
                 let flags = SpriteAttribute::from(flags);
                 let idx = *pattern as usize * 16;
 
-                let palette = if flags.obj0 {
-                    self.obj0pal
-                } else {
-                    self.obj1pal
-                };
+                let palette = if flags.obj0 { self.obj0pal } else { self.obj1pal };
                 let tile = Tile::sprite_construct(palette, &self.vram[Tile::range(idx)]);
                 let screen_x = (*x).wrapping_sub(8);
                 let screen_y = (*y).wrapping_sub(16);
@@ -246,46 +226,50 @@ impl GPU {
         }
     }
 
-    fn check_clock<F: FnOnce(&mut Self)>(&mut self, criteria: usize, f: F) {
-        if self.clock >= criteria {
-            f(self);
-            self.clock = 0;
-        }
-    }
-
     // This is a huge can of worms to correct emulate the state of the scanline during emulation.
     // I would revisit this later.
-    pub fn step(&mut self, flag: &mut u8) {
+    pub const fn step(&mut self, flag: &mut u8) {
         match self.mode {
-            GpuMode::Oam => self.check_clock(80, |gpu| gpu.mode = GpuMode::Vram),
-            GpuMode::Vram => self.check_clock(172, |gpu| gpu.mode = GpuMode::HBlank),
-            GpuMode::HBlank => self.check_clock(204, |gpu| {
-                gpu.scanline += 1;
-                if gpu.scanline == END_HBLANK {
-                    gpu.vblank_count += 1;
-                    *flag |= cpu::interrupts::VBLANK;
-                    gpu.mode = GpuMode::VBlank;
-                } else {
-                    gpu.mode = GpuMode::Oam;
+            GpuMode::Oam => {
+                if self.clock >= 80 {
+                    self.mode = GpuMode::Vram;
+                    self.clock = 0;
                 }
-            }),
-            GpuMode::VBlank => self.check_clock(456, |gpu| {
-                gpu.scanline += 1;
-                if gpu.scanline == END_VBLANK {
-                    gpu.mode = GpuMode::Oam;
-                    gpu.scanline = 0;
+            }
+            GpuMode::Vram => {
+                if self.clock >= 172 {
+                    self.mode = GpuMode::HBlank;
+                    self.clock = 0;
                 }
-            }),
+            }
+            GpuMode::HBlank => {
+                if self.clock >= 204 {
+                    self.scanline += 1;
+                    if self.scanline == END_HBLANK {
+                        self.vblank_count += 1;
+                        *flag |= cpu::interrupts::VBLANK;
+                        self.mode = GpuMode::VBlank;
+                    } else {
+                        self.mode = GpuMode::Oam;
+                    }
+                }
+            }
+            GpuMode::VBlank => {
+                if self.clock >= 456 {
+                    self.scanline += 1;
+                    if self.scanline == END_VBLANK {
+                        self.mode = GpuMode::Oam;
+                        self.scanline = 0;
+                    }
+                }
+            }
         }
     }
 
     pub fn hex_dump(&self) {
         let mut start = VRAM_START;
         for row in self.vram.chunks_exact(4) {
-            info!(
-                "{:04x}: {:02x} {:02x} {:02x} {:02x}",
-                start, row[0], row[1], row[2], row[3]
-            );
+            info!("{:04x}: {:02x} {:02x} {:02x} {:02x}", start, row[0], row[1], row[2], row[3]);
             start += 4;
         }
     }

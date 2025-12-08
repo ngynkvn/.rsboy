@@ -82,10 +82,7 @@ impl RegisterState {
 
     #[must_use]
     pub const fn jump(&self, address: u16) -> Self {
-        Self {
-            pc: address,
-            ..(*self)
-        }
+        Self { pc: address, ..(*self) }
     }
 
     pub fn inc(&mut self, reg: Register) {

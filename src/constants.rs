@@ -16,11 +16,7 @@ pub const MAP_WIDTH: u32 = 256;
 pub fn setup_logger() -> Result<()> {
     color_eyre::install()?;
     tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_target(false)
-                .without_time(),
-        )
+        .with(tracing_subscriber::fmt::layer().with_target(false).without_time())
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .try_init()?;
     Ok(())

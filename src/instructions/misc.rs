@@ -18,6 +18,4 @@ pub fn pop(register: Register, cpu: &mut CPU, bus: &mut Bus) {
     addr.to_register(&mut cpu.registers, register);
 }
 
-pub const fn halt(cpu: &mut CPU, _bus: &mut Bus) {
-    cpu.halt = true;
-}
+pub const fn halt(_cpu: &mut CPU, _bus: &mut Bus) {}

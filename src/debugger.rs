@@ -34,15 +34,9 @@ impl Imgui {
     /// This function will return an error if the window's GL context cannot be created.
     pub fn new(window: Window) -> Result<Self> {
         let gl_context = window.gl_create_context().map_err(|e| eyre::eyre!(e))?;
-        let gl = unsafe {
-            glow::Context::from_loader_function(|s| {
-                window.subsystem().gl_get_proc_address(s).cast()
-            })
-        };
+        let gl = unsafe { glow::Context::from_loader_function(|s| window.subsystem().gl_get_proc_address(s).cast()) };
         let mut imgui = imgui::Context::create();
-        imgui
-            .fonts()
-            .add_font(&[imgui::FontSource::DefaultFontData { config: None }]);
+        imgui.fonts().add_font(&[imgui::FontSource::DefaultFontData { config: None }]);
 
         /* create platform and renderer */
         let platform = SdlPlatform::new(&mut imgui);
@@ -66,8 +60,7 @@ impl Imgui {
     /// This function will panic if the renderer fails to render.
     pub fn frame<F: FnOnce(&mut Info, &Ui)>(&mut self, event_pump: &mut sdl2::EventPump, f: F) {
         /* call prepare_frame before calling imgui.new_frame() */
-        self.platform
-            .prepare_frame(&mut self.imgui, &self.window, event_pump);
+        self.platform.prepare_frame(&mut self.imgui, &self.window, event_pump);
         let ui = self.imgui.new_frame();
 
         f(&mut self.info, ui);

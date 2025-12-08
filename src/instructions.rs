@@ -692,23 +692,19 @@ pub const INSTR_DATA_LENGTHS: [usize; 256] = [
 impl std::fmt::Display for Instr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NOOP | LDSP | UNIMPLEMENTED | RLCA | RRCA | RLA | RRA | SCF | CCF | ADDSP | HALT
-            | CB | STOP | DisableInterrupts | EnableInterrupts | JpHl | RETI | DAA | RST(_) => {
+            NOOP | LDSP | UNIMPLEMENTED | RLCA | RRCA | RLA | RRA | SCF | CCF | ADDSP | HALT | CB | STOP | DisableInterrupts | EnableInterrupts | JpHl
+            | RETI | DAA | RST(_) => {
                 write!(f, "{}", <&str>::from(self))
             }
             LD(to, from) | LDD(to, from) | LDI(to, from) => {
                 write!(f, "{}({to}, {from})", <&str>::from(self))
             }
-            INC(a) | DEC(a) | ADD(a) | ADDHL(a) | ADC(a) | SUB(a) | AND(a) | XOR(a) | OR(a)
-            | CP(a) | NOT(a) | SBC(a) => write!(f, "{}({a})", <&str>::from(self)),
+            INC(a) | DEC(a) | ADD(a) | ADDHL(a) | ADC(a) | SUB(a) | AND(a) | XOR(a) | OR(a) | CP(a) | NOT(a) | SBC(a) => {
+                write!(f, "{}({a})", <&str>::from(self))
+            }
 
             JR(flag) | JP(flag) | RET(flag) | CALL(flag) => {
-                write!(
-                    f,
-                    "{}({})",
-                    <&str>::from(self),
-                    flag.map(<&str>::from).unwrap_or("-")
-                )
+                write!(f, "{}({})", <&str>::from(self), flag.map(<&str>::from).unwrap_or("-"))
             }
             POP(r) | PUSH(r) => write!(f, "{}({r})", <&str>::from(self)),
         }

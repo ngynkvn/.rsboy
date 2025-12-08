@@ -32,11 +32,7 @@ pub fn gen_il(mem: &[u8]) -> Vec<InstrListing> {
             2 => Some(u16::from_le_bytes([mem[i + 1], mem[i + 2]])),
             _ => unreachable!(),
         };
-        view.push(InstrListing {
-            instr,
-            data,
-            addr: i as u16,
-        });
+        view.push(InstrListing { instr, data, addr: i as u16 });
         i += 1 + data_length;
     }
     view
@@ -44,9 +40,8 @@ pub fn gen_il(mem: &[u8]) -> Vec<InstrListing> {
 
 #[must_use]
 pub fn str_il(il: &[InstrListing]) -> String {
-    il.iter().fold(String::new(), |res, il| {
-        res + &format!("{:04x}: {:?} {:?}\n", il.addr, il.instr, il.data)
-    })
+    il.iter()
+        .fold(String::new(), |res, il| res + &format!("{:04x}: {:?} {:?}\n", il.addr, il.instr, il.data))
 }
 
 // Global emu struct.
@@ -75,11 +70,7 @@ impl Emu {
         let cpu = CPU::new();
         let bus = Bus::new(rom, bootrom);
         let buf = ndarray::Array2::<u32>::zeros((256, 256));
-        Self {
-            cpu,
-            bus,
-            framebuffer: buf,
-        }
+        Self { cpu, bus, framebuffer: buf }
     }
 
     /// # Errors
@@ -110,11 +101,7 @@ impl Emu {
                 2 => Some(u16::from_le_bytes([mem[i + 1], mem[i + 2]])),
                 _ => unreachable!(),
             };
-            view.push(InstrListing {
-                instr,
-                data,
-                addr: i as u16,
-            });
+            view.push(InstrListing { instr, data, addr: i as u16 });
             i += 1 + data_length;
         }
         view
@@ -122,20 +109,11 @@ impl Emu {
 
     pub fn view(&self) -> Vec<InstrListing> {
         let pc = self.cpu.op_addr;
-        let mem = if self.bus.in_bios == 0 {
-            &self.bus.bootrom[..]
-        } else {
-            &self.bus.memory[..]
-        };
+        let mem = if self.bus.in_bios == 0 { &self.bus.bootrom[..] } else { &self.bus.memory[..] };
         let il = gen_il(mem);
         il.chunks(10)
             .find(|chunk| chunk.iter().any(|e| e.addr == pc))
-            .unwrap_or_else(|| {
-                panic!(
-                    "PC: {:04x} {:?}",
-                    pc, INSTR_TABLE[mem[pc as usize] as usize]
-                )
-            })
+            .unwrap_or_else(|| panic!("PC: {:04x} {:?}", pc, INSTR_TABLE[mem[pc as usize] as usize]))
             .to_vec()
     }
 }

@@ -36,7 +36,6 @@ pub struct CPU {
     pub state: CPUState,
     pub opcode: u8,
     pub op_addr: u16,
-    pub halt: bool,
 }
 
 // bitflags! {
@@ -73,7 +72,6 @@ impl CPU {
             opcode: 0,
             op_addr: 0,
             state: CPUState::Running(Stage::Fetch),
-            halt: false,
         }
     }
 
@@ -205,13 +203,7 @@ impl CPU {
     /// # Panics
     pub fn step(&mut self, bus: &mut Bus) {
         let _span = info_span!("Step", state = ?self.state, clock = bus.mclock()).entered();
-        assert_eq!(
-            bus.mclock(),
-            bus.timer.mclock,
-            "Clock mismatch: {} != {}",
-            bus.mclock(),
-            bus.timer.mclock
-        );
+        assert_eq!(bus.mclock(), bus.timer.mclock, "Clock mismatch: {} != {}", bus.mclock(), bus.timer.mclock);
         debug!(
             "{: ^32} [{: >4}] {: >16}",
             format!("{}", Instr::from(self.opcode)),
@@ -236,11 +228,7 @@ impl CPU {
                 CPUState::Interrupted(_) => self.handle_interrupts(bus),
                 CPUState::Halted => {
                     if (bus.int_enabled & bus.int_flags) != 0 {
-                        if bus.ime != 0 {
-                            self.handle_interrupts(bus)
-                        } else {
-                            self.fetch_op(bus)
-                        }
+                        if bus.ime != 0 { self.handle_interrupts(bus) } else { self.fetch_op(bus) }
                     } else {
                         bus.generic_cycle();
                         CPUState::Halted

@@ -28,15 +28,9 @@ impl Address {
             Self::MemoryImmediate => Read::Byte(cpu.next_u16(bus).pipe(|x| bus.read_cycle(x))),
             Self::MemOffsetImm => Read::Byte(cpu.next_u8(bus).pipe(|x| bus.read_cycle_high(x))),
             Self::MemOffsetC => Read::Byte(cpu.registers.c.pipe(|x| bus.read_cycle_high(x))),
-            Self::Memory(reg) => {
-                Read::Byte(cpu.registers.fetch_u16(reg).pipe(|x| bus.read_cycle(x)))
-            }
-            Self::Register(reg @ (A | B | C | D | E | H | L | F)) => {
-                Read::Byte(cpu.registers.fetch_u8(reg))
-            }
-            Self::Register(reg @ (AF | BC | DE | HL | SP | PC)) => {
-                Read::Word(cpu.registers.fetch_u16(reg))
-            }
+            Self::Memory(reg) => Read::Byte(cpu.registers.fetch_u16(reg).pipe(|x| bus.read_cycle(x))),
+            Self::Register(reg @ (A | B | C | D | E | H | L | F)) => Read::Byte(cpu.registers.fetch_u8(reg)),
+            Self::Register(reg @ (AF | BC | DE | HL | SP | PC)) => Read::Word(cpu.registers.fetch_u16(reg)),
         }
         .tap(|x| info!("Read {self}: {:?} at clock {}", x, bus.mclock()))
     }
@@ -51,10 +45,7 @@ impl Address {
                 write_value.to_memory_address(address, bus);
             }
             Self::Memory(r) => {
-                let address = cpu
-                    .registers
-                    .get_dual_reg(r)
-                    .expect("I tried to access a u8 as a bus address.");
+                let address = cpu.registers.get_dual_reg(r).expect("I tried to access a u8 as a bus address.");
                 write_value.to_memory_address(address, bus);
             }
             Self::MemOffsetImm => {
