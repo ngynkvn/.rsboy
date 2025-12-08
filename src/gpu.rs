@@ -10,35 +10,35 @@ use std::{
     ops::{Index, Range, RangeInclusive},
 };
 
-// Memory region constants
-pub const VRAM_START: usize = 0x8000;
-pub const VRAM_END: usize = 0x9FFF;
-pub const OAM_START: usize = 0xFE00;
-pub const OAM_END: usize = 0xFE9F;
-
-// u16 versions for pattern matching
-pub const VRAM_START_U16: u16 = VRAM_START as u16;
-pub const VRAM_END_U16: u16 = VRAM_END as u16;
-pub const OAM_START_U16: u16 = OAM_START as u16;
-pub const OAM_END_U16: u16 = OAM_END as u16;
-
 pub const TILE_DATA_RANGE: Range<usize> = 0..0x1800;
 pub const MAP_DATA_RANGE: Range<usize> = 0x1800..0x1C00;
 pub const TILE_SIZE: usize = 16;
 
 /// GPU I/O register addresses
-pub const LCDC_ADDR: u16 = 0xFF40;
-pub const STAT_ADDR: u16 = 0xFF41;
-pub const SCY_ADDR: u16 = 0xFF42;
-pub const SCX_ADDR: u16 = 0xFF43;
-pub const LY_ADDR: u16 = 0xFF44;
-pub const LYC_ADDR: u16 = 0xFF45;
-pub const DMA_ADDR: u16 = 0xFF46;
-pub const BGP_ADDR: u16 = 0xFF47;
-pub const OBP0_ADDR: u16 = 0xFF48;
-pub const OBP1_ADDR: u16 = 0xFF49;
-pub const WY_ADDR: u16 = 0xFF4A;
-pub const WX_ADDR: u16 = 0xFF4B;
+pub mod addr {
+    // Memory region constants
+    pub const VRAM_START: usize = 0x8000;
+    pub const VRAM_END: usize = 0x9FFF;
+    pub const OAM_START: usize = 0xFE00;
+    pub const OAM_END: usize = 0xFE9F;
+    // u16 versions for pattern matching
+    pub const VRAM_START_U16: u16 = VRAM_START as u16;
+    pub const VRAM_END_U16: u16 = VRAM_END as u16;
+    pub const OAM_START_U16: u16 = OAM_START as u16;
+    pub const OAM_END_U16: u16 = OAM_END as u16;
+    pub const LCDC_ADDR: u16 = 0xFF40;
+    pub const STAT_ADDR: u16 = 0xFF41;
+    pub const SCY_ADDR: u16 = 0xFF42;
+    pub const SCX_ADDR: u16 = 0xFF43;
+    pub const LY_ADDR: u16 = 0xFF44;
+    pub const LYC_ADDR: u16 = 0xFF45;
+    pub const DMA_ADDR: u16 = 0xFF46;
+    pub const BGP_ADDR: u16 = 0xFF47;
+    pub const OBP0_ADDR: u16 = 0xFF48;
+    pub const OBP1_ADDR: u16 = 0xFF49;
+    pub const WY_ADDR: u16 = 0xFF4A;
+    pub const WX_ADDR: u16 = 0xFF4B;
+}
 
 #[derive(Debug)]
 enum GpuMode {
@@ -408,7 +408,7 @@ impl GPU {
     }
 
     pub fn hex_dump(&self) {
-        let mut start = VRAM_START;
+        let mut start = addr::VRAM_START;
         for row in self.vram.chunks_exact(4) {
             info!("{:04x}: {:02x} {:02x} {:02x} {:02x}", start, row[0], row[1], row[2], row[3]);
             start += 4;

@@ -1,14 +1,14 @@
 #![feature(vec_deque_truncate_front)]
 pub mod bus;
+pub mod constants;
 pub mod cpu;
+pub mod debugger;
 pub mod emu;
 pub mod gpu;
 pub mod instructions;
 pub mod operand;
 pub mod registers;
 pub mod texture;
-pub mod constants;
-pub mod debugger;
 pub mod timer;
 // extern crate cfg_if;
 // extern crate wasm_bindgen;

@@ -1,7 +1,7 @@
 use crate::{
-    gpu::{self, BackgroundPalette, GPU, LCDC, OAM_START, VRAM_START},
+    gpu::{self, BackgroundPalette, GPU, LCDC},
     prelude::*,
-    timer::{Timer, addr as timer_addr},
+    timer::{self, Timer},
 };
 use std::{fmt::Display, fs::File, io::Read, path::PathBuf};
 
@@ -172,20 +172,20 @@ impl Memory for Bus {
             0x0000..=0x00FF if self.in_bios == 0 => self.bootrom[address as usize],
 
             // Timer registers
-            timer_addr::DIV => self.timer.read_div(),
-            timer_addr::TAC => self.timer.read_tac(),
-            timer_addr::TMA => self.timer.tma,
-            timer_addr::TIMA => self.timer.tima,
+            timer::addr::DIV => self.timer.read_div(),
+            timer::addr::TAC => self.timer.read_tac(),
+            timer::addr::TMA => self.timer.tma,
+            timer::addr::TIMA => self.timer.tima,
 
             // GPU registers
-            gpu::LCDC_ADDR => self.gpu.lcdc.bits(),
-            gpu::STAT_ADDR => self.gpu.lcdstat,
-            gpu::SCY_ADDR => self.gpu.scrolly,
-            gpu::SCX_ADDR => self.gpu.scrollx,
-            gpu::LY_ADDR => self.gpu.scanline,
-            gpu::BGP_ADDR => self.gpu.bgrdpal,
-            gpu::WY_ADDR => self.gpu.windowy,
-            gpu::WX_ADDR => self.gpu.windowx,
+            gpu::addr::LCDC_ADDR => self.gpu.lcdc.bits(),
+            gpu::addr::STAT_ADDR => self.gpu.lcdstat,
+            gpu::addr::SCY_ADDR => self.gpu.scrolly,
+            gpu::addr::SCX_ADDR => self.gpu.scrollx,
+            gpu::addr::LY_ADDR => self.gpu.scanline,
+            gpu::addr::BGP_ADDR => self.gpu.bgrdpal,
+            gpu::addr::WY_ADDR => self.gpu.windowy,
+            gpu::addr::WX_ADDR => self.gpu.windowx,
 
             // Interrupt registers
             addr::IE => self.int_enabled,
@@ -199,8 +199,8 @@ impl Memory for Bus {
             },
 
             // VRAM and OAM
-            gpu::VRAM_START_U16..=gpu::VRAM_END_U16 => self.gpu[address],
-            gpu::OAM_START_U16..=gpu::OAM_END_U16 => self.gpu.oam[address as usize - OAM_START],
+            gpu::addr::VRAM_START_U16..=gpu::addr::VRAM_END_U16 => self.gpu[address],
+            gpu::addr::OAM_START_U16..=gpu::addr::OAM_END_U16 => self.gpu.oam[address as usize - gpu::addr::OAM_START],
 
             // Everything else from main memory
             _ => self.memory[address as usize],
@@ -216,18 +216,18 @@ impl Memory for Bus {
             }
 
             // Timer registers
-            timer_addr::DIV => self.timer.write_div(value),
-            timer_addr::TAC => self.timer.write_tac(value),
-            timer_addr::TIMA => self.timer.tima = value,
-            timer_addr::TMA => self.timer.tma = value,
+            timer::addr::DIV => self.timer.write_div(value),
+            timer::addr::TAC => self.timer.write_tac(value),
+            timer::addr::TIMA => self.timer.tima = value,
+            timer::addr::TMA => self.timer.tma = value,
 
             // GPU registers
-            gpu::LCDC_ADDR => self.gpu.lcdc = LCDC::from_bits_retain(value),
-            gpu::STAT_ADDR => self.gpu.lcdstat = value,
-            gpu::SCY_ADDR => self.gpu.scrolly = value,
-            gpu::SCX_ADDR => self.gpu.scrollx = value,
-            gpu::LY_ADDR => self.gpu.scanline = value,
-            gpu::DMA_ADDR => {
+            gpu::addr::LCDC_ADDR => self.gpu.lcdc = LCDC::from_bits_retain(value),
+            gpu::addr::STAT_ADDR => self.gpu.lcdstat = value,
+            gpu::addr::SCY_ADDR => self.gpu.scrolly = value,
+            gpu::addr::SCX_ADDR => self.gpu.scrollx = value,
+            gpu::addr::LY_ADDR => self.gpu.scanline = value,
+            gpu::addr::DMA_ADDR => {
                 // OAM DMA Transfer
                 let src_start = u16::from(value) << 8;
                 for i in 0..0xA0 {
@@ -235,20 +235,20 @@ impl Memory for Bus {
                     self.generic_cycle();
                 }
             }
-            gpu::BGP_ADDR => {
+            gpu::addr::BGP_ADDR => {
                 trace!("BGP Palette: {}", BackgroundPalette(value));
                 self.gpu.bgrdpal = value;
             }
-            gpu::OBP0_ADDR => {
+            gpu::addr::OBP0_ADDR => {
                 trace!("OBP0 Palette: {}", BackgroundPalette(value));
                 self.gpu.obj0pal = value;
             }
-            gpu::OBP1_ADDR => {
+            gpu::addr::OBP1_ADDR => {
                 trace!("OBP1 Palette: {}", BackgroundPalette(value));
                 self.gpu.obj1pal = value;
             }
-            gpu::WY_ADDR => self.gpu.windowy = value,
-            gpu::WX_ADDR => self.gpu.windowx = value,
+            gpu::addr::WY_ADDR => self.gpu.windowy = value,
+            gpu::addr::WX_ADDR => self.gpu.windowx = value,
 
             // Interrupt registers
             addr::IE => self.int_enabled = value,
@@ -285,12 +285,12 @@ impl Memory for Bus {
             }
 
             // VRAM
-            gpu::VRAM_START_U16..=gpu::VRAM_END_U16 => {
-                self.gpu.vram[address as usize - VRAM_START] = value;
+            gpu::addr::VRAM_START_U16..=gpu::addr::VRAM_END_U16 => {
+                self.gpu.vram[address as usize - gpu::addr::VRAM_START] = value;
             }
             // OAM
-            gpu::OAM_START_U16..=gpu::OAM_END_U16 => {
-                self.gpu.oam[address as usize - OAM_START] = value;
+            gpu::addr::OAM_START_U16..=gpu::addr::OAM_END_U16 => {
+                self.gpu.oam[address as usize - gpu::addr::OAM_START] = value;
             }
 
             // RAM (WRAM, Echo RAM, HRAM) - everything else above 0x9FFF except OAM
