@@ -1,6 +1,7 @@
 use crate::{
     instructions::{Register, Register::*},
     location::Read,
+    operand::{Reg8, Reg16},
 };
 use std::fmt;
 
@@ -17,6 +18,98 @@ pub struct RegisterState {
     pub sp: u16,
     pub pc: u16,
 }
+
+// ============================================================================
+// New typed register access (using Reg8/Reg16)
+// ============================================================================
+
+impl RegisterState {
+    /// Get an 8-bit register value using the typed Reg8 enum
+    #[inline]
+    pub fn get_r8(&self, r: Reg8) -> u8 {
+        match r {
+            Reg8::A => self.a,
+            Reg8::B => self.b,
+            Reg8::C => self.c,
+            Reg8::D => self.d,
+            Reg8::E => self.e,
+            Reg8::H => self.h,
+            Reg8::L => self.l,
+            Reg8::F => self.f,
+        }
+    }
+
+    /// Set an 8-bit register value using the typed Reg8 enum
+    #[inline]
+    pub fn set_r8(&mut self, r: Reg8, value: u8) {
+        match r {
+            Reg8::A => self.a = value,
+            Reg8::B => self.b = value,
+            Reg8::C => self.c = value,
+            Reg8::D => self.d = value,
+            Reg8::E => self.e = value,
+            Reg8::H => self.h = value,
+            Reg8::L => self.l = value,
+            Reg8::F => self.f = value & 0xF0, // Lower 4 bits of F are always 0
+        }
+    }
+
+    /// Get a 16-bit register pair value using the typed Reg16 enum
+    #[inline]
+    pub fn get_r16(&self, r: Reg16) -> u16 {
+        match r {
+            Reg16::BC => u16::from_be_bytes([self.b, self.c]),
+            Reg16::DE => u16::from_be_bytes([self.d, self.e]),
+            Reg16::HL => u16::from_be_bytes([self.h, self.l]),
+            Reg16::SP => self.sp,
+            Reg16::AF => u16::from_be_bytes([self.a, self.f]),
+        }
+    }
+
+    /// Set a 16-bit register pair value using the typed Reg16 enum
+    #[inline]
+    pub fn set_r16(&mut self, r: Reg16, value: u16) {
+        match r {
+            Reg16::BC => {
+                let [hi, lo] = value.to_be_bytes();
+                self.b = hi;
+                self.c = lo;
+            }
+            Reg16::DE => {
+                let [hi, lo] = value.to_be_bytes();
+                self.d = hi;
+                self.e = lo;
+            }
+            Reg16::HL => {
+                let [hi, lo] = value.to_be_bytes();
+                self.h = hi;
+                self.l = lo;
+            }
+            Reg16::SP => self.sp = value,
+            Reg16::AF => {
+                let [hi, lo] = value.to_be_bytes();
+                self.a = hi;
+                self.f = lo & 0xF0; // Lower 4 bits of F are always 0
+            }
+        }
+    }
+
+    /// Increment a 16-bit register pair
+    #[inline]
+    pub fn inc_r16(&mut self, r: Reg16) {
+        self.set_r16(r, self.get_r16(r).wrapping_add(1));
+    }
+
+    /// Decrement a 16-bit register pair
+    #[inline]
+    pub fn dec_r16(&mut self, r: Reg16) {
+        self.set_r16(r, self.get_r16(r).wrapping_sub(1));
+    }
+}
+
+// ============================================================================
+// Legacy register access (using old Register enum) - kept for compatibility
+// ============================================================================
 
 /// `u16_reg(n, a, b)` will create a u16 "register" named `n` defined as a | b
 macro_rules! u16_reg {

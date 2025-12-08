@@ -1,36 +1,33 @@
+//! Game Boy CPU instruction definitions using typed operands.
+
 mod alu;
 mod cb;
 mod jp;
 mod ld;
 mod misc;
 
-use std::{collections::HashMap, sync::LazyLock};
-
 use strum_macros::IntoStaticStr;
 
-use self::{Flag::*, Instr::*, Register::*};
 use crate::{
     bus::Bus,
     cpu::CPU,
-    location::{Address, Address::*},
+    operand::{Dst8, Dst16, Reg8, Reg16, RmwOperand8, Src8, Src16},
 };
 
+// Re-export operand types for convenience
+pub use crate::operand::{Reg8 as R8, Reg16 as R16};
+
+// Legacy Register enum - kept for backwards compatibility during transition
 #[derive(Debug, PartialEq, Eq, Copy, Clone, IntoStaticStr, Hash)]
 pub enum Register {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F, //FLAGS
-    H,
-    L,
-    SP,
-    PC,
-    BC,
-    DE,
-    HL,
-    AF,
+    A, B, C, D, E, F, H, L,
+    SP, PC, BC, DE, HL, AF,
+}
+
+impl Register {
+    pub const fn is_word_register(self) -> bool {
+        matches!(self, Self::HL | Self::BC | Self::DE | Self::SP)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, IntoStaticStr, Hash)]
@@ -47,666 +44,573 @@ pub enum Direction {
     RIGHT,
 }
 
-pub trait Executable {
-    fn execute(self, cpu: &mut CPU, bus: &mut Bus);
-}
-
-impl Register {
-    pub const fn is_word_register(self) -> bool {
-        matches!(self, HL | BC | DE | SP)
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, IntoStaticStr, Hash)]
+/// Game Boy CPU instructions with typed operands
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Hash)]
 pub enum Instr {
     #[default]
-    NOOP,
-    UNIMPLEMENTED,
-    LD(Address, Address), // (To, From)
-    LDD(Address, Address),
-    LDI(Address, Address),
-    LDSP,
-    INC(Address),
-    DEC(Address),
-    ADD(Address),
-    ADDHL(Address),
-    ADC(Address),
-    SUB(Address),
-    AND(Address),
-    XOR(Address),
-    OR(Address),
-    CP(Address),
-    SBC(Address),
-    CB,
-    JR(Option<Flag>),
-    STOP,
-    DisableInterrupts,
-    EnableInterrupts,
-    JP(Option<Flag>),
+    Nop,
+
+    // 8-bit loads
+    Ld8(Dst8, Src8),
+    LdInc(Dst8, Src8),  // LD with HL++
+    LdDec(Dst8, Src8),  // LD with HL--
+
+    // 16-bit loads
+    Ld16(Dst16, Src16),
+    LdSpHl,             // LD SP, HL
+    LdHlSpOffset,       // LD HL, SP+e (signed offset)
+
+    // 8-bit ALU (operate on A register)
+    Add(Src8),
+    Adc(Src8),
+    Sub(Src8),
+    Sbc(Src8),
+    And(Src8),
+    Xor(Src8),
+    Or(Src8),
+    Cp(Src8),
+
+    // 8-bit INC/DEC
+    Inc8(RmwOperand8),
+    Dec8(RmwOperand8),
+
+    // 16-bit INC/DEC
+    Inc16(Reg16),
+    Dec16(Reg16),
+
+    // 16-bit ADD HL
+    AddHl(Reg16),
+
+    // ADD SP, e (signed offset)
+    AddSp,
+
+    // Rotates on A (no zero flag set)
+    Rlca,
+    Rrca,
+    Rla,
+    Rra,
+
+    // Misc ALU
+    Daa,
+    Cpl,    // Complement A (NOT A)
+    Scf,    // Set carry flag
+    Ccf,    // Complement carry flag
+
+    // CB prefix (bit operations)
+    Cb,
+
+    // Jumps
+    Jr(Option<Flag>),
+    Jp(Option<Flag>),
     JpHl,
-    RET(Option<Flag>),
-    RETI,
-    DAA,
-    POP(Register),
-    PUSH(Register),
-    NOT(Address),
-    CALL(Option<Flag>),
-    RLCA,
-    RRCA,
-    RLA,
-    RRA,
-    SCF,
-    CCF,
-    ADDSP,
-    HALT,
-    RST(u8),
+
+    // Calls and returns
+    Call(Option<Flag>),
+    Ret(Option<Flag>),
+    Reti,
+    Rst(u8),
+
+    // Stack ops
+    Push(Reg16),
+    Pop(Reg16),
+
+    // Interrupts
+    Di,
+    Ei,
+
+    // Control
+    Halt,
+    Stop,
+
+    // Invalid/unimplemented opcode
+    Invalid,
 }
 
-impl From<Instr> for u8 {
-    fn from(val: Instr) -> Self {
-        INSTR_OPCODE[&val]
+impl Instr {
+    /// Execute this instruction
+    #[must_use]
+    #[allow(clippy::match_same_arms)]
+    pub fn run(self, cpu: &mut CPU, bus: &mut Bus) -> Self {
+        match self {
+            Self::Nop => {}
+            Self::Invalid => panic!("Invalid opcode executed"),
+            Self::Stop => {} // STOP halts until button press - treated as NOP
+            Self::Halt => {} // Handled by CPU state machine
+
+            // 8-bit loads
+            Self::Ld8(dst, src) => ld::ld8(dst, src, cpu, bus),
+            Self::LdInc(dst, src) => ld::ld_inc(dst, src, cpu, bus),
+            Self::LdDec(dst, src) => ld::ld_dec(dst, src, cpu, bus),
+
+            // 16-bit loads
+            Self::Ld16(dst, src) => ld::ld16(dst, src, cpu, bus),
+            Self::LdSpHl => ld::ld_sp_hl(cpu, bus),
+            Self::LdHlSpOffset => ld::ld_hl_sp_offset(cpu, bus),
+
+            // 8-bit ALU
+            Self::Add(src) => alu::add(src, cpu, bus),
+            Self::Adc(src) => alu::adc(src, cpu, bus),
+            Self::Sub(src) => alu::sub(src, cpu, bus),
+            Self::Sbc(src) => alu::sbc(src, cpu, bus),
+            Self::And(src) => alu::and(src, cpu, bus),
+            Self::Xor(src) => alu::xor(src, cpu, bus),
+            Self::Or(src) => alu::or(src, cpu, bus),
+            Self::Cp(src) => alu::cp(src, cpu, bus),
+
+            // 8-bit INC/DEC
+            Self::Inc8(op) => alu::inc8(op, cpu, bus),
+            Self::Dec8(op) => alu::dec8(op, cpu, bus),
+
+            // 16-bit INC/DEC
+            Self::Inc16(r) => alu::inc16(r, cpu, bus),
+            Self::Dec16(r) => alu::dec16(r, cpu, bus),
+
+            // 16-bit ADD
+            Self::AddHl(r) => alu::add_hl(r, cpu, bus),
+            Self::AddSp => alu::add_sp(cpu, bus),
+
+            // Rotates on A
+            Self::Rlca => alu::rlca(cpu),
+            Self::Rrca => alu::rrca(cpu),
+            Self::Rla => alu::rla(cpu),
+            Self::Rra => alu::rra(cpu),
+
+            // Misc ALU
+            Self::Daa => alu::daa(cpu),
+            Self::Cpl => alu::cpl(cpu),
+            Self::Scf => alu::scf(cpu),
+            Self::Ccf => alu::ccf(cpu),
+
+            // CB prefix
+            Self::Cb => cb::cb(cpu, bus),
+
+            // Jumps
+            Self::Jr(flag) => jp::jr(flag, cpu, bus),
+            Self::Jp(flag) => jp::jp(flag, cpu, bus),
+            Self::JpHl => jp::jp_hl(cpu),
+
+            // Calls and returns
+            Self::Call(flag) => jp::call(flag, cpu, bus),
+            Self::Ret(flag) => jp::ret(flag, cpu, bus),
+            Self::Reti => jp::reti(cpu, bus),
+            Self::Rst(addr) => jp::rst(addr, cpu, bus),
+
+            // Stack
+            Self::Push(r) => misc::push(r, cpu, bus),
+            Self::Pop(r) => misc::pop(r, cpu, bus),
+
+            // Interrupts
+            Self::Di => bus.disable_interrupts(),
+            Self::Ei => bus.enable_interrupts(),
+        }
+        self
+    }
+
+    /// Calculate instruction length (including opcode byte)
+    #[allow(clippy::match_same_arms)]
+    pub const fn length(&self) -> usize {
+        1 + match self {
+            Self::Ld8(dst, src)
+            | Self::LdInc(dst, src)
+            | Self::LdDec(dst, src) => dst.imm_bytes() + src.imm_bytes(),
+            Self::Ld16(dst, src) => dst.imm_bytes() + src.imm_bytes(),
+            Self::LdHlSpOffset | Self::AddSp | Self::Jr(_) | Self::Cb => 1,
+            Self::Jp(_) | Self::Call(_) => 2,
+            Self::Add(src) | Self::Adc(src) | Self::Sub(src) | Self::Sbc(src)
+            | Self::And(src) | Self::Xor(src) | Self::Or(src) | Self::Cp(src) => src.imm_bytes(),
+            _ => 0,
+        }
     }
 }
+
+// ============================================================================
+// Instruction table - maps opcodes 0x00-0xFF to instructions
+// ============================================================================
+
+use Dst8 as D8;
+use Src8 as S8;
+use Dst16 as D16;
+use Src16 as S16;
+use Reg8::*;
+use Reg16::*;
+use RmwOperand8 as Rmw;
+use Flag::*;
+use Instr::*;
+
+pub const INSTR_TABLE: [Instr; 256] = [
+    // 0x00-0x0F
+    Nop,                                           // 0x00
+    Ld16(D16::Reg(BC), S16::Imm),                  // 0x01 LD BC, nn
+    Ld8(D8::Indirect(BC), S8::Reg(A)),             // 0x02 LD [BC], A
+    Inc16(BC),                                     // 0x03 INC BC
+    Inc8(Rmw::Reg(B)),                             // 0x04 INC B
+    Dec8(Rmw::Reg(B)),                             // 0x05 DEC B
+    Ld8(D8::Reg(B), S8::Imm),                      // 0x06 LD B, n
+    Rlca,                                          // 0x07 RLCA
+    Ld16(D16::MemImm, S16::Reg(SP)),               // 0x08 LD [nn], SP
+    AddHl(BC),                                     // 0x09 ADD HL, BC
+    Ld8(D8::Reg(A), S8::Indirect(BC)),             // 0x0A LD A, [BC]
+    Dec16(BC),                                     // 0x0B DEC BC
+    Inc8(Rmw::Reg(C)),                             // 0x0C INC C
+    Dec8(Rmw::Reg(C)),                             // 0x0D DEC C
+    Ld8(D8::Reg(C), S8::Imm),                      // 0x0E LD C, n
+    Rrca,                                          // 0x0F RRCA
+
+    // 0x10-0x1F
+    Stop,                                          // 0x10 STOP
+    Ld16(D16::Reg(DE), S16::Imm),                  // 0x11 LD DE, nn
+    Ld8(D8::Indirect(DE), S8::Reg(A)),             // 0x12 LD [DE], A
+    Inc16(DE),                                     // 0x13 INC DE
+    Inc8(Rmw::Reg(D)),                             // 0x14 INC D
+    Dec8(Rmw::Reg(D)),                             // 0x15 DEC D
+    Ld8(D8::Reg(D), S8::Imm),                      // 0x16 LD D, n
+    Rla,                                           // 0x17 RLA
+    Jr(None),                                      // 0x18 JR e
+    AddHl(DE),                                     // 0x19 ADD HL, DE
+    Ld8(D8::Reg(A), S8::Indirect(DE)),             // 0x1A LD A, [DE]
+    Dec16(DE),                                     // 0x1B DEC DE
+    Inc8(Rmw::Reg(E)),                             // 0x1C INC E
+    Dec8(Rmw::Reg(E)),                             // 0x1D DEC E
+    Ld8(D8::Reg(E), S8::Imm),                      // 0x1E LD E, n
+    Rra,                                           // 0x1F RRA
+
+    // 0x20-0x2F
+    Jr(Some(FlagNZ)),                              // 0x20 JR NZ, e
+    Ld16(D16::Reg(HL), S16::Imm),                  // 0x21 LD HL, nn
+    LdInc(D8::Indirect(HL), S8::Reg(A)),           // 0x22 LD [HL+], A
+    Inc16(HL),                                     // 0x23 INC HL
+    Inc8(Rmw::Reg(H)),                             // 0x24 INC H
+    Dec8(Rmw::Reg(H)),                             // 0x25 DEC H
+    Ld8(D8::Reg(H), S8::Imm),                      // 0x26 LD H, n
+    Daa,                                           // 0x27 DAA
+    Jr(Some(FlagZ)),                               // 0x28 JR Z, e
+    AddHl(HL),                                     // 0x29 ADD HL, HL
+    LdInc(D8::Reg(A), S8::Indirect(HL)),           // 0x2A LD A, [HL+]
+    Dec16(HL),                                     // 0x2B DEC HL
+    Inc8(Rmw::Reg(L)),                             // 0x2C INC L
+    Dec8(Rmw::Reg(L)),                             // 0x2D DEC L
+    Ld8(D8::Reg(L), S8::Imm),                      // 0x2E LD L, n
+    Cpl,                                           // 0x2F CPL
+
+    // 0x30-0x3F
+    Jr(Some(FlagNC)),                              // 0x30 JR NC, e
+    Ld16(D16::Reg(SP), S16::Imm),                  // 0x31 LD SP, nn
+    LdDec(D8::Indirect(HL), S8::Reg(A)),           // 0x32 LD [HL-], A
+    Inc16(SP),                                     // 0x33 INC SP
+    Inc8(Rmw::Indirect(HL)),                       // 0x34 INC [HL]
+    Dec8(Rmw::Indirect(HL)),                       // 0x35 DEC [HL]
+    Ld8(D8::Indirect(HL), S8::Imm),                // 0x36 LD [HL], n
+    Scf,                                           // 0x37 SCF
+    Jr(Some(FlagC)),                               // 0x38 JR C, e
+    AddHl(SP),                                     // 0x39 ADD HL, SP
+    LdDec(D8::Reg(A), S8::Indirect(HL)),           // 0x3A LD A, [HL-]
+    Dec16(SP),                                     // 0x3B DEC SP
+    Inc8(Rmw::Reg(A)),                             // 0x3C INC A
+    Dec8(Rmw::Reg(A)),                             // 0x3D DEC A
+    Ld8(D8::Reg(A), S8::Imm),                      // 0x3E LD A, n
+    Ccf,                                           // 0x3F CCF
+
+    // 0x40-0x4F: LD B/C, r
+    Ld8(D8::Reg(B), S8::Reg(B)),                   // 0x40 LD B, B
+    Ld8(D8::Reg(B), S8::Reg(C)),                   // 0x41 LD B, C
+    Ld8(D8::Reg(B), S8::Reg(D)),                   // 0x42 LD B, D
+    Ld8(D8::Reg(B), S8::Reg(E)),                   // 0x43 LD B, E
+    Ld8(D8::Reg(B), S8::Reg(H)),                   // 0x44 LD B, H
+    Ld8(D8::Reg(B), S8::Reg(L)),                   // 0x45 LD B, L
+    Ld8(D8::Reg(B), S8::Indirect(HL)),             // 0x46 LD B, [HL]
+    Ld8(D8::Reg(B), S8::Reg(A)),                   // 0x47 LD B, A
+    Ld8(D8::Reg(C), S8::Reg(B)),                   // 0x48 LD C, B
+    Ld8(D8::Reg(C), S8::Reg(C)),                   // 0x49 LD C, C
+    Ld8(D8::Reg(C), S8::Reg(D)),                   // 0x4A LD C, D
+    Ld8(D8::Reg(C), S8::Reg(E)),                   // 0x4B LD C, E
+    Ld8(D8::Reg(C), S8::Reg(H)),                   // 0x4C LD C, H
+    Ld8(D8::Reg(C), S8::Reg(L)),                   // 0x4D LD C, L
+    Ld8(D8::Reg(C), S8::Indirect(HL)),             // 0x4E LD C, [HL]
+    Ld8(D8::Reg(C), S8::Reg(A)),                   // 0x4F LD C, A
+
+    // 0x50-0x5F: LD D/E, r
+    Ld8(D8::Reg(D), S8::Reg(B)),                   // 0x50 LD D, B
+    Ld8(D8::Reg(D), S8::Reg(C)),                   // 0x51 LD D, C
+    Ld8(D8::Reg(D), S8::Reg(D)),                   // 0x52 LD D, D
+    Ld8(D8::Reg(D), S8::Reg(E)),                   // 0x53 LD D, E
+    Ld8(D8::Reg(D), S8::Reg(H)),                   // 0x54 LD D, H
+    Ld8(D8::Reg(D), S8::Reg(L)),                   // 0x55 LD D, L
+    Ld8(D8::Reg(D), S8::Indirect(HL)),             // 0x56 LD D, [HL]
+    Ld8(D8::Reg(D), S8::Reg(A)),                   // 0x57 LD D, A
+    Ld8(D8::Reg(E), S8::Reg(B)),                   // 0x58 LD E, B
+    Ld8(D8::Reg(E), S8::Reg(C)),                   // 0x59 LD E, C
+    Ld8(D8::Reg(E), S8::Reg(D)),                   // 0x5A LD E, D
+    Ld8(D8::Reg(E), S8::Reg(E)),                   // 0x5B LD E, E
+    Ld8(D8::Reg(E), S8::Reg(H)),                   // 0x5C LD E, H
+    Ld8(D8::Reg(E), S8::Reg(L)),                   // 0x5D LD E, L
+    Ld8(D8::Reg(E), S8::Indirect(HL)),             // 0x5E LD E, [HL]
+    Ld8(D8::Reg(E), S8::Reg(A)),                   // 0x5F LD E, A
+
+    // 0x60-0x6F: LD H/L, r
+    Ld8(D8::Reg(H), S8::Reg(B)),                   // 0x60 LD H, B
+    Ld8(D8::Reg(H), S8::Reg(C)),                   // 0x61 LD H, C
+    Ld8(D8::Reg(H), S8::Reg(D)),                   // 0x62 LD H, D
+    Ld8(D8::Reg(H), S8::Reg(E)),                   // 0x63 LD H, E
+    Ld8(D8::Reg(H), S8::Reg(H)),                   // 0x64 LD H, H
+    Ld8(D8::Reg(H), S8::Reg(L)),                   // 0x65 LD H, L
+    Ld8(D8::Reg(H), S8::Indirect(HL)),             // 0x66 LD H, [HL]
+    Ld8(D8::Reg(H), S8::Reg(A)),                   // 0x67 LD H, A
+    Ld8(D8::Reg(L), S8::Reg(B)),                   // 0x68 LD L, B
+    Ld8(D8::Reg(L), S8::Reg(C)),                   // 0x69 LD L, C
+    Ld8(D8::Reg(L), S8::Reg(D)),                   // 0x6A LD L, D
+    Ld8(D8::Reg(L), S8::Reg(E)),                   // 0x6B LD L, E
+    Ld8(D8::Reg(L), S8::Reg(H)),                   // 0x6C LD L, H
+    Ld8(D8::Reg(L), S8::Reg(L)),                   // 0x6D LD L, L
+    Ld8(D8::Reg(L), S8::Indirect(HL)),             // 0x6E LD L, [HL]
+    Ld8(D8::Reg(L), S8::Reg(A)),                   // 0x6F LD L, A
+
+    // 0x70-0x7F: LD [HL]/A, r
+    Ld8(D8::Indirect(HL), S8::Reg(B)),             // 0x70 LD [HL], B
+    Ld8(D8::Indirect(HL), S8::Reg(C)),             // 0x71 LD [HL], C
+    Ld8(D8::Indirect(HL), S8::Reg(D)),             // 0x72 LD [HL], D
+    Ld8(D8::Indirect(HL), S8::Reg(E)),             // 0x73 LD [HL], E
+    Ld8(D8::Indirect(HL), S8::Reg(H)),             // 0x74 LD [HL], H
+    Ld8(D8::Indirect(HL), S8::Reg(L)),             // 0x75 LD [HL], L
+    Halt,                                          // 0x76 HALT
+    Ld8(D8::Indirect(HL), S8::Reg(A)),             // 0x77 LD [HL], A
+    Ld8(D8::Reg(A), S8::Reg(B)),                   // 0x78 LD A, B
+    Ld8(D8::Reg(A), S8::Reg(C)),                   // 0x79 LD A, C
+    Ld8(D8::Reg(A), S8::Reg(D)),                   // 0x7A LD A, D
+    Ld8(D8::Reg(A), S8::Reg(E)),                   // 0x7B LD A, E
+    Ld8(D8::Reg(A), S8::Reg(H)),                   // 0x7C LD A, H
+    Ld8(D8::Reg(A), S8::Reg(L)),                   // 0x7D LD A, L
+    Ld8(D8::Reg(A), S8::Indirect(HL)),             // 0x7E LD A, [HL]
+    Ld8(D8::Reg(A), S8::Reg(A)),                   // 0x7F LD A, A
+
+    // 0x80-0x8F: ADD/ADC A, r
+    Add(S8::Reg(B)),                               // 0x80 ADD A, B
+    Add(S8::Reg(C)),                               // 0x81 ADD A, C
+    Add(S8::Reg(D)),                               // 0x82 ADD A, D
+    Add(S8::Reg(E)),                               // 0x83 ADD A, E
+    Add(S8::Reg(H)),                               // 0x84 ADD A, H
+    Add(S8::Reg(L)),                               // 0x85 ADD A, L
+    Add(S8::Indirect(HL)),                         // 0x86 ADD A, [HL]
+    Add(S8::Reg(A)),                               // 0x87 ADD A, A
+    Adc(S8::Reg(B)),                               // 0x88 ADC A, B
+    Adc(S8::Reg(C)),                               // 0x89 ADC A, C
+    Adc(S8::Reg(D)),                               // 0x8A ADC A, D
+    Adc(S8::Reg(E)),                               // 0x8B ADC A, E
+    Adc(S8::Reg(H)),                               // 0x8C ADC A, H
+    Adc(S8::Reg(L)),                               // 0x8D ADC A, L
+    Adc(S8::Indirect(HL)),                         // 0x8E ADC A, [HL]
+    Adc(S8::Reg(A)),                               // 0x8F ADC A, A
+
+    // 0x90-0x9F: SUB/SBC A, r
+    Sub(S8::Reg(B)),                               // 0x90 SUB A, B
+    Sub(S8::Reg(C)),                               // 0x91 SUB A, C
+    Sub(S8::Reg(D)),                               // 0x92 SUB A, D
+    Sub(S8::Reg(E)),                               // 0x93 SUB A, E
+    Sub(S8::Reg(H)),                               // 0x94 SUB A, H
+    Sub(S8::Reg(L)),                               // 0x95 SUB A, L
+    Sub(S8::Indirect(HL)),                         // 0x96 SUB A, [HL]
+    Sub(S8::Reg(A)),                               // 0x97 SUB A, A
+    Sbc(S8::Reg(B)),                               // 0x98 SBC A, B
+    Sbc(S8::Reg(C)),                               // 0x99 SBC A, C
+    Sbc(S8::Reg(D)),                               // 0x9A SBC A, D
+    Sbc(S8::Reg(E)),                               // 0x9B SBC A, E
+    Sbc(S8::Reg(H)),                               // 0x9C SBC A, H
+    Sbc(S8::Reg(L)),                               // 0x9D SBC A, L
+    Sbc(S8::Indirect(HL)),                         // 0x9E SBC A, [HL]
+    Sbc(S8::Reg(A)),                               // 0x9F SBC A, A
+
+    // 0xA0-0xAF: AND/XOR A, r
+    And(S8::Reg(B)),                               // 0xA0 AND A, B
+    And(S8::Reg(C)),                               // 0xA1 AND A, C
+    And(S8::Reg(D)),                               // 0xA2 AND A, D
+    And(S8::Reg(E)),                               // 0xA3 AND A, E
+    And(S8::Reg(H)),                               // 0xA4 AND A, H
+    And(S8::Reg(L)),                               // 0xA5 AND A, L
+    And(S8::Indirect(HL)),                         // 0xA6 AND A, [HL]
+    And(S8::Reg(A)),                               // 0xA7 AND A, A
+    Xor(S8::Reg(B)),                               // 0xA8 XOR A, B
+    Xor(S8::Reg(C)),                               // 0xA9 XOR A, C
+    Xor(S8::Reg(D)),                               // 0xAA XOR A, D
+    Xor(S8::Reg(E)),                               // 0xAB XOR A, E
+    Xor(S8::Reg(H)),                               // 0xAC XOR A, H
+    Xor(S8::Reg(L)),                               // 0xAD XOR A, L
+    Xor(S8::Indirect(HL)),                         // 0xAE XOR A, [HL]
+    Xor(S8::Reg(A)),                               // 0xAF XOR A, A
+
+    // 0xB0-0xBF: OR/CP A, r
+    Or(S8::Reg(B)),                                // 0xB0 OR A, B
+    Or(S8::Reg(C)),                                // 0xB1 OR A, C
+    Or(S8::Reg(D)),                                // 0xB2 OR A, D
+    Or(S8::Reg(E)),                                // 0xB3 OR A, E
+    Or(S8::Reg(H)),                                // 0xB4 OR A, H
+    Or(S8::Reg(L)),                                // 0xB5 OR A, L
+    Or(S8::Indirect(HL)),                          // 0xB6 OR A, [HL]
+    Or(S8::Reg(A)),                                // 0xB7 OR A, A
+    Cp(S8::Reg(B)),                                // 0xB8 CP A, B
+    Cp(S8::Reg(C)),                                // 0xB9 CP A, C
+    Cp(S8::Reg(D)),                                // 0xBA CP A, D
+    Cp(S8::Reg(E)),                                // 0xBB CP A, E
+    Cp(S8::Reg(H)),                                // 0xBC CP A, H
+    Cp(S8::Reg(L)),                                // 0xBD CP A, L
+    Cp(S8::Indirect(HL)),                          // 0xBE CP A, [HL]
+    Cp(S8::Reg(A)),                                // 0xBF CP A, A
+
+    // 0xC0-0xCF
+    Ret(Some(FlagNZ)),                             // 0xC0 RET NZ
+    Pop(BC),                                       // 0xC1 POP BC
+    Jp(Some(FlagNZ)),                              // 0xC2 JP NZ, nn
+    Jp(None),                                      // 0xC3 JP nn
+    Call(Some(FlagNZ)),                            // 0xC4 CALL NZ, nn
+    Push(BC),                                      // 0xC5 PUSH BC
+    Add(S8::Imm),                                  // 0xC6 ADD A, n
+    Rst(0x00),                                     // 0xC7 RST 00H
+    Ret(Some(FlagZ)),                              // 0xC8 RET Z
+    Ret(None),                                     // 0xC9 RET
+    Jp(Some(FlagZ)),                               // 0xCA JP Z, nn
+    Cb,                                            // 0xCB CB prefix
+    Call(Some(FlagZ)),                             // 0xCC CALL Z, nn
+    Call(None),                                    // 0xCD CALL nn
+    Adc(S8::Imm),                                  // 0xCE ADC A, n
+    Rst(0x08),                                     // 0xCF RST 08H
+
+    // 0xD0-0xDF
+    Ret(Some(FlagNC)),                             // 0xD0 RET NC
+    Pop(DE),                                       // 0xD1 POP DE
+    Jp(Some(FlagNC)),                              // 0xD2 JP NC, nn
+    Invalid,                                       // 0xD3 (invalid)
+    Call(Some(FlagNC)),                            // 0xD4 CALL NC, nn
+    Push(DE),                                      // 0xD5 PUSH DE
+    Sub(S8::Imm),                                  // 0xD6 SUB A, n
+    Rst(0x10),                                     // 0xD7 RST 10H
+    Ret(Some(FlagC)),                              // 0xD8 RET C
+    Reti,                                          // 0xD9 RETI
+    Jp(Some(FlagC)),                               // 0xDA JP C, nn
+    Invalid,                                       // 0xDB (invalid)
+    Call(Some(FlagC)),                             // 0xDC CALL C, nn
+    Invalid,                                       // 0xDD (invalid)
+    Sbc(S8::Imm),                                  // 0xDE SBC A, n
+    Rst(0x18),                                     // 0xDF RST 18H
+
+    // 0xE0-0xEF
+    Ld8(D8::HighMemImm, S8::Reg(A)),               // 0xE0 LDH [n], A
+    Pop(HL),                                       // 0xE1 POP HL
+    Ld8(D8::HighMemC, S8::Reg(A)),                 // 0xE2 LD [C], A
+    Invalid,                                       // 0xE3 (invalid)
+    Invalid,                                       // 0xE4 (invalid)
+    Push(HL),                                      // 0xE5 PUSH HL
+    And(S8::Imm),                                  // 0xE6 AND A, n
+    Rst(0x20),                                     // 0xE7 RST 20H
+    AddSp,                                         // 0xE8 ADD SP, e
+    JpHl,                                          // 0xE9 JP HL
+    Ld8(D8::MemImm, S8::Reg(A)),                   // 0xEA LD [nn], A
+    Invalid,                                       // 0xEB (invalid)
+    Invalid,                                       // 0xEC (invalid)
+    Invalid,                                       // 0xED (invalid)
+    Xor(S8::Imm),                                  // 0xEE XOR A, n
+    Rst(0x28),                                     // 0xEF RST 28H
+
+    // 0xF0-0xFF
+    Ld8(D8::Reg(A), S8::HighMemImm),               // 0xF0 LDH A, [n]
+    Pop(AF),                                       // 0xF1 POP AF
+    Ld8(D8::Reg(A), S8::HighMemC),                 // 0xF2 LD A, [C]
+    Di,                                            // 0xF3 DI
+    Invalid,                                       // 0xF4 (invalid)
+    Push(AF),                                      // 0xF5 PUSH AF
+    Or(S8::Imm),                                   // 0xF6 OR A, n
+    Rst(0x30),                                     // 0xF7 RST 30H
+    LdHlSpOffset,                                  // 0xF8 LD HL, SP+e
+    LdSpHl,                                        // 0xF9 LD SP, HL
+    Ld8(D8::Reg(A), S8::MemImm),                   // 0xFA LD A, [nn]
+    Ei,                                            // 0xFB EI
+    Invalid,                                       // 0xFC (invalid)
+    Invalid,                                       // 0xFD (invalid)
+    Cp(S8::Imm),                                   // 0xFE CP A, n
+    Rst(0x38),                                     // 0xFF RST 38H
+];
+
+/// Instruction data lengths (derived from instruction definitions)
+pub const INSTR_DATA_LENGTHS: [usize; 256] = {
+    let mut lengths = [0usize; 256];
+    let mut i = 0;
+    while i < 256 {
+        lengths[i] = INSTR_TABLE[i].length() - 1; // subtract 1 for opcode byte
+        i += 1;
+    }
+    lengths
+};
+
 impl From<u8> for Instr {
     fn from(value: u8) -> Self {
         INSTR_TABLE[value as usize]
     }
 }
 
-impl Instr {
-    #[must_use]
-    pub fn run(self, cpu: &mut CPU, bus: &mut Bus) -> Self {
-        match self {
-            NOOP => {} // empty / TODO
-            STOP => {
-                todo!()
-            }
-            LD(to, from) => ld::ld((to, from), cpu, bus),
-            LDI(to, from) => ld::ldi((to, from), cpu, bus),
-            LDD(to, from) => ld::ldd((to, from), cpu, bus),
-            LDSP => ld::ldsp(cpu, bus),
-            INC(location) => alu::inc(location, cpu, bus),
-            DEC(location) => alu::dec(location, cpu, bus),
-            SUB(location) => alu::sub(location, cpu, bus),
-            ADD(location) => alu::add(location, cpu, bus),
-            CP(location) => alu::cp(location, cpu, bus),
-            ADDHL(location) => alu::addhl(location, cpu, bus),
-            ADC(location) => alu::adc(location, cpu, bus),
-            AND(location) => alu::and(location, cpu, bus),
-            XOR(location) => alu::xor(location, cpu, bus),
-            OR(location) => alu::orr(location, cpu, bus),
-            SBC(location) => alu::sbc(location, cpu, bus),
-            NOT(location) => alu::not(location, cpu, bus),
-            RLCA => alu::rlca(cpu, bus),
-            RRCA => alu::rrca(cpu, bus),
-            RLA => alu::rla(cpu, bus),
-            RRA => alu::rra(cpu, bus),
-            CCF => alu::ccf(cpu, bus),
-            ADDSP => alu::addsp(cpu, bus),
-            SCF => alu::scf(cpu, bus),
-            RST(addr) => jp::rst(u16::from(addr), cpu, bus),
-            JP(flag) => jp::jp(flag, cpu, bus),
-            JR(flag) => jp::jr(flag, cpu, bus),
-            JpHl => jp::jp_hl(cpu, bus),
-            RET(flag) => jp::ret(flag, cpu, bus),
-            RETI => jp::reti(cpu, bus),
-            CALL(flag) => jp::call(flag, cpu, bus),
-            CB => cb::cb(cpu, bus),
-            DisableInterrupts => bus.disable_interrupts(),
-            EnableInterrupts => bus.enable_interrupts(),
-            DAA => misc::daa(cpu, bus),
-            POP(r) => misc::pop(r, cpu, bus),
-            PUSH(r) => misc::push(r, cpu, bus),
-            HALT => misc::halt(cpu, bus),
-            UNIMPLEMENTED => unimplemented!(),
-        }
-        self
-    }
-}
-pub const INSTR_TABLE: [Instr; 256] = [
-    NOOP,                             //0x00
-    LD(Register(BC), ImmediateWord),  //0x01
-    LD(Memory(BC), Register(A)),      //0x02
-    INC(Register(BC)),                //0x03
-    INC(Register(B)),                 //0x04
-    DEC(Register(B)),                 //0x05
-    LD(Register(B), ImmediateByte),   //0x06
-    RLCA,                             //0x07
-    LD(ImmediateWord, Register(SP)),  //0x08
-    ADDHL(Register(BC)),              //0x09
-    LD(Register(A), Memory(BC)),      //0x0A
-    DEC(Register(BC)),                //0x0B
-    INC(Register(C)),                 //0x0C
-    DEC(Register(C)),                 //0x0D
-    LD(Register(C), ImmediateByte),   //0x0E
-    RRCA,                             //0x0F
-    STOP,                             //0x10
-    LD(Register(DE), ImmediateWord),  //0x11
-    LD(Memory(DE), Register(A)),      //0x12
-    INC(Register(DE)),                //0x13
-    INC(Register(D)),                 //0x14
-    DEC(Register(D)),                 //0x15
-    LD(Register(D), ImmediateByte),   //0x16
-    RLA,                              //0x17
-    JR(None),                         //0x18
-    ADDHL(Register(DE)),              //0x19
-    LD(Register(A), Memory(DE)),      //0x1A
-    DEC(Register(DE)),                //0x1B
-    INC(Register(E)),                 //0x1C
-    DEC(Register(E)),                 //0x1D
-    LD(Register(E), ImmediateByte),   //0x1E
-    RRA,                              //0x1F
-    JR(Some(FlagNZ)),                 //0x20
-    LD(Register(HL), ImmediateWord),  //0x21
-    LDI(Memory(HL), Register(A)),     //0x22
-    INC(Register(HL)),                //0x23
-    INC(Register(H)),                 //0x24
-    DEC(Register(H)),                 //0x25
-    LD(Register(H), ImmediateByte),   //0x26
-    DAA,                              //0x27
-    JR(Some(FlagZ)),                  //0x28
-    ADDHL(Register(HL)),              //0x29
-    LDI(Register(A), Memory(HL)),     //0x2A
-    DEC(Register(HL)),                //0x2B
-    INC(Register(L)),                 //0x2C
-    DEC(Register(L)),                 //0x2D
-    LD(Register(L), ImmediateByte),   //0x2E
-    NOT(Register(A)),                 //0x2F
-    JR(Some(FlagNC)),                 //0x30
-    LD(Register(SP), ImmediateWord),  //0x31
-    LDD(Memory(HL), Register(A)),     //0x32
-    INC(Register(SP)),                //0x33
-    INC(Memory(HL)),                  //0x34
-    DEC(Memory(HL)),                  //0x35
-    LD(Memory(HL), ImmediateByte),    //0x36
-    SCF,                              //0x37
-    JR(Some(FlagC)),                  //0x38
-    ADDHL(Register(SP)),              //0x39
-    LDD(Register(A), Memory(HL)),     //0x3A
-    DEC(Register(SP)),                //0x3B
-    INC(Register(A)),                 //0x3C
-    DEC(Register(A)),                 //0x3D
-    LD(Register(A), ImmediateByte),   //0x3E
-    CCF,                              //0x3F
-    LD(Register(B), Register(B)),     //0x40
-    LD(Register(B), Register(C)),     //0x41
-    LD(Register(B), Register(D)),     //0x42
-    LD(Register(B), Register(E)),     //0x43
-    LD(Register(B), Register(H)),     //0x44
-    LD(Register(B), Register(L)),     //0x45
-    LD(Register(B), Memory(HL)),      //0x46
-    LD(Register(B), Register(A)),     //0x47
-    LD(Register(C), Register(B)),     //0x48
-    LD(Register(C), Register(C)),     //0x49
-    LD(Register(C), Register(D)),     //0x4A
-    LD(Register(C), Register(E)),     //0x4B
-    LD(Register(C), Register(H)),     //0x4C
-    LD(Register(C), Register(L)),     //0x4D
-    LD(Register(C), Memory(HL)),      //0x4E
-    LD(Register(C), Register(A)),     //0x4F
-    LD(Register(D), Register(B)),     //0x50
-    LD(Register(D), Register(C)),     //0x51
-    LD(Register(D), Register(D)),     //0x52
-    LD(Register(D), Register(E)),     //0x53
-    LD(Register(D), Register(H)),     //0x54
-    LD(Register(D), Register(L)),     //0x55
-    LD(Register(D), Memory(HL)),      //0x56
-    LD(Register(D), Register(A)),     //0x57
-    LD(Register(E), Register(B)),     //0x58
-    LD(Register(E), Register(C)),     //0x59
-    LD(Register(E), Register(D)),     //0x5A
-    LD(Register(E), Register(E)),     //0x5B
-    LD(Register(E), Register(H)),     //0x5C
-    LD(Register(E), Register(L)),     //0x5D
-    LD(Register(E), Memory(HL)),      //0x5E
-    LD(Register(E), Register(A)),     //0x5F
-    LD(Register(H), Register(B)),     //0x60
-    LD(Register(H), Register(C)),     //0x61
-    LD(Register(H), Register(D)),     //0x62
-    LD(Register(H), Register(E)),     //0x63
-    LD(Register(H), Register(H)),     //0x64
-    LD(Register(H), Register(L)),     //0x65
-    LD(Register(H), Memory(HL)),      //0x66
-    LD(Register(H), Register(A)),     //0x67
-    LD(Register(L), Register(B)),     //0x68
-    LD(Register(L), Register(C)),     //0x69
-    LD(Register(L), Register(D)),     //0x6A
-    LD(Register(L), Register(E)),     //0x6B
-    LD(Register(L), Register(H)),     //0x6C
-    LD(Register(L), Register(L)),     //0x6D
-    LD(Register(L), Memory(HL)),      //0x6E
-    LD(Register(L), Register(A)),     //0x6F
-    LD(Memory(HL), Register(B)),      //0x70
-    LD(Memory(HL), Register(C)),      //0x71
-    LD(Memory(HL), Register(D)),      //0x72
-    LD(Memory(HL), Register(E)),      //0x73
-    LD(Memory(HL), Register(H)),      //0x74
-    LD(Memory(HL), Register(L)),      //0x75
-    HALT,                             //0x76
-    LD(Memory(HL), Register(A)),      //0x77
-    LD(Register(A), Register(B)),     //0x78
-    LD(Register(A), Register(C)),     //0x79
-    LD(Register(A), Register(D)),     //0x7A
-    LD(Register(A), Register(E)),     //0x7B
-    LD(Register(A), Register(H)),     //0x7C
-    LD(Register(A), Register(L)),     //0x7D
-    LD(Register(A), Memory(HL)),      //0x7E
-    LD(Register(A), Register(A)),     //0x7F
-    ADD(Register(B)),                 //0x80
-    ADD(Register(C)),                 //0x81
-    ADD(Register(D)),                 //0x82
-    ADD(Register(E)),                 //0x83
-    ADD(Register(H)),                 //0x84
-    ADD(Register(L)),                 //0x85
-    ADD(Memory(HL)),                  //0x86
-    ADD(Register(A)),                 //0x87
-    ADC(Register(B)),                 //0x88
-    ADC(Register(C)),                 //0x89
-    ADC(Register(D)),                 //0x8A
-    ADC(Register(E)),                 //0x8B
-    ADC(Register(H)),                 //0x8C
-    ADC(Register(L)),                 //0x8D
-    ADC(Memory(HL)),                  //0x8E
-    ADC(Register(A)),                 //0x8F
-    SUB(Register(B)),                 //0x90
-    SUB(Register(C)),                 //0x91
-    SUB(Register(D)),                 //0x92
-    SUB(Register(E)),                 //0x93
-    SUB(Register(H)),                 //0x94
-    SUB(Register(L)),                 //0x95
-    SUB(Memory(HL)),                  //0x96
-    SUB(Register(A)),                 //0x97
-    SBC(Register(B)),                 //0x98
-    SBC(Register(C)),                 //0x99
-    SBC(Register(D)),                 //0x92
-    SBC(Register(E)),                 //0x93
-    SBC(Register(H)),                 //0x94
-    SBC(Register(L)),                 //0x9D
-    SBC(Memory(HL)),                  //0x9E
-    SBC(Register(A)),                 //0x9F
-    AND(Register(B)),                 //0xA0
-    AND(Register(C)),                 //0xA1
-    AND(Register(D)),                 //0xA2
-    AND(Register(E)),                 //0xA3
-    AND(Register(H)),                 //0xA4
-    AND(Register(L)),                 //0xA5
-    AND(Memory(HL)),                  //0xA6
-    AND(Register(A)),                 //0xA7
-    XOR(Register(B)),                 //0xA8
-    XOR(Register(C)),                 //0xA9
-    XOR(Register(D)),                 //0xAA
-    XOR(Register(E)),                 //0xAB
-    XOR(Register(H)),                 //0xAC
-    XOR(Register(L)),                 //0xAD
-    XOR(Memory(HL)),                  //0xAE
-    XOR(Register(A)),                 //0xAF
-    OR(Register(B)),                  //0xB0
-    OR(Register(C)),                  //0xB1
-    OR(Register(D)),                  //0xB2
-    OR(Register(E)),                  //0xB3
-    OR(Register(H)),                  //0xB4
-    OR(Register(L)),                  //0xB5
-    OR(Memory(HL)),                   //0xB6
-    OR(Register(A)),                  //0xB7
-    CP(Register(B)),                  //0xB8
-    CP(Register(C)),                  //0xB9
-    CP(Register(D)),                  //0xBA
-    CP(Register(E)),                  //0xBB
-    CP(Register(H)),                  //0xBC
-    CP(Register(L)),                  //0xBD
-    CP(Memory(HL)),                   //0xBE
-    CP(Register(A)),                  //0xBF
-    RET(Some(FlagNZ)),                //0xC0
-    POP(BC),                          //0xC1
-    JP(Some(FlagNZ)),                 //0xC2
-    JP(None),                         //0xC3
-    CALL(Some(FlagNZ)),               //0xC4
-    PUSH(BC),                         //0xC5
-    ADD(ImmediateByte),               //0xC6
-    RST(0x0),                         //0xC7
-    RET(Some(FlagZ)),                 //0xC8
-    RET(None),                        //0xC9
-    JP(Some(FlagZ)),                  //0xCA
-    CB,                               //0xCB
-    CALL(Some(FlagZ)),                //0xCC
-    CALL(None),                       //0xCD
-    ADC(ImmediateByte),               //0xCE
-    RST(0x8),                         //0xCF
-    RET(Some(FlagNC)),                //0xD0
-    POP(DE),                          //0xD1
-    JP(Some(FlagNC)),                 //0xD2
-    UNIMPLEMENTED,                    //0xD3
-    CALL(Some(FlagNC)),               //0xD4
-    PUSH(DE),                         //0xD5
-    SUB(ImmediateByte),               //0xD6
-    RST(0x10),                        //0xD7
-    RET(Some(FlagC)),                 //0xD8
-    RETI,                             //0xD9
-    JP(Some(FlagC)),                  //0xDA
-    UNIMPLEMENTED,                    //0xDB
-    CALL(Some(FlagC)),                //0xDC
-    UNIMPLEMENTED,                    //0xDD
-    SBC(ImmediateByte),               //0xDE
-    RST(0x18),                        //0xDF
-    LD(MemOffsetImm, Register(A)),    //0xE0
-    POP(HL),                          //0xE1
-    LD(MemOffsetC, Register(A)),      //0xE2
-    UNIMPLEMENTED,                    //0xE3
-    UNIMPLEMENTED,                    //0xE4
-    PUSH(HL),                         //0xE5
-    AND(ImmediateByte),               //0xE6
-    RST(0x20),                        //0xE7
-    ADDSP,                            //0xE8
-    JpHl,                             //0xE9
-    LD(MemoryImmediate, Register(A)), //0xEA
-    UNIMPLEMENTED,                    //0xEB
-    UNIMPLEMENTED,                    //0xEC
-    UNIMPLEMENTED,                    //0xED
-    XOR(ImmediateByte),               //0xEE
-    RST(0x28),                        //0xEF
-    LD(Register(A), MemOffsetImm),    //0xF0
-    POP(AF),                          //0xF1
-    LD(Register(A), MemOffsetC),      //0xF2
-    DisableInterrupts,                //0xF3
-    UNIMPLEMENTED,                    //0xF4
-    PUSH(AF),                         //0xF5
-    OR(ImmediateByte),                //0xF6
-    RST(0x30),                        //0xF7
-    LDSP,                             //0xF8
-    LD(Register(SP), Register(HL)),   //0xF9
-    LD(Register(A), MemoryImmediate), //0xFA
-    EnableInterrupts,                 //0xFB
-    UNIMPLEMENTED,                    //0xFC
-    UNIMPLEMENTED,                    //0xFD
-    CP(ImmediateByte),                //0xFE
-    RST(0x38),                        //0xFF
-];
-
-static INSTR_OPCODE: LazyLock<HashMap<&Instr, u8>> = std::sync::LazyLock::new(|| {
-    INSTR_TABLE
-        .iter()
-        .enumerate()
-        .map(|(opcode, instr)| (instr, opcode as u8))
-        .collect::<HashMap<_, _>>()
-});
-
-pub const INSTR_DATA_LENGTHS: [usize; 256] = [
-    0, // 0x00
-    2, // 0x01
-    0, // 0x02
-    0, // 0x03
-    0, // 0x04
-    0, // 0x05
-    1, // 0x06
-    0, // 0x07
-    2, // 0x08
-    0, // 0x09
-    0, // 0x0a
-    0, // 0x0b
-    0, // 0x0c
-    0, // 0x0d
-    1, // 0x0e
-    0, // 0x0f
-    1, // 0x10
-    2, // 0x11
-    0, // 0x12
-    0, // 0x13
-    0, // 0x14
-    0, // 0x15
-    1, // 0x16
-    0, // 0x17
-    1, // 0x18
-    0, // 0x19
-    0, // 0x1a
-    0, // 0x1b
-    0, // 0x1c
-    0, // 0x1d
-    1, // 0x1e
-    0, // 0x1f
-    1, // 0x20
-    2, // 0x21
-    0, // 0x22
-    0, // 0x23
-    0, // 0x24
-    0, // 0x25
-    1, // 0x26
-    0, // 0x27
-    1, // 0x28
-    0, // 0x29
-    0, // 0x2a
-    0, // 0x2b
-    0, // 0x2c
-    0, // 0x2d
-    1, // 0x2e
-    0, // 0x2f
-    1, // 0x30
-    2, // 0x31
-    0, // 0x32
-    0, // 0x33
-    0, // 0x34
-    0, // 0x35
-    1, // 0x36
-    0, // 0x37
-    1, // 0x38
-    0, // 0x39
-    0, // 0x3a
-    0, // 0x3b
-    0, // 0x3c
-    0, // 0x3d
-    1, // 0x3e
-    0, // 0x3f
-    0, // 0x40
-    0, // 0x41
-    0, // 0x42
-    0, // 0x43
-    0, // 0x44
-    0, // 0x45
-    0, // 0x46
-    0, // 0x47
-    0, // 0x48
-    0, // 0x49
-    0, // 0x4a
-    0, // 0x4b
-    0, // 0x4c
-    0, // 0x4d
-    0, // 0x4e
-    0, // 0x4f
-    0, // 0x50
-    0, // 0x51
-    0, // 0x52
-    0, // 0x53
-    0, // 0x54
-    0, // 0x55
-    0, // 0x56
-    0, // 0x57
-    0, // 0x58
-    0, // 0x59
-    0, // 0x5a
-    0, // 0x5b
-    0, // 0x5c
-    0, // 0x5d
-    0, // 0x5e
-    0, // 0x5f
-    0, // 0x60
-    0, // 0x61
-    0, // 0x62
-    0, // 0x63
-    0, // 0x64
-    0, // 0x65
-    0, // 0x66
-    0, // 0x67
-    0, // 0x68
-    0, // 0x69
-    0, // 0x6a
-    0, // 0x6b
-    0, // 0x6c
-    0, // 0x6d
-    0, // 0x6e
-    0, // 0x6f
-    0, // 0x70
-    0, // 0x71
-    0, // 0x72
-    0, // 0x73
-    0, // 0x74
-    0, // 0x75
-    0, // 0x76
-    0, // 0x77
-    0, // 0x78
-    0, // 0x79
-    0, // 0x7a
-    0, // 0x7b
-    0, // 0x7c
-    0, // 0x7d
-    0, // 0x7e
-    0, // 0x7f
-    0, // 0x80
-    0, // 0x81
-    0, // 0x82
-    0, // 0x83
-    0, // 0x84
-    0, // 0x85
-    0, // 0x86
-    0, // 0x87
-    0, // 0x88
-    0, // 0x89
-    0, // 0x8a
-    0, // 0x8b
-    0, // 0x8c
-    0, // 0x8d
-    0, // 0x8e
-    0, // 0x8f
-    0, // 0x90
-    0, // 0x91
-    0, // 0x92
-    0, // 0x93
-    0, // 0x94
-    0, // 0x95
-    0, // 0x96
-    0, // 0x97
-    0, // 0x98
-    0, // 0x99
-    0, // 0x9a
-    0, // 0x9b
-    0, // 0x9c
-    0, // 0x9d
-    0, // 0x9e
-    0, // 0x9f
-    0, // 0xa0
-    0, // 0xa1
-    0, // 0xa2
-    0, // 0xa3
-    0, // 0xa4
-    0, // 0xa5
-    0, // 0xa6
-    0, // 0xa7
-    0, // 0xa8
-    0, // 0xa9
-    0, // 0xaa
-    0, // 0xab
-    0, // 0xac
-    0, // 0xad
-    0, // 0xae
-    0, // 0xaf
-    0, // 0xb0
-    0, // 0xb1
-    0, // 0xb2
-    0, // 0xb3
-    0, // 0xb4
-    0, // 0xb5
-    0, // 0xb6
-    0, // 0xb7
-    0, // 0xb8
-    0, // 0xb9
-    0, // 0xba
-    0, // 0xbb
-    0, // 0xbc
-    0, // 0xbd
-    0, // 0xbe
-    0, // 0xbf
-    0, // 0xc0
-    0, // 0xc1
-    2, // 0xc2
-    2, // 0xc3
-    2, // 0xc4
-    0, // 0xc5
-    1, // 0xc6
-    0, // 0xc7
-    0, // 0xc8
-    0, // 0xc9
-    2, // 0xca
-    1, // 0xcb
-    2, // 0xcc
-    2, // 0xcd
-    1, // 0xce
-    0, // 0xcf
-    0, // 0xd0
-    0, // 0xd1
-    2, // 0xd2
-    0, // 0xd3
-    2, // 0xd4
-    0, // 0xd5
-    1, // 0xd6
-    0, // 0xd7
-    0, // 0xd8
-    0, // 0xd9
-    2, // 0xda
-    0, // 0xdb
-    2, // 0xdc
-    0, // 0xdd
-    1, // 0xde
-    0, // 0xdf
-    1, // 0xe0
-    0, // 0xe1
-    0, // 0xe2
-    0, // 0xe3
-    0, // 0xe4
-    0, // 0xe5
-    1, // 0xe6
-    0, // 0xe7
-    1, // 0xe8
-    0, // 0xe9
-    2, // 0xea
-    0, // 0xeb
-    0, // 0xec
-    0, // 0xed
-    1, // 0xee
-    0, // 0xef
-    1, // 0xf0
-    0, // 0xf1
-    0, // 0xf2
-    0, // 0xf3
-    0, // 0xf4
-    0, // 0xf5
-    1, // 0xf6
-    0, // 0xf7
-    1, // 0xf8
-    0, // 0xf9
-    2, // 0xfa
-    0, // 0xfb
-    0, // 0xfc
-    0, // 0xfd
-    1, // 0xfe
-    0, // 0xff
-];
-
 impl std::fmt::Display for Instr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NOOP | LDSP | UNIMPLEMENTED | RLCA | RRCA | RLA | RRA | SCF | CCF | ADDSP | HALT | CB | STOP | DisableInterrupts | EnableInterrupts | JpHl
-            | RETI | DAA | RST(_) => {
-                write!(f, "{}", <&str>::from(self))
-            }
-            LD(to, from) | LDD(to, from) | LDI(to, from) => {
-                write!(f, "{}({to}, {from})", <&str>::from(self))
-            }
-            INC(a) | DEC(a) | ADD(a) | ADDHL(a) | ADC(a) | SUB(a) | AND(a) | XOR(a) | OR(a) | CP(a) | NOT(a) | SBC(a) => {
-                write!(f, "{}({a})", <&str>::from(self))
-            }
+            Self::Nop => write!(f, "NOP"),
+            Self::Invalid => write!(f, "INVALID"),
+            Self::Stop => write!(f, "STOP"),
+            Self::Halt => write!(f, "HALT"),
 
-            JR(flag) | JP(flag) | RET(flag) | CALL(flag) => {
-                write!(f, "{}({})", <&str>::from(self), flag.map(<&str>::from).unwrap_or("-"))
-            }
-            POP(r) | PUSH(r) => write!(f, "{}({r})", <&str>::from(self)),
+            Self::Ld8(dst, src) => write!(f, "LD {dst}, {src}"),
+            Self::LdInc(dst, src) => write!(f, "LD {dst}, {src} (HL+)"),
+            Self::LdDec(dst, src) => write!(f, "LD {dst}, {src} (HL-)"),
+            Self::Ld16(dst, src) => write!(f, "LD {dst}, {src}"),
+            Self::LdSpHl => write!(f, "LD SP, HL"),
+            Self::LdHlSpOffset => write!(f, "LD HL, SP+e"),
+
+            Self::Add(src) => write!(f, "ADD A, {src}"),
+            Self::Adc(src) => write!(f, "ADC A, {src}"),
+            Self::Sub(src) => write!(f, "SUB A, {src}"),
+            Self::Sbc(src) => write!(f, "SBC A, {src}"),
+            Self::And(src) => write!(f, "AND A, {src}"),
+            Self::Xor(src) => write!(f, "XOR A, {src}"),
+            Self::Or(src) => write!(f, "OR A, {src}"),
+            Self::Cp(src) => write!(f, "CP A, {src}"),
+
+            Self::Inc8(op) => write!(f, "INC {op}"),
+            Self::Dec8(op) => write!(f, "DEC {op}"),
+            Self::Inc16(r) => write!(f, "INC {r}"),
+            Self::Dec16(r) => write!(f, "DEC {r}"),
+
+            Self::AddHl(r) => write!(f, "ADD HL, {r}"),
+            Self::AddSp => write!(f, "ADD SP, e"),
+
+            Self::Rlca => write!(f, "RLCA"),
+            Self::Rrca => write!(f, "RRCA"),
+            Self::Rla => write!(f, "RLA"),
+            Self::Rra => write!(f, "RRA"),
+            Self::Daa => write!(f, "DAA"),
+            Self::Cpl => write!(f, "CPL"),
+            Self::Scf => write!(f, "SCF"),
+            Self::Ccf => write!(f, "CCF"),
+
+            Self::Cb => write!(f, "CB"),
+
+            Self::Jr(None) => write!(f, "JR e"),
+            Self::Jr(Some(flag)) => write!(f, "JR {flag:?}, e"),
+            Self::Jp(None) => write!(f, "JP nn"),
+            Self::Jp(Some(flag)) => write!(f, "JP {flag:?}, nn"),
+            Self::JpHl => write!(f, "JP HL"),
+
+            Self::Call(None) => write!(f, "CALL nn"),
+            Self::Call(Some(flag)) => write!(f, "CALL {flag:?}, nn"),
+            Self::Ret(None) => write!(f, "RET"),
+            Self::Ret(Some(flag)) => write!(f, "RET {flag:?}"),
+            Self::Reti => write!(f, "RETI"),
+            Self::Rst(addr) => write!(f, "RST {addr:02X}H"),
+
+            Self::Push(r) => write!(f, "PUSH {r}"),
+            Self::Pop(r) => write!(f, "POP {r}"),
+
+            Self::Di => write!(f, "DI"),
+            Self::Ei => write!(f, "EI"),
         }
+    }
+}
+
+impl std::fmt::Display for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", <&str>::from(self))
     }
 }

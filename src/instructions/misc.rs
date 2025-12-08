@@ -1,21 +1,16 @@
-use crate::{
-    bus::Bus,
-    cpu::{CPU, value::Writable},
-};
+//! Miscellaneous instructions (PUSH, POP)
 
-use super::Register;
+use crate::{bus::Bus, cpu::CPU, operand::Reg16};
 
-pub const fn daa(cpu: &mut CPU, _bus: &mut Bus) {
-    cpu.registers.a = cpu.bcd_adjust(cpu.registers.a);
-}
-pub fn push(register: Register, cpu: &mut CPU, bus: &mut Bus) {
-    let value = cpu.registers.fetch_u16(register);
+/// PUSH rr - Push 16-bit register to stack
+pub fn push(reg: Reg16, cpu: &mut CPU, bus: &mut Bus) {
+    let value = cpu.registers.get_r16(reg);
     cpu.push_stack(value, bus);
     bus.generic_cycle();
 }
-pub fn pop(register: Register, cpu: &mut CPU, bus: &mut Bus) {
-    let addr = cpu.pop_stack(bus);
-    addr.to_register(&mut cpu.registers, register);
-}
 
-pub const fn halt(_cpu: &mut CPU, _bus: &mut Bus) {}
+/// POP rr - Pop 16-bit register from stack
+pub fn pop(reg: Reg16, cpu: &mut CPU, bus: &mut Bus) {
+    let value = cpu.pop_stack(bus);
+    cpu.registers.set_r16(reg, value);
+}

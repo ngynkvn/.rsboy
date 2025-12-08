@@ -1,224 +1,291 @@
-use crate::{bus::Bus, cpu::CPU, instructions::Register, location::Address};
+//! ALU (Arithmetic Logic Unit) instructions
 
-pub fn inc(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    match location {
-        Address::Memory(reg) => inc_mem(reg, cpu, bus),
-        Address::Register(reg) => inc_reg(reg, cpu, bus),
-        _ => unimplemented!(),
-    }
-}
-pub fn inc_mem(register: Register, cpu: &mut CPU, bus: &mut Bus) {
-    let address = cpu.registers.fetch_u16(register);
-    let value = bus.read_cycle(address);
-    let result = value.wrapping_add(1);
-    bus.write_cycle(address, result);
-    cpu.registers.set_zf(result == 0);
-    cpu.registers.set_nf(false);
-    cpu.registers.set_hf(value & 0x0f == 0x0f);
-}
+use crate::{
+    bus::Bus,
+    cpu::CPU,
+    operand::{Reg16, RmwOperand8, Src8},
+};
 
-pub fn inc_reg(register: Register, cpu: &mut CPU, bus: &mut Bus) {
-    cpu.registers.inc(register);
-    if register.is_word_register() {
-        bus.generic_cycle();
-    }
-}
+// ============================================================================
+// 8-bit ALU operations (operate on A register)
+// ============================================================================
 
-pub fn dec(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    match location {
-        Address::Memory(reg) => dec_mem(reg, cpu, bus),
-        Address::Register(reg) => dec_reg(reg, cpu, bus),
-        _ => unimplemented!(),
-    }
-}
+pub fn add(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
+    let a = cpu.registers.a;
+    let (result, carry) = a.overflowing_add(value);
+    let half_carry = (a & 0x0F) + (value & 0x0F) > 0x0F;
 
-pub fn dec_mem(register: Register, cpu: &mut CPU, bus: &mut Bus) {
-    let address = cpu.registers.fetch_u16(register);
-    let value = bus.read_cycle(address);
-    let result = value.wrapping_sub(1);
-    bus.write_cycle(address, result);
-    cpu.registers.set_zf(result == 0);
-    cpu.registers.set_nf(true);
-    cpu.registers.set_hf(result & 0x0f == 0x0f);
-}
-
-pub fn dec_reg(register: Register, cpu: &mut CPU, bus: &mut Bus) {
-    cpu.registers.dec(register);
-    if register.is_word_register() {
-        bus.generic_cycle();
-    }
-}
-
-pub fn cp(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value = cpu.read_from(location, bus).into();
-    cpu.registers.set_zf(cpu.registers.a == value);
-    cpu.registers.set_nf(true);
-    //https://github.com/gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu.rs#l156
-    cpu.registers.set_hf((cpu.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0);
-    cpu.registers.set_cf(cpu.registers.a < value);
-}
-
-pub fn add(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value: u8 = cpu.read_from(location, bus).into();
-    let (result, carry) = cpu.registers.a.overflowing_add(value);
-    //https://github.com/gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#l55
-    let half_carry = (cpu.registers.a & 0x0f).checked_add(value | 0xf0).is_none();
     cpu.registers.a = result;
-    cpu.registers.set_zf(cpu.registers.a == 0);
+    cpu.registers.set_zf(result == 0);
     cpu.registers.set_nf(false);
     cpu.registers.set_hf(half_carry);
     cpu.registers.set_cf(carry);
 }
 
-pub fn sub(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value = cpu.read_from(location, bus).into();
-    let result = cpu.registers.a.wrapping_sub(value);
+pub fn adc(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
+    let a = cpu.registers.a;
+    let carry_in = u8::from(cpu.registers.flg_c());
+
+    let result = a.wrapping_add(value).wrapping_add(carry_in);
+    let half_carry = (a & 0x0F) + (value & 0x0F) + carry_in > 0x0F;
+    let carry = u16::from(a) + u16::from(value) + u16::from(carry_in) > 0xFF;
+
+    cpu.registers.a = result;
+    cpu.registers.set_zf(result == 0);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf(half_carry);
+    cpu.registers.set_cf(carry);
+}
+
+pub fn sub(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
+    let a = cpu.registers.a;
+    let result = a.wrapping_sub(value);
+
+    cpu.registers.a = result;
     cpu.registers.set_zf(result == 0);
     cpu.registers.set_nf(true);
-    cpu.registers.set_hf(
-        // mooneye
-        (cpu.registers.a & 0xf).wrapping_sub(value & 0xf) & (0xf + 1) != 0,
-    );
-    cpu.registers.set_cf(u16::from(cpu.registers.a) < u16::from(value));
+    cpu.registers.set_hf((a & 0x0F).wrapping_sub(value & 0x0F) & 0x10 != 0);
+    cpu.registers.set_cf(a < value);
+}
+
+pub fn sbc(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
+    let a = cpu.registers.a;
+    let carry_in = u8::from(cpu.registers.flg_c());
+
+    let result = a.wrapping_sub(value).wrapping_sub(carry_in);
+    let half_carry = (a & 0x0F).wrapping_sub(value & 0x0F).wrapping_sub(carry_in) & 0x10 != 0;
+    let carry = u16::from(a) < u16::from(value) + u16::from(carry_in);
+
     cpu.registers.a = result;
-}
-
-pub fn addhl(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let hl = cpu.registers.hl();
-    let value: u16 = cpu.read_from(location, bus).into();
-    if location.is_word_register() {
-        bus.generic_cycle();
-    }
-    let (result, overflow) = hl.overflowing_add(value);
-    let [h, l] = result.to_be_bytes();
-    cpu.registers.h = h;
-    cpu.registers.l = l;
-    cpu.registers.set_nf(false);
-    cpu.registers.set_hf((hl & 0xfff) + (value & 0xfff) > 0x0fff);
-    cpu.registers.set_cf(overflow);
-}
-
-pub fn adc(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value = cpu.read_from(location, bus).into();
-    let carry = u8::from(cpu.registers.flg_c());
-    let result = cpu.registers.a.wrapping_add(value).wrapping_add(carry);
     cpu.registers.set_zf(result == 0);
-    cpu.registers.set_nf(false);
-    // maybe: see https://github.com/gekkio/mooneye-gb/blob/ca7ff30b52fd3de4f1527397f27a729ffd848dfa/core/src/cpu/execute.rs#l55
-    cpu.registers.set_hf((cpu.registers.a & 0xf) + (value & 0xf) + carry > 0xf);
-    cpu.registers.set_cf(u16::from(cpu.registers.a) + u16::from(value) + u16::from(carry) > 0xff);
-    cpu.registers.a = result;
+    cpu.registers.set_nf(true);
+    cpu.registers.set_hf(half_carry);
+    cpu.registers.set_cf(carry);
 }
 
-pub fn and(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value: u8 = cpu.read_from(location, bus).into();
+pub fn and(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
     cpu.registers.a &= value;
+
     cpu.registers.set_zf(cpu.registers.a == 0);
     cpu.registers.set_nf(false);
     cpu.registers.set_hf(true);
     cpu.registers.set_cf(false);
 }
-pub fn xor(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value: u8 = cpu.read_from(location, bus).into();
+
+pub fn xor(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
     cpu.registers.a ^= value;
+
     cpu.registers.set_zf(cpu.registers.a == 0);
     cpu.registers.set_nf(false);
     cpu.registers.set_hf(false);
     cpu.registers.set_cf(false);
 }
-pub fn orr(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value: u8 = cpu.read_from(location, bus).into();
+
+pub fn or(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
     cpu.registers.a |= value;
+
     cpu.registers.set_zf(cpu.registers.a == 0);
     cpu.registers.set_nf(false);
     cpu.registers.set_hf(false);
     cpu.registers.set_cf(false);
 }
-pub fn not(location: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let value: u8 = cpu.read_from(location, bus).into();
-    cpu.registers.a = !value;
+
+pub fn cp(src: Src8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = src.read(cpu, bus);
+    let a = cpu.registers.a;
+
+    // CP is SUB without storing result
+    cpu.registers.set_zf(a == value);
+    cpu.registers.set_nf(true);
+    cpu.registers.set_hf((a & 0x0F).wrapping_sub(value & 0x0F) & 0x10 != 0);
+    cpu.registers.set_cf(a < value);
+}
+
+// ============================================================================
+// 8-bit INC/DEC
+// ============================================================================
+
+pub fn inc8(op: RmwOperand8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = op.read(cpu, bus);
+    let result = value.wrapping_add(1);
+
+    cpu.registers.set_zf(result == 0);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf((value & 0x0F) == 0x0F);
+    // Carry not affected
+
+    op.write(cpu, bus, result);
+}
+
+pub fn dec8(op: RmwOperand8, cpu: &mut CPU, bus: &mut Bus) {
+    let value = op.read(cpu, bus);
+    let result = value.wrapping_sub(1);
+
+    cpu.registers.set_zf(result == 0);
+    cpu.registers.set_nf(true);
+    cpu.registers.set_hf(value.trailing_zeros() >= 4);
+    // Carry not affected
+
+    op.write(cpu, bus, result);
+}
+
+// ============================================================================
+// 16-bit INC/DEC
+// ============================================================================
+
+pub fn inc16(r: Reg16, cpu: &mut CPU, bus: &mut Bus) {
+    cpu.registers.inc_r16(r);
+    bus.generic_cycle(); // 16-bit inc takes extra cycle
+}
+
+pub fn dec16(r: Reg16, cpu: &mut CPU, bus: &mut Bus) {
+    cpu.registers.dec_r16(r);
+    bus.generic_cycle(); // 16-bit dec takes extra cycle
+}
+
+// ============================================================================
+// 16-bit ADD
+// ============================================================================
+
+pub fn add_hl(r: Reg16, cpu: &mut CPU, bus: &mut Bus) {
+    let hl = cpu.registers.get_r16(Reg16::HL);
+    let value = cpu.registers.get_r16(r);
+
+    let (result, carry) = hl.overflowing_add(value);
+    let half_carry = (hl & 0x0FFF) + (value & 0x0FFF) > 0x0FFF;
+
+    cpu.registers.set_r16(Reg16::HL, result);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf(half_carry);
+    cpu.registers.set_cf(carry);
+    // Zero flag not affected
+
+    bus.generic_cycle();
+}
+
+pub fn add_sp(cpu: &mut CPU, bus: &mut Bus) {
+    let offset = cpu.next_u8(bus) as i8;
+    let sp = cpu.registers.sp;
+    let offset_u16 = i16::from(offset) as u16;
+
+    let result = sp.wrapping_add(offset_u16);
+
+    // Flags are set based on lower byte addition
+    let half_carry = (sp & 0x0F) + (offset_u16 & 0x0F) > 0x0F;
+    let carry = (sp & 0xFF) + (offset_u16 & 0xFF) > 0xFF;
+
+    cpu.registers.sp = result;
+    cpu.registers.set_zf(false);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf(half_carry);
+    cpu.registers.set_cf(carry);
+
+    bus.generic_cycle();
+    bus.generic_cycle();
+}
+
+// ============================================================================
+// Rotate operations on A (fast versions that don't set zero flag)
+// ============================================================================
+
+pub fn rlca(cpu: &mut CPU) {
+    let a = cpu.registers.a;
+    let carry = (a & 0x80) != 0;
+    cpu.registers.a = (a << 1) | u8::from(carry);
+
+    cpu.registers.set_zf(false);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf(false);
+    cpu.registers.set_cf(carry);
+}
+
+pub fn rrca(cpu: &mut CPU) {
+    let a = cpu.registers.a;
+    let carry = (a & 0x01) != 0;
+    cpu.registers.a = (a >> 1) | (u8::from(carry) << 7);
+
+    cpu.registers.set_zf(false);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf(false);
+    cpu.registers.set_cf(carry);
+}
+
+pub fn rla(cpu: &mut CPU) {
+    let a = cpu.registers.a;
+    let old_carry = cpu.registers.flg_c();
+    let new_carry = (a & 0x80) != 0;
+    cpu.registers.a = (a << 1) | u8::from(old_carry);
+
+    cpu.registers.set_zf(false);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf(false);
+    cpu.registers.set_cf(new_carry);
+}
+
+pub fn rra(cpu: &mut CPU) {
+    let a = cpu.registers.a;
+    let old_carry = cpu.registers.flg_c();
+    let new_carry = (a & 0x01) != 0;
+    cpu.registers.a = (a >> 1) | (u8::from(old_carry) << 7);
+
+    cpu.registers.set_zf(false);
+    cpu.registers.set_nf(false);
+    cpu.registers.set_hf(false);
+    cpu.registers.set_cf(new_carry);
+}
+
+// ============================================================================
+// Misc ALU operations
+// ============================================================================
+
+pub fn daa(cpu: &mut CPU) {
+    let mut a = cpu.registers.a;
+
+    if cpu.registers.flg_n() {
+        // After subtraction
+        if cpu.registers.flg_c() {
+            a = a.wrapping_sub(0x60);
+        }
+        if cpu.registers.flg_h() {
+            a = a.wrapping_sub(0x06);
+        }
+    } else {
+        // After addition
+        if cpu.registers.flg_c() || a > 0x99 {
+            a = a.wrapping_add(0x60);
+            cpu.registers.set_cf(true);
+        }
+        if cpu.registers.flg_h() || (a & 0x0F) > 0x09 {
+            a = a.wrapping_add(0x06);
+        }
+    }
+
+    cpu.registers.a = a;
+    cpu.registers.set_zf(a == 0);
+    cpu.registers.set_hf(false);
+}
+
+pub fn cpl(cpu: &mut CPU) {
+    cpu.registers.a = !cpu.registers.a;
     cpu.registers.set_nf(true);
     cpu.registers.set_hf(true);
 }
 
-pub const fn ccf(cpu: &mut CPU, _bus: &mut Bus) {
-    cpu.registers.set_nf(false);
-    cpu.registers.set_hf(false);
-    cpu.registers.set_cf(!cpu.registers.flg_c());
-}
-pub const fn scf(cpu: &mut CPU, _bus: &mut Bus) {
+pub fn scf(cpu: &mut CPU) {
     cpu.registers.set_nf(false);
     cpu.registers.set_hf(false);
     cpu.registers.set_cf(true);
 }
 
-pub fn sbc(l: Address, cpu: &mut CPU, bus: &mut Bus) {
-    let a = cpu.registers.a;
-    let value: u8 = cpu.read_from(l, bus).into();
-    let cy = u8::from(cpu.registers.flg_c());
-    let result = a.wrapping_sub(value).wrapping_sub(cy);
-    cpu.registers.set_zf(result == 0);
-    cpu.registers.set_nf(true);
-    cpu.registers.set_hf(
-        // mooneye
-        (cpu.registers.a & 0xf).wrapping_sub(value & 0xf).wrapping_sub(cy) & (0xf + 1) != 0,
-    );
-    cpu.registers.set_cf(u16::from(cpu.registers.a) < u16::from(value) + u16::from(cy));
-    cpu.registers.a = result;
-}
-
-pub const fn rra(cpu: &mut CPU, _bus: &mut Bus) {
-    let carry = cpu.registers.a & 1 != 0;
-    cpu.registers.a >>= 1;
-    if cpu.registers.flg_c() {
-        cpu.registers.a |= 0b1000_0000;
-    }
-    cpu.registers.set_zf(false);
+pub fn ccf(cpu: &mut CPU) {
+    cpu.registers.set_nf(false);
     cpu.registers.set_hf(false);
-    cpu.registers.set_nf(false);
-    cpu.registers.set_cf(carry);
-}
-pub const fn rrca(cpu: &mut CPU, _bus: &mut Bus) {
-    let carry = cpu.registers.a & 1 != 0;
-    cpu.registers.a >>= 1;
-    if carry {
-        cpu.registers.a |= 0b1000_0000;
-    }
-    cpu.registers.set_zf(false);
-    cpu.registers.set_hf(false);
-    cpu.registers.set_nf(false);
-    cpu.registers.set_cf(carry);
-}
-pub const fn rla(cpu: &mut CPU, _bus: &mut Bus) {
-    let overflow = cpu.registers.a & 0x80 != 0;
-    let result = cpu.registers.a << 1;
-    cpu.registers.a = result | (cpu.registers.flg_c() as u8);
-    cpu.registers.set_zf(false);
-    cpu.registers.set_hf(false);
-    cpu.registers.set_nf(false);
-    cpu.registers.set_cf(overflow);
-}
-pub const fn rlca(cpu: &mut CPU, _bus: &mut Bus) {
-    let carry = cpu.registers.a & 0x80 != 0;
-    let result = cpu.registers.a << 1 | carry as u8;
-    cpu.registers.a = result;
-    cpu.registers.set_zf(false);
-    cpu.registers.set_hf(false);
-    cpu.registers.set_nf(false);
-    cpu.registers.set_cf(carry);
-}
-
-pub fn addsp(cpu: &mut CPU, bus: &mut Bus) {
-    let offset = i16::from(cpu.next_u8(bus) as i8).cast_unsigned();
-    let sp = cpu.registers.sp;
-    let result = cpu.registers.sp.wrapping_add(offset);
-    bus.generic_cycle();
-    bus.generic_cycle();
-    let half_carry = ((sp & 0x0f) + (offset & 0x0f)) > 0x0f;
-    let overflow = ((sp & 0xff) + (offset & 0xff)) > 0xff;
-    cpu.registers.sp = result;
-    cpu.registers.set_zf(false);
-    cpu.registers.set_nf(false);
-    cpu.registers.set_hf(half_carry);
-    cpu.registers.set_cf(overflow);
+    cpu.registers.set_cf(!cpu.registers.flg_c());
 }

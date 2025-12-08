@@ -5,6 +5,7 @@ pub mod emu;
 pub mod gpu;
 pub mod instructions;
 pub mod location;
+pub mod operand;
 pub mod registers;
 pub mod texture;
 // pub mod tui;

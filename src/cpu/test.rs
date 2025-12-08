@@ -24,7 +24,7 @@ fn ticks_expected() {
     use super::*;
     use crate::{cpu::CPU, instructions::INSTR_TABLE};
     unsafe { std::env::set_var("RUST_LOG", "trace") };
-    crate::constants::setup_logger().unwrap();
+    let _ = crate::constants::setup_logger();
     for (i, instr) in INSTR_TABLE.iter().enumerate() {
         let mut cpu = CPU::new();
         let mut bus = Bus::new(&[], None);
@@ -56,7 +56,10 @@ fn time_instr(instr: u8, cpu: &mut CPU, bus: &mut Bus) -> usize {
     let mut prev = cpu.state;
     let _span = info_span!("Instr", instr = %Instr::from(instr)).entered();
     for _ in 0..UPPER_LIMIT {
-        if matches!((&prev, &cpu.state), (&CPUState::Running(Stage::Execute), &CPUState::Running(Stage::Fetch))) {
+        // Break when instruction completes (Execute -> Fetch) or when entering Halted state
+        if matches!((&prev, &cpu.state), (&CPUState::Running(Stage::Execute), &CPUState::Running(Stage::Fetch)))
+            || matches!((&prev, &cpu.state), (&CPUState::Running(Stage::Execute), &CPUState::Halted))
+        {
             break;
         }
         prev = cpu.state;
@@ -191,25 +194,26 @@ fn time_instr(instr: u8, cpu: &mut CPU, bus: &mut Bus) -> usize {
 
 #[test]
 fn fetch_execute_overlap() {
-    use crate::{cpu::CPU, instructions::Register, location::Address};
+    use crate::cpu::CPU;
     unsafe { std::env::set_var("RUST_LOG", "trace") };
-    crate::constants::setup_logger().unwrap();
+    let _ = crate::constants::setup_logger();
     let mut cpu = CPU::new();
+    // Using raw opcode bytes for clarity
     let mem = vec![
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::NOOP.into(),
-        Instr::INC(Address::Register(Register::A)).into(),
-        Instr::LD(Address::Register(Register::A), Address::MemOffsetImm).into(),
-        10,
-        Instr::RST(0x08).into(),
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x00, // NOP
+        0x3C, // INC A
+        0xF0, // LDH A, [n]
+        10,   // offset
+        0xCF, // RST 08H
     ];
     cpu.registers.pc = 0x0A;
     let mut bus = Bus::new(&mem, None);

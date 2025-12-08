@@ -126,8 +126,3 @@ impl std::fmt::Display for Address {
     }
 }
 
-impl std::fmt::Display for Register {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", <&str>::from(self))
-    }
-}

@@ -79,7 +79,7 @@ impl CPU {
         // M2: execute
         let instr = Instr::from(self.opcode).run(self, bus);
         match instr {
-            Instr::HALT => CPUState::Halted,
+            Instr::Halt => CPUState::Halted,
             _ => CPUState::Running(Stage::Fetch),
         }
     }
