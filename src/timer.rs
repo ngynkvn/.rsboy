@@ -198,3 +198,222 @@ impl Display for Timer {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_timer_is_zeroed() {
+        let timer = Timer::new();
+        assert_eq!(timer.tima, 0);
+        assert_eq!(timer.tma, 0);
+        assert_eq!(timer.div(), 0);
+        assert_eq!(timer.internal, 0);
+        assert!(!timer.is_enabled());
+    }
+
+    #[test]
+    fn div_is_upper_8_bits_of_internal() {
+        let mut timer = Timer::new();
+        timer.internal = 0x1234;
+        assert_eq!(timer.div(), 0x12);
+
+        timer.internal = 0xABCD;
+        assert_eq!(timer.div(), 0xAB);
+
+        timer.internal = 0x00FF;
+        assert_eq!(timer.div(), 0x00);
+    }
+
+    #[test]
+    fn write_div_resets_internal_counter() {
+        let mut timer = Timer::new();
+        timer.internal = 0xFFFF;
+        assert_eq!(timer.div(), 0xFF);
+
+        // Any write to DIV resets internal to 0
+        timer.write_div(0x42);
+        assert_eq!(timer.internal, 0);
+        assert_eq!(timer.div(), 0);
+    }
+
+    #[test]
+    fn tac_enable_bit() {
+        let mut timer = Timer::new();
+        assert!(!timer.is_enabled());
+
+        timer.write_tac(0b100); // Enable
+        assert!(timer.is_enabled());
+
+        timer.write_tac(0b000); // Disable
+        assert!(!timer.is_enabled());
+    }
+
+    #[test]
+    fn tac_clock_select() {
+        let mut timer = Timer::new();
+
+        timer.write_tac(0b00);
+        assert_eq!(timer.clock_speed(), ClockSpeed::Hz4096);
+
+        timer.write_tac(0b01);
+        assert_eq!(timer.clock_speed(), ClockSpeed::Hz262144);
+
+        timer.write_tac(0b10);
+        assert_eq!(timer.clock_speed(), ClockSpeed::Hz65536);
+
+        timer.write_tac(0b11);
+        assert_eq!(timer.clock_speed(), ClockSpeed::Hz16384);
+    }
+
+    #[test]
+    fn tac_read_has_upper_bits_set() {
+        let mut timer = Timer::new();
+        timer.write_tac(0b000);
+        // Upper 5 bits always read as 1
+        assert_eq!(timer.read_tac(), 0b1111_1000);
+
+        timer.write_tac(0b111);
+        assert_eq!(timer.read_tac(), 0b1111_1111);
+    }
+
+    #[test]
+    fn tac_ignores_invalid_bits() {
+        let mut timer = Timer::new();
+        // Writing 0xFF should only keep bits 0-2
+        timer.write_tac(0xFF);
+        assert!(timer.is_enabled());
+        assert_eq!(timer.clock_speed(), ClockSpeed::Hz16384);
+    }
+
+    #[test]
+    fn tick_increments_internal_counter() {
+        let mut timer = Timer::new();
+        let mut flags = 0u8;
+
+        // One M-cycle = 4 T-cycles = internal counter + 4
+        timer.tick(&mut flags);
+        assert_eq!(timer.internal, 4);
+
+        timer.tick(&mut flags);
+        assert_eq!(timer.internal, 8);
+    }
+
+    #[test]
+    fn div_increments_every_256_t_cycles() {
+        let mut timer = Timer::new();
+        let mut flags = 0u8;
+
+        // DIV increments every 256 T-cycles (64 M-cycles)
+        for _ in 0..63 {
+            timer.tick(&mut flags);
+        }
+        assert_eq!(timer.div(), 0);
+
+        timer.tick(&mut flags);
+        assert_eq!(timer.div(), 1);
+
+        for _ in 0..64 {
+            timer.tick(&mut flags);
+        }
+        assert_eq!(timer.div(), 2);
+    }
+
+    #[test]
+    fn tima_does_not_increment_when_disabled() {
+        let mut timer = Timer::new();
+        let mut flags = 0u8;
+
+        // Timer disabled, fastest clock
+        timer.write_tac(0b001); // Disabled, 262144 Hz
+
+        for _ in 0..1000 {
+            timer.tick(&mut flags);
+        }
+
+        assert_eq!(timer.tima, 0);
+        assert_eq!(flags, 0);
+    }
+
+    #[test]
+    fn tima_increments_at_correct_rate_262144hz() {
+        let mut timer = Timer::new();
+        let mut flags = 0u8;
+
+        // Enable timer at 262144 Hz (fastest, bit 3 of internal)
+        // Bit 3 of internal counter falls every 16 T-cycles = 4 M-cycles
+        // (bit 3 is set for values 8-15, then falls to 0 at value 16)
+        timer.write_tac(0b101);
+
+        // After 3 ticks (12 T-cycles), bit 3 has risen but not fallen yet
+        for _ in 0..3 {
+            timer.tick(&mut flags);
+        }
+        assert_eq!(timer.tima, 0);
+
+        // After 4th tick (16 T-cycles), internal goes 12->16
+        // During this, internal passes through 15->16 where bit 3 falls
+        timer.tick(&mut flags);
+        assert_eq!(timer.tima, 1);
+
+        // Another 4 ticks for the next increment
+        for _ in 0..4 {
+            timer.tick(&mut flags);
+        }
+        assert_eq!(timer.tima, 2);
+    }
+
+    #[test]
+    fn tima_overflow_triggers_interrupt_and_reloads_tma() {
+        let mut timer = Timer::new();
+        let mut flags = 0u8;
+
+        // Set up timer close to overflow
+        timer.tima = 0xFF;
+        timer.tma = 0x42;
+        timer.write_tac(0b101); // Enable at 262144 Hz
+
+        // Need 4 M-cycles for falling edge at 262144 Hz
+        for _ in 0..4 {
+            timer.tick(&mut flags);
+        }
+
+        // Should have triggered interrupt and reloaded from TMA
+        assert_eq!(timer.tima, 0x42);
+        assert_ne!(flags & cpu::interrupts::TIMER, 0);
+    }
+
+    #[test]
+    fn clock_speed_frequencies() {
+        assert_eq!(ClockSpeed::Hz4096.frequency(), 4096);
+        assert_eq!(ClockSpeed::Hz262144.frequency(), 262_144);
+        assert_eq!(ClockSpeed::Hz65536.frequency(), 65536);
+        assert_eq!(ClockSpeed::Hz16384.frequency(), 16384);
+    }
+
+    #[test]
+    fn internal_counter_wraps() {
+        let mut timer = Timer::new();
+        let mut flags = 0u8;
+
+        timer.internal = 0xFFFC;
+        timer.tick(&mut flags);
+
+        // Should wrap to 0
+        assert_eq!(timer.internal, 0);
+    }
+
+    #[test]
+    fn mclock_tracks_m_cycles() {
+        let mut timer = Timer::new();
+        let mut flags = 0u8;
+
+        assert_eq!(timer.mclock, 0);
+        timer.tick(&mut flags);
+        assert_eq!(timer.mclock, 1);
+        timer.tick(&mut flags);
+        timer.tick(&mut flags);
+        assert_eq!(timer.mclock, 3);
+    }
+}

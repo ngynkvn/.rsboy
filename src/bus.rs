@@ -160,7 +160,7 @@ impl Bus {
     pub fn write_cycle(&mut self, addr: u16, value: u8) {
         self.generic_cycle();
         self.write(addr, value);
-        info!("Wrote {:#02x} to {:#04x} at clock {}", value, addr, self.mclock);
+        trace!("Wrote {:#02x} to {:#04x} at clock {}", value, addr, self.mclock);
     }
 }
 
@@ -301,5 +301,360 @@ impl Memory for Bus {
             // ROM area writes (mapper control - ignored for now) and unused areas
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup() -> Bus {
+        let mut bus = Bus::new(&[], None);
+        bus.in_bios = 1; // Skip bootrom
+        bus
+    }
+
+    fn setup_with_rom(rom: &[u8]) -> Bus {
+        let mut bus = Bus::new(rom, None);
+        bus.in_bios = 1;
+        bus
+    }
+
+    // Memory region tests
+    #[test]
+    fn read_rom_returns_loaded_data() {
+        let rom = vec![0x00, 0x31, 0xFE, 0xFF]; // NOP, LD SP,$FFFE
+        let bus = setup_with_rom(&rom);
+        assert_eq!(bus.read(0x0000), 0x00);
+        assert_eq!(bus.read(0x0001), 0x31);
+        assert_eq!(bus.read(0x0002), 0xFE);
+        assert_eq!(bus.read(0x0003), 0xFF);
+    }
+
+    #[test]
+    fn write_to_wram_persists() {
+        let mut bus = setup();
+        bus.write(0xC000, 0x42);
+        assert_eq!(bus.read(0xC000), 0x42);
+
+        bus.write(0xCFFF, 0xAB);
+        assert_eq!(bus.read(0xCFFF), 0xAB);
+    }
+
+    #[test]
+    fn write_to_hram_persists() {
+        let mut bus = setup();
+        bus.write(0xFF80, 0x12);
+        assert_eq!(bus.read(0xFF80), 0x12);
+
+        bus.write(0xFFFE, 0x34);
+        assert_eq!(bus.read(0xFFFE), 0x34);
+    }
+
+    #[test]
+    fn vram_access_routes_to_gpu() {
+        let mut bus = setup();
+        bus.write(0x8000, 0xAA);
+        assert_eq!(bus.gpu.vram[0], 0xAA);
+        assert_eq!(bus.read(0x8000), 0xAA);
+
+        bus.write(0x9FFF, 0xBB);
+        assert_eq!(bus.gpu.vram[0x1FFF], 0xBB);
+        assert_eq!(bus.read(0x9FFF), 0xBB);
+    }
+
+    #[test]
+    fn oam_access_routes_to_gpu() {
+        let mut bus = setup();
+        bus.write(0xFE00, 0xCC);
+        assert_eq!(bus.gpu.oam[0], 0xCC);
+        assert_eq!(bus.read(0xFE00), 0xCC);
+
+        bus.write(0xFE9F, 0xDD);
+        assert_eq!(bus.gpu.oam[0x9F], 0xDD);
+        assert_eq!(bus.read(0xFE9F), 0xDD);
+    }
+
+    // Timer register tests
+    #[test]
+    fn timer_div_read_returns_upper_bits() {
+        let mut bus = setup();
+        bus.timer.internal = 0x1234;
+        assert_eq!(bus.read(timer_addr::DIV), 0x12);
+    }
+
+    #[test]
+    fn timer_div_write_resets_internal() {
+        let mut bus = setup();
+        bus.timer.internal = 0xFFFF;
+        bus.write(timer_addr::DIV, 0x42); // Any value resets
+        assert_eq!(bus.timer.internal, 0);
+    }
+
+    #[test]
+    fn timer_tima_read_write() {
+        let mut bus = setup();
+        bus.write(timer_addr::TIMA, 0xAB);
+        assert_eq!(bus.timer.tima, 0xAB);
+        assert_eq!(bus.read(timer_addr::TIMA), 0xAB);
+    }
+
+    #[test]
+    fn timer_tma_read_write() {
+        let mut bus = setup();
+        bus.write(timer_addr::TMA, 0xCD);
+        assert_eq!(bus.timer.tma, 0xCD);
+        assert_eq!(bus.read(timer_addr::TMA), 0xCD);
+    }
+
+    #[test]
+    fn timer_tac_read_has_upper_bits_set() {
+        let mut bus = setup();
+        bus.write(timer_addr::TAC, 0b101);
+        // Upper 5 bits read as 1
+        assert_eq!(bus.read(timer_addr::TAC), 0b1111_1101);
+    }
+
+    // Interrupt register tests
+    #[test]
+    fn interrupt_enable_read_write() {
+        let mut bus = setup();
+        bus.write(addr::IE, 0x1F);
+        assert_eq!(bus.int_enabled, 0x1F);
+        assert_eq!(bus.read(addr::IE), 0x1F);
+    }
+
+    #[test]
+    fn interrupt_flags_read_write() {
+        let mut bus = setup();
+        bus.write(addr::IF, 0x0F);
+        assert_eq!(bus.int_flags, 0x0F);
+        assert_eq!(bus.read(addr::IF), 0x0F);
+    }
+
+    #[test]
+    fn enable_interrupts_sets_ime() {
+        let mut bus = setup();
+        assert_eq!(bus.ime, 0);
+        bus.enable_interrupts();
+        assert_eq!(bus.ime, 1);
+    }
+
+    #[test]
+    fn disable_interrupts_clears_ime() {
+        let mut bus = setup();
+        bus.ime = 1;
+        bus.disable_interrupts();
+        assert_eq!(bus.ime, 0);
+    }
+
+    #[test]
+    fn ack_interrupt_clears_flag() {
+        let mut bus = setup();
+        bus.int_flags = 0b0001_1111;
+        bus.ack_interrupt(0b0000_0100); // Clear timer flag
+        assert_eq!(bus.int_flags, 0b0001_1011);
+    }
+
+    // Joypad tests
+    #[test]
+    fn joypad_button_select() {
+        let mut bus = setup();
+        bus.keypresses = 0xAB;
+        bus.directions = 0xCD;
+
+        bus.write(addr::JOYPAD, 0x10); // Select buttons
+        assert!(matches!(bus.select, Select::Buttons));
+        assert_eq!(bus.read(addr::JOYPAD), 0xAB);
+
+        bus.write(addr::JOYPAD, 0x20); // Select directions
+        assert!(matches!(bus.select, Select::Directions));
+        assert_eq!(bus.read(addr::JOYPAD), 0xCD);
+    }
+
+    #[test]
+    fn joypad_no_select_returns_ff() {
+        let mut bus = setup();
+        bus.keypresses = 0x00;
+        bus.directions = 0x00;
+        bus.write(addr::JOYPAD, 0x00); // Neither selected
+        assert!(matches!(bus.select, Select::None));
+        assert_eq!(bus.read(addr::JOYPAD), 0xFF);
+    }
+
+    // Bootrom tests
+    #[test]
+    fn bootrom_disable_sets_flag() {
+        let mut bus = setup();
+        bus.in_bios = 0;
+        bus.rom_start_signal = false;
+
+        bus.write(addr::BOOTROM_DISABLE, 0x01);
+        assert_eq!(bus.in_bios, 0x01);
+        assert!(bus.rom_start_signal);
+    }
+
+    #[test]
+    fn bootrom_overlay_when_active() {
+        let rom = vec![0xAA; 0x100];
+        let mut bus = Bus::new(&rom, None);
+        // Fill bootrom with different data
+        for i in 0..0x100 {
+            bus.bootrom[i] = i as u8;
+        }
+        bus.in_bios = 0; // Bootrom active
+
+        // Should read from bootrom, not ROM
+        assert_eq!(bus.read(0x00), 0x00);
+        assert_eq!(bus.read(0x50), 0x50);
+        assert_eq!(bus.read(0xFF), 0xFF);
+    }
+
+    #[test]
+    fn rom_visible_after_bootrom_disabled() {
+        let mut rom = vec![0x00; 0x8000];
+        rom[0x00] = 0x31;
+        rom[0x50] = 0xAB;
+        let mut bus = Bus::new(&rom, None);
+        bus.in_bios = 1; // Bootrom disabled
+
+        assert_eq!(bus.read(0x00), 0x31);
+        assert_eq!(bus.read(0x50), 0xAB);
+    }
+
+    // GPU register tests
+    #[test]
+    fn gpu_lcdc_read_write() {
+        let mut bus = setup();
+        bus.write(gpu::LCDC_ADDR, 0x91);
+        assert_eq!(bus.gpu.lcdc.bits(), 0x91);
+        assert_eq!(bus.read(gpu::LCDC_ADDR), 0x91);
+    }
+
+    #[test]
+    fn gpu_scroll_registers() {
+        let mut bus = setup();
+        bus.write(gpu::SCY_ADDR, 0x12);
+        bus.write(gpu::SCX_ADDR, 0x34);
+        assert_eq!(bus.gpu.scrolly, 0x12);
+        assert_eq!(bus.gpu.scrollx, 0x34);
+        assert_eq!(bus.read(gpu::SCY_ADDR), 0x12);
+        assert_eq!(bus.read(gpu::SCX_ADDR), 0x34);
+    }
+
+    #[test]
+    fn gpu_scanline_register() {
+        let mut bus = setup();
+        bus.write(gpu::LY_ADDR, 0x90);
+        assert_eq!(bus.gpu.scanline, 0x90);
+        assert_eq!(bus.read(gpu::LY_ADDR), 0x90);
+    }
+
+    #[test]
+    fn gpu_palette_register() {
+        let mut bus = setup();
+        bus.write(gpu::BGP_ADDR, 0xE4);
+        assert_eq!(bus.gpu.bgrdpal, 0xE4);
+        assert_eq!(bus.read(gpu::BGP_ADDR), 0xE4);
+    }
+
+    #[test]
+    fn gpu_window_registers() {
+        let mut bus = setup();
+        bus.write(gpu::WY_ADDR, 0x10);
+        bus.write(gpu::WX_ADDR, 0x07);
+        assert_eq!(bus.gpu.windowy, 0x10);
+        assert_eq!(bus.gpu.windowx, 0x07);
+        assert_eq!(bus.read(gpu::WY_ADDR), 0x10);
+        assert_eq!(bus.read(gpu::WX_ADDR), 0x07);
+    }
+
+    // Cycle timing tests
+    #[test]
+    fn generic_cycle_advances_clock() {
+        let mut bus = setup();
+        assert_eq!(bus.mclock(), 0);
+        bus.generic_cycle();
+        assert_eq!(bus.mclock(), 1);
+        bus.generic_cycle();
+        assert_eq!(bus.mclock(), 2);
+    }
+
+    #[test]
+    fn read_cycle_advances_clock_and_returns_value() {
+        let mut bus = setup();
+        bus.memory[0xC000] = 0x42;
+        let value = bus.read_cycle(0xC000);
+        assert_eq!(value, 0x42);
+        assert_eq!(bus.mclock(), 1);
+    }
+
+    #[test]
+    fn write_cycle_advances_clock_and_writes_value() {
+        let mut bus = setup();
+        bus.write_cycle(0xC000, 0xAB);
+        assert_eq!(bus.memory[0xC000], 0xAB);
+        assert_eq!(bus.mclock(), 1);
+    }
+
+    #[test]
+    fn read_cycle_high_reads_from_ff_page() {
+        let mut bus = setup();
+        bus.memory[0xFF80] = 0x99;
+        let value = bus.read_cycle_high(0x80);
+        assert_eq!(value, 0x99);
+        assert_eq!(bus.mclock(), 1);
+    }
+
+    // Serial I/O tests
+    #[test]
+    fn serial_data_read_write() {
+        let mut bus = setup();
+        bus.write(addr::SERIAL_DATA, 0x41); // 'A'
+        assert_eq!(bus.memory[addr::SERIAL_DATA as usize], 0x41);
+    }
+
+    #[test]
+    fn serial_ctrl_triggers_output() {
+        let mut bus = setup();
+        bus.memory[addr::SERIAL_DATA as usize] = 0x48; // 'H'
+        bus.write(addr::SERIAL_CTRL, 0x81);
+        assert_eq!(bus.io, "H");
+    }
+
+    // Memory trait conformance
+    #[test]
+    fn memory_trait_read_write_roundtrip() {
+        let mut bus = setup();
+        let addr = 0xC100;
+        bus.write(addr, 0xDE);
+        assert_eq!(bus.read(addr), 0xDE);
+    }
+
+    // Edge cases
+    #[test]
+    fn write_to_bootrom_area_when_active_is_ignored() {
+        let mut bus = setup();
+        bus.in_bios = 0; // Bootrom active
+        bus.bootrom[0x50] = 0xAA;
+        bus.write(0x0050, 0xBB);
+        assert_eq!(bus.bootrom[0x50], 0xAA); // Unchanged
+    }
+
+    #[test]
+    fn echo_ram_works() {
+        let mut bus = setup();
+        bus.write(0xE000, 0x12);
+        assert_eq!(bus.read(0xE000), 0x12);
+    }
+
+    #[test]
+    fn display_format_includes_key_info() {
+        let bus = setup();
+        let display = format!("{bus}");
+        assert!(display.contains("CLK:"));
+        assert!(display.contains("IE:"));
+        assert!(display.contains("IF:"));
+        assert!(display.contains("[TIMER]"));
     }
 }

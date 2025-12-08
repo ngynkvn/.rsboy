@@ -289,3 +289,554 @@ pub fn ccf(cpu: &mut CPU) {
     cpu.registers.set_hf(false);
     cpu.registers.set_cf(!cpu.registers.flg_c());
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::operand::Reg8;
+
+    /// Helper to create CPU with bus for testing
+    fn setup() -> (CPU, Bus) {
+        let cpu = CPU::new();
+        let mut bus = Bus::new(&[], None);
+        bus.in_bios = 1;
+        (cpu, bus)
+    }
+
+    // ========================================================================
+    // ADD tests
+    // ========================================================================
+
+    #[test]
+    fn add_basic() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x10;
+        cpu.registers.b = 0x05;
+
+        add(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x15);
+        assert!(!cpu.registers.flg_z());
+        assert!(!cpu.registers.flg_n());
+        assert!(!cpu.registers.flg_h());
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn add_sets_zero_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x00;
+        cpu.registers.b = 0x00;
+
+        add(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert!(cpu.registers.flg_z());
+    }
+
+    #[test]
+    fn add_sets_half_carry_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x0F;
+        cpu.registers.b = 0x01;
+
+        add(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x10);
+        assert!(cpu.registers.flg_h());
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn add_sets_carry_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0xFF;
+        cpu.registers.b = 0x01;
+
+        add(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert!(cpu.registers.flg_z());
+        assert!(cpu.registers.flg_h());
+        assert!(cpu.registers.flg_c());
+    }
+
+    // ========================================================================
+    // ADC tests
+    // ========================================================================
+
+    #[test]
+    fn adc_without_carry_in() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x10;
+        cpu.registers.b = 0x05;
+        cpu.registers.set_cf(false);
+
+        adc(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x15);
+    }
+
+    #[test]
+    fn adc_with_carry_in() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x10;
+        cpu.registers.b = 0x05;
+        cpu.registers.set_cf(true);
+
+        adc(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x16); // 0x10 + 0x05 + 1
+    }
+
+    #[test]
+    fn adc_carry_in_causes_overflow() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0xFF;
+        cpu.registers.b = 0x00;
+        cpu.registers.set_cf(true);
+
+        adc(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert!(cpu.registers.flg_z());
+        assert!(cpu.registers.flg_c());
+    }
+
+    // ========================================================================
+    // SUB tests
+    // ========================================================================
+
+    #[test]
+    fn sub_basic() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x15;
+        cpu.registers.b = 0x05;
+
+        sub(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x10);
+        assert!(!cpu.registers.flg_z());
+        assert!(cpu.registers.flg_n()); // N always set for SUB
+        assert!(!cpu.registers.flg_h());
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn sub_sets_zero_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x42;
+        cpu.registers.b = 0x42;
+
+        sub(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert!(cpu.registers.flg_z());
+    }
+
+    #[test]
+    fn sub_sets_half_borrow_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x10;
+        cpu.registers.b = 0x01;
+
+        sub(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x0F);
+        assert!(cpu.registers.flg_h());
+    }
+
+    #[test]
+    fn sub_sets_borrow_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x00;
+        cpu.registers.b = 0x01;
+
+        sub(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0xFF);
+        assert!(cpu.registers.flg_c());
+    }
+
+    // ========================================================================
+    // SBC tests
+    // ========================================================================
+
+    #[test]
+    fn sbc_without_carry() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x15;
+        cpu.registers.b = 0x05;
+        cpu.registers.set_cf(false);
+
+        sbc(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x10);
+    }
+
+    #[test]
+    fn sbc_with_carry() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x15;
+        cpu.registers.b = 0x05;
+        cpu.registers.set_cf(true);
+
+        sbc(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x0F); // 0x15 - 0x05 - 1
+    }
+
+    // ========================================================================
+    // AND tests
+    // ========================================================================
+
+    #[test]
+    fn and_basic() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0xFF;
+        cpu.registers.b = 0x0F;
+
+        and(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x0F);
+        assert!(!cpu.registers.flg_z());
+        assert!(!cpu.registers.flg_n());
+        assert!(cpu.registers.flg_h()); // H always set for AND
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn and_sets_zero_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0xF0;
+        cpu.registers.b = 0x0F;
+
+        and(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert!(cpu.registers.flg_z());
+    }
+
+    // ========================================================================
+    // XOR tests
+    // ========================================================================
+
+    #[test]
+    fn xor_basic() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0xFF;
+        cpu.registers.b = 0x0F;
+
+        xor(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0xF0);
+        assert!(!cpu.registers.flg_z());
+        assert!(!cpu.registers.flg_n());
+        assert!(!cpu.registers.flg_h());
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn xor_with_self_zeroes() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x42;
+
+        xor(Src8::Reg(Reg8::A), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert!(cpu.registers.flg_z());
+    }
+
+    // ========================================================================
+    // OR tests
+    // ========================================================================
+
+    #[test]
+    fn or_basic() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0xF0;
+        cpu.registers.b = 0x0F;
+
+        or(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0xFF);
+        assert!(!cpu.registers.flg_z());
+        assert!(!cpu.registers.flg_n());
+        assert!(!cpu.registers.flg_h());
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn or_zero_with_zero() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x00;
+        cpu.registers.b = 0x00;
+
+        or(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x00);
+        assert!(cpu.registers.flg_z());
+    }
+
+    // ========================================================================
+    // CP tests
+    // ========================================================================
+
+    #[test]
+    fn cp_equal_values() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x42;
+        cpu.registers.b = 0x42;
+
+        cp(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        // A should NOT change
+        assert_eq!(cpu.registers.a, 0x42);
+        assert!(cpu.registers.flg_z());
+        assert!(cpu.registers.flg_n());
+    }
+
+    #[test]
+    fn cp_different_values() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x42;
+        cpu.registers.b = 0x10;
+
+        cp(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x42); // Unchanged
+        assert!(!cpu.registers.flg_z());
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn cp_sets_borrow() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.a = 0x10;
+        cpu.registers.b = 0x42;
+
+        cp(Src8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.a, 0x10); // Unchanged
+        assert!(cpu.registers.flg_c());
+    }
+
+    // ========================================================================
+    // INC/DEC 8-bit tests
+    // ========================================================================
+
+    #[test]
+    fn inc8_basic() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.b = 0x10;
+
+        inc8(RmwOperand8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.b, 0x11);
+        assert!(!cpu.registers.flg_z());
+        assert!(!cpu.registers.flg_n());
+        assert!(!cpu.registers.flg_h());
+    }
+
+    #[test]
+    fn inc8_sets_half_carry() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.b = 0x0F;
+
+        inc8(RmwOperand8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.b, 0x10);
+        assert!(cpu.registers.flg_h());
+    }
+
+    #[test]
+    fn inc8_wraps_to_zero() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.b = 0xFF;
+
+        inc8(RmwOperand8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.b, 0x00);
+        assert!(cpu.registers.flg_z());
+        assert!(cpu.registers.flg_h());
+    }
+
+    #[test]
+    fn inc8_does_not_affect_carry() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.b = 0xFF;
+        cpu.registers.set_cf(true);
+
+        inc8(RmwOperand8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert!(cpu.registers.flg_c()); // Should remain set
+    }
+
+    #[test]
+    fn dec8_basic() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.b = 0x10;
+
+        dec8(RmwOperand8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.b, 0x0F);
+        assert!(!cpu.registers.flg_z());
+        assert!(cpu.registers.flg_n());
+    }
+
+    #[test]
+    fn dec8_sets_zero_flag() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.b = 0x01;
+
+        dec8(RmwOperand8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.b, 0x00);
+        assert!(cpu.registers.flg_z());
+    }
+
+    #[test]
+    fn dec8_wraps_to_ff() {
+        let (mut cpu, mut bus) = setup();
+        cpu.registers.b = 0x00;
+
+        dec8(RmwOperand8::Reg(Reg8::B), &mut cpu, &mut bus);
+
+        assert_eq!(cpu.registers.b, 0xFF);
+    }
+
+    // ========================================================================
+    // Rotate tests
+    // ========================================================================
+
+    #[test]
+    fn rlca_rotates_left() {
+        let (mut cpu, _) = setup();
+        cpu.registers.a = 0b1000_0001;
+
+        rlca(&mut cpu);
+
+        assert_eq!(cpu.registers.a, 0b0000_0011);
+        assert!(cpu.registers.flg_c());
+        assert!(!cpu.registers.flg_z()); // Never sets Z
+    }
+
+    #[test]
+    fn rrca_rotates_right() {
+        let (mut cpu, _) = setup();
+        cpu.registers.a = 0b1000_0001;
+
+        rrca(&mut cpu);
+
+        assert_eq!(cpu.registers.a, 0b1100_0000);
+        assert!(cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn rla_rotates_through_carry() {
+        let (mut cpu, _) = setup();
+        cpu.registers.a = 0b0000_0001;
+        cpu.registers.set_cf(true);
+
+        rla(&mut cpu);
+
+        assert_eq!(cpu.registers.a, 0b0000_0011); // Old carry shifted in
+        assert!(!cpu.registers.flg_c());
+    }
+
+    #[test]
+    fn rra_rotates_through_carry() {
+        let (mut cpu, _) = setup();
+        cpu.registers.a = 0b1000_0000;
+        cpu.registers.set_cf(true);
+
+        rra(&mut cpu);
+
+        assert_eq!(cpu.registers.a, 0b1100_0000); // Old carry shifted in
+        assert!(!cpu.registers.flg_c());
+    }
+
+    // ========================================================================
+    // Misc ALU tests
+    // ========================================================================
+
+    #[test]
+    fn cpl_inverts_a() {
+        let (mut cpu, _) = setup();
+        cpu.registers.a = 0b1010_0101;
+
+        cpl(&mut cpu);
+
+        assert_eq!(cpu.registers.a, 0b0101_1010);
+        assert!(cpu.registers.flg_n());
+        assert!(cpu.registers.flg_h());
+    }
+
+    #[test]
+    fn scf_sets_carry() {
+        let (mut cpu, _) = setup();
+        cpu.registers.set_cf(false);
+        cpu.registers.set_nf(true);
+        cpu.registers.set_hf(true);
+
+        scf(&mut cpu);
+
+        assert!(cpu.registers.flg_c());
+        assert!(!cpu.registers.flg_n());
+        assert!(!cpu.registers.flg_h());
+    }
+
+    #[test]
+    fn ccf_complements_carry() {
+        let (mut cpu, _) = setup();
+        cpu.registers.set_cf(true);
+
+        ccf(&mut cpu);
+        assert!(!cpu.registers.flg_c());
+
+        ccf(&mut cpu);
+        assert!(cpu.registers.flg_c());
+    }
+
+    // ========================================================================
+    // DAA tests
+    // ========================================================================
+
+    #[test]
+    fn daa_after_addition() {
+        let (mut cpu, _) = setup();
+        // 0x15 + 0x27 = 0x3C (binary), should become 0x42 (BCD for 42)
+        cpu.registers.a = 0x3C;
+        cpu.registers.set_nf(false);
+        cpu.registers.set_hf(false);
+        cpu.registers.set_cf(false);
+
+        daa(&mut cpu);
+
+        assert_eq!(cpu.registers.a, 0x42);
+    }
+
+    #[test]
+    fn daa_with_half_carry() {
+        let (mut cpu, _) = setup();
+        // When H flag is set, lower nibble > 9
+        cpu.registers.a = 0x0A;
+        cpu.registers.set_nf(false);
+        cpu.registers.set_hf(true);
+
+        daa(&mut cpu);
+
+        assert_eq!(cpu.registers.a, 0x10);
+    }
+
+    #[test]
+    fn daa_sets_zero_flag() {
+        let (mut cpu, _) = setup();
+        cpu.registers.a = 0x00;
+        cpu.registers.set_nf(false);
+
+        daa(&mut cpu);
+
+        assert!(cpu.registers.flg_z());
+    }
+}

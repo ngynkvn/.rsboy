@@ -218,21 +218,245 @@ impl fmt::Display for RegisterState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ========================================================================
+    // Initialization tests
+    // ========================================================================
+
     #[test]
-    fn it_initalizes() {
-        let _reg = RegisterState::new();
+    fn new_register_state_is_zeroed() {
+        let reg = RegisterState::new();
+        assert_eq!(reg.a, 0);
+        assert_eq!(reg.b, 0);
+        assert_eq!(reg.c, 0);
+        assert_eq!(reg.d, 0);
+        assert_eq!(reg.e, 0);
+        assert_eq!(reg.f, 0);
+        assert_eq!(reg.h, 0);
+        assert_eq!(reg.l, 0);
+        assert_eq!(reg.sp, 0);
+        assert_eq!(reg.pc, 0);
+    }
+
+    // ========================================================================
+    // Flag function tests
+    // ========================================================================
+
+    #[test]
+    fn flags_helper_sets_correct_bits() {
+        assert_eq!(flags(true, false, false, false), 0b1000_0000); // Z only
+        assert_eq!(flags(false, true, false, false), 0b0100_0000); // N only
+        assert_eq!(flags(false, false, true, false), 0b0010_0000); // H only
+        assert_eq!(flags(false, false, false, true), 0b0001_0000); // C only
+        assert_eq!(flags(true, true, true, true), 0b1111_0000);    // All flags
+        assert_eq!(flags(false, false, false, false), 0b0000_0000); // No flags
     }
 
     #[test]
-    fn flag_function() {
-        let z_only = flags(true, false, false, false);
-        assert_eq!(z_only, 0b1000_0000);
-        let zn = flags(true, false, true, false);
-        assert_eq!(zn, 0b1010_0000);
+    fn flag_getters_work() {
+        let mut reg = RegisterState::new();
+
+        reg.f = flags(true, false, false, false);
+        assert!(reg.flg_z());
+        assert!(!reg.flg_n());
+        assert!(!reg.flg_h());
+        assert!(!reg.flg_c());
+
+        reg.f = flags(false, true, true, true);
+        assert!(!reg.flg_z());
+        assert!(reg.flg_n());
+        assert!(reg.flg_h());
+        assert!(reg.flg_c());
     }
 
     #[test]
-    fn hl() {
+    fn flag_negative_getters_work() {
+        let mut reg = RegisterState::new();
+
+        reg.f = flags(true, true, true, true);
+        assert!(!reg.flg_nz()); // NOT zero
+        assert!(!reg.flg_nc()); // NOT carry
+
+        reg.f = flags(false, false, false, false);
+        assert!(reg.flg_nz());
+        assert!(reg.flg_nc());
+    }
+
+    #[test]
+    fn flag_setters_work() {
+        let mut reg = RegisterState::new();
+
+        reg.set_zf(true);
+        assert!(reg.flg_z());
+
+        reg.set_nf(true);
+        assert!(reg.flg_n());
+
+        reg.set_hf(true);
+        assert!(reg.flg_h());
+
+        reg.set_cf(true);
+        assert!(reg.flg_c());
+
+        // Clearing flags
+        reg.set_zf(false);
+        assert!(!reg.flg_z());
+    }
+
+    #[test]
+    fn set_flags_array_works() {
+        let mut reg = RegisterState::new();
+        reg.set_flags([true, false, true, false]); // Z, N, H, C
+        assert!(reg.flg_z());
+        assert!(!reg.flg_n());
+        assert!(reg.flg_h());
+        assert!(!reg.flg_c());
+    }
+
+    // ========================================================================
+    // 8-bit register access tests (new typed API)
+    // ========================================================================
+
+    #[test]
+    fn get_r8_reads_correct_registers() {
+        let mut reg = RegisterState::new();
+        reg.a = 0x11;
+        reg.b = 0x22;
+        reg.c = 0x33;
+        reg.d = 0x44;
+        reg.e = 0x55;
+        reg.h = 0x66;
+        reg.l = 0x77;
+        reg.f = 0x80;
+
+        assert_eq!(reg.get_r8(Reg8::A), 0x11);
+        assert_eq!(reg.get_r8(Reg8::B), 0x22);
+        assert_eq!(reg.get_r8(Reg8::C), 0x33);
+        assert_eq!(reg.get_r8(Reg8::D), 0x44);
+        assert_eq!(reg.get_r8(Reg8::E), 0x55);
+        assert_eq!(reg.get_r8(Reg8::H), 0x66);
+        assert_eq!(reg.get_r8(Reg8::L), 0x77);
+        assert_eq!(reg.get_r8(Reg8::F), 0x80);
+    }
+
+    #[test]
+    fn set_r8_writes_correct_registers() {
+        let mut reg = RegisterState::new();
+
+        reg.set_r8(Reg8::A, 0xAA);
+        reg.set_r8(Reg8::B, 0xBB);
+        reg.set_r8(Reg8::C, 0xCC);
+        reg.set_r8(Reg8::D, 0xDD);
+        reg.set_r8(Reg8::E, 0xEE);
+        reg.set_r8(Reg8::H, 0x11);
+        reg.set_r8(Reg8::L, 0x22);
+
+        assert_eq!(reg.a, 0xAA);
+        assert_eq!(reg.b, 0xBB);
+        assert_eq!(reg.c, 0xCC);
+        assert_eq!(reg.d, 0xDD);
+        assert_eq!(reg.e, 0xEE);
+        assert_eq!(reg.h, 0x11);
+        assert_eq!(reg.l, 0x22);
+    }
+
+    #[test]
+    fn set_r8_f_masks_lower_bits() {
+        let mut reg = RegisterState::new();
+
+        // F register lower 4 bits are always 0
+        reg.set_r8(Reg8::F, 0xFF);
+        assert_eq!(reg.f, 0xF0);
+
+        reg.set_r8(Reg8::F, 0x0F);
+        assert_eq!(reg.f, 0x00);
+    }
+
+    // ========================================================================
+    // 16-bit register pair tests (new typed API)
+    // ========================================================================
+
+    #[test]
+    fn get_r16_reads_correct_pairs() {
+        let mut reg = RegisterState::new();
+        reg.b = 0x12;
+        reg.c = 0x34;
+        reg.d = 0x56;
+        reg.e = 0x78;
+        reg.h = 0x9A;
+        reg.l = 0xBC;
+        reg.sp = 0xDEF0;
+        reg.a = 0x11;
+        reg.f = 0x20;
+
+        assert_eq!(reg.get_r16(Reg16::BC), 0x1234);
+        assert_eq!(reg.get_r16(Reg16::DE), 0x5678);
+        assert_eq!(reg.get_r16(Reg16::HL), 0x9ABC);
+        assert_eq!(reg.get_r16(Reg16::SP), 0xDEF0);
+        assert_eq!(reg.get_r16(Reg16::AF), 0x1120);
+    }
+
+    #[test]
+    fn set_r16_writes_correct_pairs() {
+        let mut reg = RegisterState::new();
+
+        reg.set_r16(Reg16::BC, 0x1234);
+        assert_eq!(reg.b, 0x12);
+        assert_eq!(reg.c, 0x34);
+
+        reg.set_r16(Reg16::DE, 0x5678);
+        assert_eq!(reg.d, 0x56);
+        assert_eq!(reg.e, 0x78);
+
+        reg.set_r16(Reg16::HL, 0x9ABC);
+        assert_eq!(reg.h, 0x9A);
+        assert_eq!(reg.l, 0xBC);
+
+        reg.set_r16(Reg16::SP, 0xDEF0);
+        assert_eq!(reg.sp, 0xDEF0);
+    }
+
+    #[test]
+    fn set_r16_af_masks_lower_bits_of_f() {
+        let mut reg = RegisterState::new();
+
+        reg.set_r16(Reg16::AF, 0xFFFF);
+        assert_eq!(reg.a, 0xFF);
+        assert_eq!(reg.f, 0xF0); // Lower 4 bits masked
+    }
+
+    #[test]
+    fn inc_r16_increments_correctly() {
+        let mut reg = RegisterState::new();
+
+        reg.set_r16(Reg16::HL, 0x00FF);
+        reg.inc_r16(Reg16::HL);
+        assert_eq!(reg.get_r16(Reg16::HL), 0x0100);
+
+        reg.set_r16(Reg16::BC, 0xFFFF);
+        reg.inc_r16(Reg16::BC);
+        assert_eq!(reg.get_r16(Reg16::BC), 0x0000); // Wraps
+    }
+
+    #[test]
+    fn dec_r16_decrements_correctly() {
+        let mut reg = RegisterState::new();
+
+        reg.set_r16(Reg16::DE, 0x0100);
+        reg.dec_r16(Reg16::DE);
+        assert_eq!(reg.get_r16(Reg16::DE), 0x00FF);
+
+        reg.set_r16(Reg16::SP, 0x0000);
+        reg.dec_r16(Reg16::SP);
+        assert_eq!(reg.get_r16(Reg16::SP), 0xFFFF); // Wraps
+    }
+
+    // ========================================================================
+    // Legacy accessor tests (convenience methods)
+    // ========================================================================
+
+    #[test]
+    fn hl_accessor_works() {
         let reg = RegisterState {
             h: 0b0000_0001,
             l: 0b1000_0001,
@@ -242,7 +466,55 @@ mod tests {
     }
 
     #[test]
-    fn inc() {
+    fn bc_accessor_works() {
+        let reg = RegisterState {
+            b: 0xAB,
+            c: 0xCD,
+            ..Default::default()
+        };
+        assert_eq!(reg.bc(), 0xABCD);
+    }
+
+    #[test]
+    fn de_accessor_works() {
+        let reg = RegisterState {
+            d: 0x12,
+            e: 0x34,
+            ..Default::default()
+        };
+        assert_eq!(reg.de(), 0x1234);
+    }
+
+    #[test]
+    fn af_accessor_works() {
+        let reg = RegisterState {
+            a: 0x42,
+            f: 0x80,
+            ..Default::default()
+        };
+        assert_eq!(reg.af(), 0x4280);
+    }
+
+    // ========================================================================
+    // Jump helper test
+    // ========================================================================
+
+    #[test]
+    fn jump_sets_pc() {
+        let reg = RegisterState {
+            pc: 0x1000,
+            ..Default::default()
+        };
+        let new_reg = reg.jump(0x2000);
+        assert_eq!(new_reg.pc, 0x2000);
+    }
+
+    // ========================================================================
+    // 16-bit INC/DEC with carry tests
+    // ========================================================================
+
+    #[test]
+    fn inc_hl_carries_correctly() {
         let mut reg = RegisterState {
             h: 0xF0,
             l: 0xFF,
@@ -253,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn dec() {
+    fn dec_hl_borrows_correctly() {
         let mut reg = RegisterState {
             h: 0xFF,
             l: 0x00,
@@ -261,5 +533,25 @@ mod tests {
         };
         reg.dec_r16(Reg16::HL);
         assert_eq!(reg.hl(), 0xFEFF);
+    }
+
+    #[test]
+    fn inc_sp_wraps_correctly() {
+        let mut reg = RegisterState {
+            sp: 0xFFFF,
+            ..Default::default()
+        };
+        reg.inc_r16(Reg16::SP);
+        assert_eq!(reg.sp, 0x0000);
+    }
+
+    #[test]
+    fn dec_sp_wraps_correctly() {
+        let mut reg = RegisterState {
+            sp: 0x0000,
+            ..Default::default()
+        };
+        reg.dec_r16(Reg16::SP);
+        assert_eq!(reg.sp, 0xFFFF);
     }
 }

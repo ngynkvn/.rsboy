@@ -3,12 +3,7 @@ use std::fmt::Display;
 
 use crate::bus::{Bus, Memory};
 
-use crate::{
-    cpu,
-    instructions::Instr,
-    prelude::*,
-    registers::RegisterState,
-};
+use crate::{cpu, instructions::Instr, prelude::*, registers::RegisterState};
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
 pub enum CPUState {
@@ -34,16 +29,6 @@ pub struct CPU {
     pub op_addr: u16,
 }
 
-// bitflags! {
-//     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-//     pub struct Interrupts: u8 {
-//         const VBLANK  = 0b0000_0001;
-//         const LCDSTAT = 0b0000_0010;
-//         const TIMER   = 0b0000_0100;
-//         const SERIAL  = 0b0000_1000;
-//         const JOYPAD = 0b0001_0000;
-//     }
-// }
 pub mod interrupts {
     pub const VBLANK: u8 = 0b0000_0001;
     pub const LCDSTAT: u8 = 0b0000_0010;
@@ -159,12 +144,6 @@ impl CPU {
     pub fn step(&mut self, bus: &mut Bus) {
         let _span = info_span!("Step", state = ?self.state, clock = bus.mclock()).entered();
         assert_eq!(bus.mclock(), bus.timer.mclock, "Clock mismatch: {} != {}", bus.mclock(), bus.timer.mclock);
-        debug!(
-            "{: ^32} [{: >4}] {: >16}",
-            format!("{}", Instr::from(self.opcode)),
-            cpu::test::EXPECTED_TICKS[self.opcode as usize],
-            bus.mclock(),
-        );
         'state: {
             self.state = match &mut self.state {
                 CPUState::Boot => {
