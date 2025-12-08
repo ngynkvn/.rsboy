@@ -1,8 +1,4 @@
-use crate::{
-    instructions::{Register, Register::*},
-    location::Read,
-    operand::{Reg8, Reg16},
-};
+use crate::operand::{Reg8, Reg16};
 use std::fmt;
 
 #[derive(Default, Debug, Clone)]
@@ -108,7 +104,7 @@ impl RegisterState {
 }
 
 // ============================================================================
-// Legacy register access (using old Register enum) - kept for compatibility
+// Convenience accessors and flag methods
 // ============================================================================
 
 /// `u16_reg(n, a, b)` will create a u16 "register" named `n` defined as a | b
@@ -132,23 +128,6 @@ macro_rules! u8_reg {
             self.$fn_name
         }
     };
-}
-macro_rules! INC {
-    ($self: ident, $r1: ident) => {{
-        let prev = $self.$r1;
-        let result = prev.wrapping_add(1);
-        $self.f = flags(result == 0, false, (prev & 0x0f) == 0x0f, $self.flg_c());
-        $self.$r1 = result;
-    }};
-}
-
-macro_rules! DEC {
-    ($self: ident, $r1: ident) => {{
-        let prev = $self.$r1;
-        let result = prev.wrapping_sub(1);
-        $self.f = flags(result == 0, true, result & 0x0f == 0x0f, $self.flg_c());
-        $self.$r1 = result;
-    }};
 }
 
 impl RegisterState {
@@ -177,121 +156,6 @@ impl RegisterState {
     pub const fn jump(&self, address: u16) -> Self {
         Self { pc: address, ..(*self) }
     }
-
-    pub fn inc(&mut self, reg: Register) {
-        match reg {
-            HL => {
-                let n = self.hl().wrapping_add(1);
-                let [h, l] = n.to_be_bytes();
-                self.h = h;
-                self.l = l;
-            }
-            BC => {
-                let n = self.bc().wrapping_add(1);
-                let [b, c] = n.to_be_bytes();
-                self.b = b;
-                self.c = c;
-            }
-            DE => {
-                let n = self.de().wrapping_add(1);
-                let [d, e] = n.to_be_bytes();
-                self.d = d;
-                self.e = e;
-            }
-            SP => {
-                self.sp = self.sp().wrapping_add(1);
-            }
-            A => INC!(self, a),
-            B => INC!(self, b),
-            C => INC!(self, c),
-            D => INC!(self, d),
-            E => INC!(self, e),
-            H => INC!(self, h),
-            L => INC!(self, l),
-            _ => panic!("inc not impl for {reg:?}"),
-        }
-    }
-
-    pub fn dec(&mut self, reg: Register) {
-        match reg {
-            HL => {
-                let n = self.hl().wrapping_sub(1);
-                let [h, l] = n.to_be_bytes();
-                self.h = h;
-                self.l = l;
-            }
-            BC => {
-                let n = self.bc().wrapping_sub(1);
-                let [b, c] = n.to_be_bytes();
-                self.b = b;
-                self.c = c;
-            }
-            DE => {
-                let n = self.de().wrapping_sub(1);
-                let [d, e] = n.to_be_bytes();
-                self.d = d;
-                self.e = e;
-            }
-            SP => {
-                self.sp = self.sp().wrapping_sub(1);
-            }
-            A => DEC!(self, a),
-            B => DEC!(self, b),
-            C => DEC!(self, c),
-            D => DEC!(self, d),
-            E => DEC!(self, e),
-            H => DEC!(self, h),
-            L => DEC!(self, l),
-            _ => panic!("dec not impl for {reg:?}"),
-        }
-    }
-
-    pub fn fetch_u8(&self, reg: Register) -> u8 {
-        match reg {
-            A => self.a,
-            B => self.b,
-            C => self.c,
-            D => self.d,
-            E => self.e,
-            F => self.f,
-            H => self.h,
-            L => self.l,
-            _ => panic!("fetch_u8 not impl for {reg:?}"),
-        }
-    }
-
-    pub fn fetch_u16(&self, reg: Register) -> u16 {
-        match reg {
-            SP => self.sp(),
-            PC => self.pc(),
-            BC => self.bc(),
-            DE => self.de(),
-            HL => self.hl(),
-            AF => self.af(),
-            _ => panic!("fetch_u16 not impl for {reg:?}"),
-        }
-    }
-
-    pub const fn get_dual_reg(&self, reg: Register) -> Option<u16> {
-        match reg {
-            SP => Some(self.sp()),
-            PC => Some(self.pc()),
-            BC => Some(self.bc()),
-            DE => Some(self.de()),
-            HL => Some(self.hl()),
-            AF => Some(self.af()),
-            _ => None,
-        }
-    }
-
-    pub fn fetch(&self, reg: Register) -> Read {
-        match reg {
-            A | B | C | D | E | F | H | L => Read::Byte(self.fetch_u8(reg)),
-            BC | DE | HL | AF | SP | PC => Read::Word(self.fetch_u16(reg)),
-        }
-    }
-    // todo see if swapping these makes a difference..
-    // probably not
     pub const fn flg_z(&self) -> bool {
         (self.f & 0b1000_0000) != 0
     }
@@ -384,9 +248,10 @@ mod tests {
             l: 0xFF,
             ..Default::default()
         };
-        reg.inc(Register::HL);
+        reg.inc_r16(Reg16::HL);
         assert_eq!(reg.hl(), 0xF100);
     }
+
     #[test]
     fn dec() {
         let mut reg = RegisterState {
@@ -394,7 +259,7 @@ mod tests {
             l: 0x00,
             ..Default::default()
         };
-        reg.dec(Register::HL);
+        reg.dec_r16(Reg16::HL);
         assert_eq!(reg.hl(), 0xFEFF);
     }
 }

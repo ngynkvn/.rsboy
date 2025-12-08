@@ -1,5 +1,3 @@
-pub mod value;
-
 // use bitflags::bitflags;
 use std::fmt::Display;
 
@@ -8,11 +6,9 @@ use crate::bus::{Bus, Memory};
 use crate::{
     cpu,
     instructions::Instr,
-    location::{Address, Read},
     prelude::*,
     registers::RegisterState,
 };
-use value::Writable;
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
 pub enum CPUState {
@@ -110,24 +106,6 @@ impl CPU {
         u16::from_le_bytes([lo, hi])
     }
 
-    // ld a, b
-    // cpu.parse_op | read_from(location) | write_to(location)
-
-    /// # Panics
-    /// - If the address is not a valid address.
-    pub fn read_from(&mut self, location: Address, bus: &mut Bus) -> Read {
-        location.read(self, bus)
-    }
-
-    /// # Panics
-    /// - If the address is not a valid address.
-    pub fn write_into<T>(&mut self, into: Address, write_value: T, bus: &mut Bus)
-    where
-        T: Writable,
-    {
-        into.write(self, bus, write_value);
-    }
-
     pub fn push_stack(&mut self, value: u16, bus: &mut Bus) {
         let [lo, hi] = value.to_le_bytes();
         self.registers.sp = self.registers.sp.wrapping_sub(1);
@@ -142,29 +120,6 @@ impl CPU {
         let hi = bus.read_cycle(self.registers.sp);
         self.registers.sp = self.registers.sp.wrapping_add(1);
         u16::from_le_bytes([lo, hi])
-    }
-
-    pub const fn bcd_adjust(&mut self, value: u8) -> u8 {
-        let mut value = value;
-        if self.registers.flg_nn() {
-            if self.registers.flg_c() || value > 0x99 {
-                value = value.wrapping_add(0x60);
-                self.registers.set_cf(true);
-            }
-            if self.registers.flg_h() || (value & 0x0F) > 0x09 {
-                value = value.wrapping_add(0x6);
-            }
-        } else {
-            if self.registers.flg_c() {
-                value = value.wrapping_sub(0x60);
-            }
-            if self.registers.flg_h() {
-                value = value.wrapping_sub(0x6);
-            }
-        }
-        self.registers.set_zf(value == 0);
-        self.registers.set_hf(false);
-        value
     }
 
     pub const fn interrupt_detected(&mut self, bus: &mut Bus) -> bool {

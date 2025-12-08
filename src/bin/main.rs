@@ -9,7 +9,7 @@ use rust_emu::{
     constants::{self, setup_logger},
     cpu::interrupts,
     debugger,
-    emu::{Emu, gen_il},
+    emu::{Emu, disassemble},
     gpu,
     prelude::*,
 };
@@ -95,7 +95,7 @@ fn sdl_main(video: &mut sdl2::render::Canvas<Window>, debugger: &mut Imgui, cont
 
     let mut event_pump = context.event_pump().map_err(|e| eyre!(e))?;
 
-    let il = gen_il(&emu.bus.memory);
+    let il = disassemble(&emu.bus.memory);
     debugger.info.il = il;
 
     loop {

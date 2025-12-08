@@ -1,9 +1,27 @@
 use crate::{
-    gpu::{self, BackgroundPalette, GPU, LCDC, OAM_END, OAM_START, VRAM_END, VRAM_START},
+    gpu::{self, BackgroundPalette, GPU, LCDC, OAM_START, VRAM_START},
     prelude::*,
-    timer::{self, Timer},
+    timer::{Timer, addr as timer_addr},
 };
 use std::{fmt::Display, fs::File, io::Read, path::PathBuf};
+
+/// Memory map constants
+pub mod addr {
+    /// Joypad input register
+    pub const JOYPAD: u16 = 0xFF00;
+    /// Serial transfer data
+    pub const SERIAL_DATA: u16 = 0xFF01;
+    /// Serial transfer control
+    pub const SERIAL_CTRL: u16 = 0xFF02;
+    /// Bootrom disable register
+    pub const BOOTROM_DISABLE: u16 = 0xFF50;
+    /// High RAM start
+    pub const HRAM_START: u16 = 0xFF80;
+    /// Interrupt flags
+    pub const IF: u16 = 0xFF0F;
+    /// Interrupt enable
+    pub const IE: u16 = 0xFFFF;
+}
 
 pub trait Memory {
     fn read(&self, address: u16) -> u8;
@@ -118,12 +136,12 @@ impl Bus {
         self.int_flags &= !flag;
     }
 
-    // Cycle refers to 1 T-cycle
+    /// Advance emulation by 1 M-cycle (4 T-cycles)
     #[instrument(ret, skip(self), fields(clock = self.mclock, to = self.mclock + 1))]
     pub fn generic_cycle(&mut self) {
         self.mclock += 1;
         self.gpu.cycle(&mut self.int_flags);
-        self.timer.tick_timer_counter(&mut self.int_flags);
+        self.timer.tick(&mut self.int_flags);
     }
 
     #[instrument(ret, skip(self), fields(clock = self.mclock))]
@@ -147,103 +165,141 @@ impl Bus {
 }
 
 impl Memory for Bus {
+    #[allow(clippy::match_same_arms)]
     fn read(&self, address: u16) -> u8 {
-        match address as usize {
-            0x0000..=0x0100 if self.in_bios == 0 => self.bootrom[address as usize],
-            timer::DIV => self.timer.div(),
-            timer::TAC => self.timer.tac,
-            timer::TMA => self.timer.tma,
-            timer::TIMA => self.timer.tima,
-            0xFF40 => self.gpu.lcdc.bits(),
-            0xFF41 => self.gpu.lcdstat,
-            0xFF42 => self.gpu.scrolly,
-            0xFF43 => self.gpu.scrollx,
-            0xFF44 => self.gpu.scanline,
-            0xFF47 => self.gpu.bgrdpal,
-            0xFF4A => self.gpu.windowy,
-            0xFF4B => self.gpu.windowx,
-            0xffff => self.int_enabled,
-            0xff0f => self.int_flags,
-            0xff00 => match self.select {
+        match address {
+            // Bootrom overlay
+            0x0000..=0x00FF if self.in_bios == 0 => self.bootrom[address as usize],
+
+            // Timer registers
+            timer_addr::DIV => self.timer.read_div(),
+            timer_addr::TAC => self.timer.read_tac(),
+            timer_addr::TMA => self.timer.tma,
+            timer_addr::TIMA => self.timer.tima,
+
+            // GPU registers
+            gpu::LCDC_ADDR => self.gpu.lcdc.bits(),
+            gpu::STAT_ADDR => self.gpu.lcdstat,
+            gpu::SCY_ADDR => self.gpu.scrolly,
+            gpu::SCX_ADDR => self.gpu.scrollx,
+            gpu::LY_ADDR => self.gpu.scanline,
+            gpu::BGP_ADDR => self.gpu.bgrdpal,
+            gpu::WY_ADDR => self.gpu.windowy,
+            gpu::WX_ADDR => self.gpu.windowx,
+
+            // Interrupt registers
+            addr::IE => self.int_enabled,
+            addr::IF => self.int_flags,
+
+            // Joypad
+            addr::JOYPAD => match self.select {
                 Select::Buttons => self.keypresses,
                 Select::Directions => self.directions,
                 Select::None => 0xFF,
             },
-            // 0xFFFF => &self.gpu.,
-            // 0xFF01 => {info!("R: ACC SERIAL TRANSFER DATA"); &self.memory[ias usize]},
-            // 0xFF02 => {info!("R: ACC SERIAL TRANSFER DATA FLGS"); &self.memory[i as usize]},
-            VRAM_START..=VRAM_END => self.gpu[address],
-            OAM_START..=OAM_END => self.gpu.oam[address as usize - OAM_START],
+
+            // VRAM and OAM
+            gpu::VRAM_START_U16..=gpu::VRAM_END_U16 => self.gpu[address],
+            gpu::OAM_START_U16..=gpu::OAM_END_U16 => self.gpu.oam[address as usize - OAM_START],
+
+            // Everything else from main memory
             _ => self.memory[address as usize],
         }
     }
+
+    #[allow(clippy::match_same_arms)]
     fn write(&mut self, address: u16, value: u8) {
-        match address as usize {
-            0x0000..=0x0100 if self.in_bios == 0 => panic!(),
-            timer::DIV => self.timer.write_div(value),
-            timer::TAC => self.timer.write_tac(value),
-            timer::TIMA => self.timer.tima = value,
-            timer::TMA => self.timer.tma = value,
-            0xff40 => self.gpu.lcdc = LCDC::from_bits_retain(value),
-            0xff41 => self.gpu.lcdstat = value,
-            0xff42 => self.gpu.scrolly = value,
-            0xff43 => self.gpu.scrollx = value,
-            0xff44 => self.gpu.scanline = value,
-            gpu::DRAM_ADDR => {
-                //OAM Transfer request
-                let start = (u16::from(value) << 8) as usize;
+        match address {
+            // Bootrom area is read-only when bootrom is active
+            0x0000..=0x00FF if self.in_bios == 0 => {
+                warn!("Attempted write to bootrom area: {address:#06x}");
+            }
+
+            // Timer registers
+            timer_addr::DIV => self.timer.write_div(value),
+            timer_addr::TAC => self.timer.write_tac(value),
+            timer_addr::TIMA => self.timer.tima = value,
+            timer_addr::TMA => self.timer.tma = value,
+
+            // GPU registers
+            gpu::LCDC_ADDR => self.gpu.lcdc = LCDC::from_bits_retain(value),
+            gpu::STAT_ADDR => self.gpu.lcdstat = value,
+            gpu::SCY_ADDR => self.gpu.scrolly = value,
+            gpu::SCX_ADDR => self.gpu.scrollx = value,
+            gpu::LY_ADDR => self.gpu.scanline = value,
+            gpu::DMA_ADDR => {
+                // OAM DMA Transfer
+                let src_start = u16::from(value) << 8;
                 for i in 0..0xA0 {
-                    self.gpu.oam[i] = self.memory[start + i];
+                    self.gpu.oam[i] = self.memory[(src_start + i as u16) as usize];
                     self.generic_cycle();
                 }
             }
-            0xff47 => {
-                error!("BGRD Palette: {}", BackgroundPalette(value));
+            gpu::BGP_ADDR => {
+                trace!("BGP Palette: {}", BackgroundPalette(value));
                 self.gpu.bgrdpal = value;
             }
-            0xff48 => {
-                error!("obj0pal: {}", BackgroundPalette(value));
+            gpu::OBP0_ADDR => {
+                trace!("OBP0 Palette: {}", BackgroundPalette(value));
                 self.gpu.obj0pal = value;
             }
-            0xff49 => {
-                error!("obj0pal: {}", BackgroundPalette(value));
+            gpu::OBP1_ADDR => {
+                trace!("OBP1 Palette: {}", BackgroundPalette(value));
                 self.gpu.obj1pal = value;
             }
-            0xff4a => self.gpu.windowy = value,
-            0xff4b => self.gpu.windowx = value,
-            0xffff => self.int_enabled = value,
-            0xff0f => self.int_flags = value,
-            0xff50 => {
+            gpu::WY_ADDR => self.gpu.windowy = value,
+            gpu::WX_ADDR => self.gpu.windowx = value,
+
+            // Interrupt registers
+            addr::IE => self.int_enabled = value,
+            addr::IF => self.int_flags = value,
+
+            // Bootrom disable
+            addr::BOOTROM_DISABLE => {
                 if value != 0 && !self.rom_start_signal {
                     self.rom_start_signal = true;
                 }
                 self.in_bios = value;
             }
-            0xff00 => {
-                self.select = match value & 0xF0 {
-                    0b0001_0000 => Select::Buttons,
-                    0b0010_0000 => Select::Directions,
-                    // 0b0011_0000 => Select::None,
+
+            // Joypad
+            addr::JOYPAD => {
+                self.select = match value & 0x30 {
+                    0x10 => Select::Buttons,
+                    0x20 => Select::Directions,
                     _ => Select::None,
-                }
+                };
             }
-            0xff01 | 0xff80 => {
+
+            // Serial I/O
+            addr::SERIAL_DATA | addr::HRAM_START => {
                 self.memory[address as usize] = value;
             }
-            0xff02 => {
+            addr::SERIAL_CTRL => {
                 if value == 0x81 {
-                    self.io.push(char::from(self.memory[0xff01]));
-                    print!("{}", char::from(self.memory[0xff01]));
+                    let ch = char::from(self.memory[addr::SERIAL_DATA as usize]);
+                    self.io.push(ch);
+                    print!("{ch}");
                 }
                 self.memory[address as usize] = value;
             }
-            VRAM_START..=VRAM_END => self.gpu.vram[address as usize - VRAM_START] = value,
-            OAM_START..=OAM_END => self.gpu.oam[address as usize - OAM_START] = value,
-            _ => {
-                if address >= 0x8000 {
-                    self.memory[address as usize] = value;
-                }
+
+            // VRAM
+            gpu::VRAM_START_U16..=gpu::VRAM_END_U16 => {
+                self.gpu.vram[address as usize - VRAM_START] = value;
             }
+            // OAM
+            gpu::OAM_START_U16..=gpu::OAM_END_U16 => {
+                self.gpu.oam[address as usize - OAM_START] = value;
+            }
+
+            // RAM (WRAM, Echo RAM, HRAM) - everything else above 0x9FFF except OAM
+            0xA000..=0xFDFF | 0xFEA0..=0xFF7F | 0xFF81..=0xFFFE => {
+                self.memory[address as usize] = value;
+            }
+
+            // ROM area writes (mapper control - ignored for now) and unused areas
+            _ => {}
         }
     }
 }

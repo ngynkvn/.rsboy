@@ -17,19 +17,6 @@ use crate::{
 // Re-export operand types for convenience
 pub use crate::operand::{Reg8 as R8, Reg16 as R16};
 
-// Legacy Register enum - kept for backwards compatibility during transition
-#[derive(Debug, PartialEq, Eq, Copy, Clone, IntoStaticStr, Hash)]
-pub enum Register {
-    A, B, C, D, E, F, H, L,
-    SP, PC, BC, DE, HL, AF,
-}
-
-impl Register {
-    pub const fn is_word_register(self) -> bool {
-        matches!(self, Self::HL | Self::BC | Self::DE | Self::SP)
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Copy, Clone, IntoStaticStr, Hash)]
 pub enum Flag {
     FlagNZ,
@@ -609,8 +596,3 @@ impl std::fmt::Display for Instr {
     }
 }
 
-impl std::fmt::Display for Register {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", <&str>::from(self))
-    }
-}
